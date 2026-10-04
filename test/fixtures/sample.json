@@ -1,0 +1,9 @@
+{"name": "Office and moving boxes", "sets": [
+ {"num": "10698", "name": "Large Creative Brick Box", "year": 2015, "pieces": 790, "theme": "Classic", "state": "apart", "room": "Office", "spot": "Closet", "instr": true},
+ {"num": "10497", "name": "Galaxy Explorer", "year": 2022, "pieces": 1254, "theme": "Icons", "state": "built", "room": "Office", "spot": "Top shelf"},
+ {"num": "21318", "name": "Tree House", "year": 2019, "pieces": 3036, "theme": "Ideas", "state": "built", "room": "Living room", "spot": "Bookcase", "missing": "one leaf piece"},
+ {"num": "10281", "name": "Bonsai Tree", "year": 2021, "pieces": 878, "theme": "Botanical Collection", "state": "built", "room": "Living room", "spot": "Bookcase"},
+ {"num": "21327", "name": "Typewriter", "year": 2021, "pieces": 2079, "theme": "Ideas", "state": "partial", "room": "Office", "spot": "Desk", "box": "3"},
+ {"num": "31120", "name": "Medieval Castle", "year": 2021, "pieces": 1426, "theme": "Creator 3in1", "state": "sealed", "box": "3"},
+ {"num": "42115", "name": "Lamborghini Sián FKP 37", "year": 2020, "pieces": 3696, "theme": "Technic", "state": "built", "box": "12", "unsure": "box corner was blurry; could be 42083"}
+]}
