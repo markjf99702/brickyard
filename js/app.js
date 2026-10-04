@@ -11,6 +11,7 @@
   function write(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   var DOC = C.cleanDoc(read(KEY) || {});
   var prefs = Object.assign({ pics: true, group: 'room', show: 'all' }, read(PREFS) || {});
+  if (FRAMED) prefs.pics = false;
   function save() { if (!write(KEY, { brickyard: 1, catalog: DOC })) toast('This browser wouldn’t save. Download a backup from the menu.'); }
   function savePrefs() { write(PREFS, prefs); }
 
@@ -234,7 +235,8 @@
     };
     if ($('e-ok')) $('e-ok').onclick = function () { delete x.check; this.parentNode.remove(); };
     if ($('e-del')) $('e-del').onclick = function () {
-      if (!confirm('Remove ' + (x.name || 'this set') + ' from your catalog?')) return;
+      // A second tap confirms, so nothing goes on one slip.
+      if (!this.dataset.sure) { this.dataset.sure = '1'; this.textContent = 'Tap again to remove'; return; }
       removeSet(x.id); save(); closeSheet(); renderCatalog(); toast('Removed');
     };
     $('e-save').onclick = function () {
@@ -249,7 +251,11 @@
       if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
       if (isNew) {
         var dup = C.findDup(DOC, y);
-        if (dup && !confirm('You already have ' + (dup.name || 'this set') + '. Add another copy?')) return;
+        if (dup && !this.dataset.again) {
+          this.dataset.again = '1'; this.textContent = 'Add another copy';
+          toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + '. Tap again to add a second copy.');
+          return;
+        }
       }
       y.id = x.id; putSet(y); save(); closeSheet(); renderCatalog();
       toast(isNew ? 'Added' : 'Saved');
@@ -353,7 +359,7 @@
       (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets from Claude</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-csv"><span>Download a spreadsheet<small>CSV, for Excel, Numbers or Google Sheets</small></span></button></li>') +
-      '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>' +
+      (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">Your catalog is kept in this browser only. Download a backup now and then, and before you clear your browser’s data.</p></div>');
     panel.querySelector('[data-close]').onclick = closeSheet;
     $('m-claude').onclick = claudeSheet;
@@ -364,7 +370,7 @@
       var sets = C.live(DOC).sort(function (a, b) { return C.natural(a.name || '', b.name || ''); });
       download('Brickyard sets ' + today() + '.csv', 'text/csv', '﻿' + C.toCsv(sets));
     };
-    $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
+    if ($('m-pics')) $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
   }
 
   // Another tab changed the catalog.
@@ -375,6 +381,13 @@
   });
 
   if ('serviceWorker' in navigator && window.isSecureContext && !FRAMED) navigator.serviceWorker.register('sw.js').catch(function () {});
-  if (!checkLink()) route();
+  if (!checkLink()) {
+    route();
+    // The preview copy has no sets of its own, so it opens on Claude's example batch.
+    if (FRAMED && window.BRICKYARD_EXAMPLE && !C.live(DOC).length) {
+      location.hash = '#catalog';
+      takeIncoming(C.parseIncoming(JSON.stringify(window.BRICKYARD_EXAMPLE)));
+    }
+  }
   window.brickyard = { doc: function () { return DOC; } };
 })();

@@ -32,7 +32,7 @@ const problems = [];
 page.on('pageerror', e => problems.push(e.message));
 page.on('console', m => { if (m.type() === 'error' && !/404/.test(m.text())) problems.push(m.text()); });
 page.on('request', r => { if (!r.url().startsWith(base) && !r.url().startsWith('https://cdn.rebrickable.com/')) problems.push('left the site: ' + r.url()); });
-page.on('dialog', d => d.accept());
+page.on('dialog', d => { problems.push('dialog: ' + d.message()); d.dismiss(); });
 const doc = () => page.evaluate(() => window.brickyard.doc());
 const live = async () => Object.values((await doc()).sets).filter(x => !x.del);
 
@@ -102,6 +102,8 @@ await page.click('#e-ok');
 await page.click('#e-save');
 assert.ok(!(await live()).find(x => /Lamborghini/.test(x.name)).check);
 await page.click('.item:has-text("Medieval Castle")');
+await page.click('#e-del');
+assert.equal((await live()).length, 7, 'one tap does not remove');
 await page.click('#e-del');
 assert.equal((await live()).length, 6);
 assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 'removal is remembered');
