@@ -134,6 +134,33 @@ const [csv] = await Promise.all([page.waitForEvent('download'), page.click('#m-c
 const rows = (await readFile(await csv.path(), 'utf8')).trim().split('\r\n');
 assert.equal(rows.length, 7);
 
+// Build from your box: add the box, the example builds, step through it, open a link from Claude.
+await page.goto(base + '#build');
+await page.waitForSelector('#build-list .group');
+if (await page.$('#add-box')) await page.click('#add-box');
+await page.waitForSelector('[data-pool]');
+assert.equal(await page.isChecked('[data-pool]'), true, 'the box counts once added');
+assert.match(await page.textContent('a[href="#model-x-cottage"]'), /Can build/);
+await page.click('a[href="#model-x-cottage"]');
+await page.waitForSelector('#model-view:not([hidden])');
+assert.equal(await page.textContent('#step-n'), 'Step 1');
+assert.match(await page.textContent('#step-parts'), /Plate 6x12/);
+await page.click('#step-next');
+assert.equal(await page.textContent('#step-n'), 'Step 2');
+await page.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+assert.equal(await page.textContent('#step-n'), 'Done');
+assert.match(await page.textContent('#model-check'), /every piece/);
+const cottage = JSON.parse(await readFile(join(root, 'models/cottage.json'), 'utf8'));
+cottage.model.name = 'Linked cottage';
+const { deflateRawSync } = await import('node:zlib');
+await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(cottage)).toString('base64url'));
+await page.waitForFunction(() => location.hash.startsWith('#model-m'));
+assert.equal(await page.textContent('#build-title'), 'Linked cottage');
+await page.goto(base + '#build');
+await page.waitForSelector('#build-list .group');
+assert.match(await page.textContent('#build-list'), /Linked cottage/);
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen scrolls sideways on a phone');
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

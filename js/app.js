@@ -56,11 +56,13 @@
   }
 
   // ---------- screens ----------
+  // #catalog is My sets; #build, #model-… and model links (#d1z…) belong to Build from your box (js/build.js).
   function route() {
-    var onCat = location.hash === '#catalog';
-    $('home').hidden = onCat; $('catalog').hidden = !onCat;
-    if (onCat) renderCatalog(); else renderHome();
+    var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h);
+    $('home').hidden = onCat || onBuild; $('catalog').hidden = !onCat; $('build').hidden = !onBuild;
+    if (onCat) renderCatalog(); else if (!onBuild) renderHome();
     window.scrollTo(0, 0);
+    document.dispatchEvent(new CustomEvent('brickyard:route', { detail: h }));
   }
   window.addEventListener('hashchange', function () { if (!checkLink()) route(); });
   window.addEventListener('scroll', function () {
@@ -70,6 +72,9 @@
   function renderHome() {
     var t = C.totals(C.live(DOC));
     $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'Nothing here yet. Start with your sets.';
+    var models = 0;
+    try { models = Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {}).length; } catch (e) { /* none saved */ }
+    $('home-build-stat').textContent = models ? plural(models, 'model') + ' from Claude' : 'Try the example cottage';
   }
 
   var FILTERS = [
@@ -389,5 +394,11 @@
       takeIncoming(C.parseIncoming(JSON.stringify(window.BRICKYARD_EXAMPLE)));
     }
   }
-  window.brickyard = { doc: function () { return DOC; } };
+  window.brickyard = {
+    doc: function () { return DOC; },
+    // Build from your box adds the brick box to My sets when there's nothing to build from yet.
+    addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
+    toast: toast, openSheet: openSheet, closeSheet: closeSheet, esc: esc, plural: plural, FRAMED: FRAMED,
+  };
+  document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

@@ -114,6 +114,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; width: 100%; text-align: left;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 8px 8px; cursor: pointer;
 }
+a.item { color: inherit; text-decoration: none; }
 .item:hover, .item:focus-visible { border-color: var(--muted); }
 .pic { width: 64px; height: 52px; border-radius: 8px; background: #fff; display: grid; place-items: center; overflow: hidden; position: relative; }
 :root[data-theme="dark"] .pic:not(.none) { background: #f4f1ea; }
@@ -184,6 +185,36 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rv .m { color: var(--muted); font-size: 13.5px; }
 .rv .w { color: var(--red); font-size: 13.5px; margin-top: 2px; }
 .bulk { background: var(--soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
+
+/* ---------- build from your box ---------- */
+.pieces .menu.pool { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; margin-bottom: 10px; }
+.menu.pool label { padding: 11px 0; }
+.menu.pool input { width: 20px; height: 20px; flex: none; accent-color: var(--red); }
+.acts-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+.acts-row .btn { flex: 1 1 auto; justify-content: center; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.pic.swatches { background: var(--soft); display: block; }
+.pic.swatches i { position: absolute; width: 26px; height: 16px; border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .12); }
+.flag.bad { background: color-mix(in srgb, var(--red) 12%, var(--card)); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
+.note.ok { color: var(--green); font-weight: 600; }
+.stage { position: relative; height: min(58vh, 460px); background: radial-gradient(ellipse at 50% 40%, var(--card), var(--soft)); border-bottom: 1px solid var(--line); touch-action: none; }
+.stage canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.stage-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 4px 10px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
+.stepbar { display: flex; align-items: center; gap: 10px; padding: 12px 0 4px; }
+.stepnum { flex: 1; text-align: center; font-size: 17px; }
+.stepnum span { color: var(--muted); }
+.stepbar .btn { min-width: 112px; justify-content: center; }
+.stepbar .icon-btn[disabled] { opacity: .4; cursor: default; }
+#step-range { width: 100%; accent-color: var(--red); margin: 6px 0 12px; }
+.callout { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+.callout .lbl { margin-bottom: 6px; }
+ul.need { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+ul.need.wide { grid-template-columns: 1fr; }
+ul.need li { display: flex; gap: 10px; align-items: center; line-height: 1.25; }
+ul.need i { flex: none; width: 30px; height: 20px; border-radius: 4px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .15); }
+ul.need small { display: block; color: var(--muted); font-size: 13px; }
+ul.need li.short small::after { content: ' · short'; color: var(--red); font-weight: 600; }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translateX(-50%); z-index: 40;

@@ -12,7 +12,7 @@
   <img src="docs/phone-review.png" alt="Adding seven sets from Claude: a list with tick boxes, and fields to put them all in one room, shelf or moving box" width="250">
 </p>
 
-Brickyard is one app with three parts. **My sets** is here now. **Build from your box** (Claude designs a new model from only the pieces you own, with step-by-step instructions) and the **Shelf planner** (fit your built sets onto your shelves) come next, and both read from the same catalog.
+Brickyard is one app with three parts. **My sets** and **Build from your box** are here now: Claude designs a new model from only the pieces you own, Brickyard checks you can really build it, and shows it in 3D step by step. The **Shelf planner** (fit your built sets onto your shelves) comes next. All three read from the same catalog.
 
 ## How it works
 
@@ -33,6 +33,19 @@ python3 skill/brickyard-cataloger/scripts/make_brickyard.py sets.json
 
 `skill/brickyard-cataloger/references/brickyard-format.md` describes the link, batch and backup formats.
 
+## Build from your box
+
+<p align="center"><img src="docs/phone-build.png" alt="The example cottage in 3D: yellow walls, a blue door, grey ridge and chimney and a tree on a green plate, with step controls and a note that you have every piece for it from the Large Creative Brick Box" width="250"></p>
+
+- **Your pieces** are the parts lists of the sets in My sets that are taken apart (tick or untick each one). Brickyard has a parts list for the Large Creative Brick Box (10698) so far; `parts/sets/` holds one file per set and `parts/index.json` lists them, so adding a set is adding its list there.
+- **Copy my pieces for Claude** copies the whole pool as `part/colour ×count`. Paste it to Claude with what you'd like built.
+- **Models** from Claude open from a link (`#d1z…`) or a pasted file, and stay in this browser. Each one is checked against your pieces: enough of every part in every colour, nothing overlapping, everything joined by studs, and every step joining onto what's built. A 3D view (three.js, in `js/vendor/`) shows each step with the pieces to find.
+- `skill/brickyard-designer/` is the skill Claude designs with. Its script does the same checks as the page and makes the link:
+
+```sh
+python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
+```
+
 ## Running it
 
 It's a static site: plain HTML, CSS and JavaScript, with no build step.
@@ -48,12 +61,14 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 
 ### Files
 
-- `index.html`: the home screen and the catalog screen.
+- `index.html`: the home screen, the catalog and the builder.
 - `js/core.js`: cleaning sets, merging catalogs, finding doubles, search, links and the spreadsheet. No DOM, so the tests run it in Node.
 - `js/app.js`: the screens, sheets and storage (`brickyard.v1` in localStorage).
+- `js/build-core.js`: the builder's checks and model links, no DOM; `js/build.js`: the builder's screens and 3D view.
+- `parts/`: part shapes on the stud grid, LDraw colours, and each set's parts list. `models/`: the example cottage.
 - `css/app.css`: light and dark palettes.
-- `skill/brickyard-cataloger/`: the Claude skill and its script.
-- `test/core.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
+- `skill/brickyard-cataloger/`, `skill/brickyard-designer/`: the Claude skills and their scripts.
+- `test/core.test.cjs`, `test/build.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
 - `fonts/`: Rubik (SIL Open Font License, `fonts/OFL.txt`), served from here so nothing loads from elsewhere.
 - `sw.js`: keeps a copy for using offline.
 
