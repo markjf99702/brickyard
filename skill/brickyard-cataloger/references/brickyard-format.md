@@ -44,6 +44,14 @@ https://brickyard.junkdrawer.works/#b1z<data>
 
 `<data>` is the compact batch JSON, compressed with raw DEFLATE, then base64url-encoded without padding. `#b1j<data>` is the same without compression, and `#batch=<URL-encoded JSON>` can be written by hand. The part after `#` never reaches a server.
 
+## Sizes (for the shelf planner)
+
+```json
+{"brickyard": 1, "sizes": [{"num": "10497", "w": 51, "d": 33, "h": 14, "note": "LEGO's measurements"}]}
+```
+
+Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front to back, `h` tall, and an optional `note` (up to 200 characters). The link is `#z1z<data>` (`#z1j` uncompressed), made the same way as a batch link; `make_brickyard.py` makes it from a file like this. Opening it offers each size for the sets in My sets with that number, unticked where a set already has a size. It never adds sets.
+
 ## A backup
 
-**Download a backup** in Brickyard's menu saves `{"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: time}}}`. Each set also has `id`, `t` (last changed, in milliseconds) and `added` (date). `"del": 1` marks a removed set, kept so a merge doesn't bring it back. Opening a backup merges it set by set, newest change winning.
+**Download a backup** in Brickyard's menu saves `{"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: time}, "cases": {id: bookcase}}}`. Each set also has `id`, `t` (last changed, in milliseconds) and `added` (date). `"del": 1` marks a removed set, kept so a merge doesn't bring it back. Opening a backup merges it set by set, newest change winning. A bookcase is `{"id", "t", "name", "room", "w", "d", "levels": [{"h", "sets": [{"id", "turn"}]}]}`: inside width and depth in cm, and its shelves from the top down, each with its clear height and the sets on it left to right (`turn` when a set stands side-on). Bookcases merge the same way.

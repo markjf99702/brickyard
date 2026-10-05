@@ -216,6 +216,23 @@ ul.need i { flex: none; width: 30px; height: 20px; border-radius: 4px; box-shado
 ul.need small { display: block; color: var(--muted); font-size: 13px; }
 ul.need li.short small::after { content: ' · short'; color: var(--red); font-weight: 600; }
 
+/* ---------- shelf planner ---------- */
+.case { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 12px 0; }
+.case-hd { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.case-hd h2 { margin: 0; font-size: 18px; }
+.case-hd .m { color: var(--muted); font-size: 13.5px; }
+svg.shelf { display: block; width: 100%; height: auto; margin: 0 auto; }
+.sv-frame, .sv-board { fill: #a8865f; }
+.sv-back { fill: color-mix(in srgb, #a8865f 16%, var(--card)); }
+.sv-set { cursor: pointer; }
+.sv-set rect { stroke: rgba(0, 0, 0, .25); stroke-width: .25; }
+.sv-set:hover rect, .sv-set:focus-visible rect { stroke: var(--ink); stroke-width: .5; }
+.sv-set:focus { outline: none; }
+.sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
+.sv-h { fill: var(--muted); font-size: 2px; }
+.pic.swatch { width: 64px; height: 52px; border-radius: 8px; box-shadow: inset 0 -5px 0 rgba(0, 0, 0, .18); }
+.rv .pic.swatch { width: 56px; height: 46px; }
+
 .toast {
   position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translateX(-50%); z-index: 40;
   background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 11px; font-size: 15px; max-width: calc(100vw - 32px); box-shadow: var(--shadow);

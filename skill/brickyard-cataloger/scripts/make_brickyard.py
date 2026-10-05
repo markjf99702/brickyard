@@ -22,6 +22,13 @@ sets.json (every field is optional except a set number or a name):
 Set numbers are normalised the way Rebrickable writes them ("10698" -> "10698-1"); a number that doesn't
 look like a set number is dropped and flagged. State words like "assembled" or "new in box" are mapped
 onto Brickyard's four. Likely doubles in the list are flagged. Exits 1 (printing why) if the input can't be used.
+
+Sizes for the shelf planner, for sets already in Brickyard, go in a file of their own and make a sizes link:
+
+{"sizes": [{"num": "10497", "w": 51, "d": 33, "h": 14, "note": "LEGO's measurements"}, ...]}
+
+w is across the front, d front to back, h tall, in cm as built. Opening the link offers each size for the
+sets in My sets with that number, without adding any sets.
 """
 import argparse, base64, datetime, hashlib, json, re, sys, zlib
 from pathlib import Path
@@ -127,6 +134,56 @@ def clean(x, i, warn):
     return {k: v for k, v in out.items() if v not in ('', 0, [], None) or k == 'instr'}
 
 
+def make_link(base, prefix, text):
+    c = zlib.compressobj(9, zlib.DEFLATED, -15)
+    data = c.compress(text.encode('utf-8')) + c.flush()
+    return base + prefix + base64.urlsafe_b64encode(data).decode().rstrip('=')
+
+
+def clean_sizes(lst, warn):
+    """The same as cleanSizes in js/shelf-core.js."""
+    out, seen = [], set()
+    for i, y in enumerate(lst[:2000]):
+        if not isinstance(y, dict):
+            continue
+        num, w, d, h = set_num(y.get('num') or y.get('set')), measure(y.get('w')), measure(y.get('d')), measure(y.get('h'))
+        if not num or not w or not d or not h:
+            warn.append(f'Size #{i + 1} left out: needs a set number and all of w, d and h in cm ({y})')
+            continue
+        if num in seen:
+            warn.append(f'{num} is in the sizes twice; kept the first.')
+            continue
+        seen.add(num)
+        row = {'num': num, 'w': w, 'd': d, 'h': h}
+        note = ' '.join(y['note'].split())[:200] if isinstance(y.get('note'), str) else ''
+        if note:
+            row['note'] = note
+        out.append(row)
+    return out
+
+
+def sizes_main(a, lst):
+    warn = []
+    sizes = clean_sizes(lst, warn)
+    if not sizes:
+        sys.exit('No usable sizes.')
+    doc = {'brickyard': 1, 'sizes': sizes}
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / 'sizes.brickyard.json'
+    path.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+    print(f'{len(sizes)} size{"s" if len(sizes) != 1 else ""}')
+    for z in sizes:
+        print(f'  {z["num"].removesuffix("-1"):>8}  {z["w"]:g} x {z["d"]:g} x {z["h"]:g} cm' + (f'   ({z["note"]})' if z.get('note') else ''))
+    for w in warn:
+        print('WARNING: ' + w)
+    print(f'File: {path}')
+    if not a.no_link:
+        link = make_link(a.base, '#z1z', json.dumps(doc, ensure_ascii=False, separators=(',', ':')))
+        print(f'Link ({len(link)} characters):')
+        print(link)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('file')
@@ -138,6 +195,8 @@ def main():
         src = json.loads(Path(a.file).read_text(encoding='utf-8'))
     except (OSError, ValueError) as e:
         sys.exit(f'Can’t read {a.file}: {e}')
+    if isinstance(src, dict) and isinstance(src.get('sizes'), list):
+        return sizes_main(a, src['sizes'])
     if isinstance(src, list):
         src = {'sets': src}
     src = src.get('batch', src)
@@ -174,9 +233,7 @@ def main():
         print('WARNING: ' + w)
     print(f'File: {path}')
     if not a.no_link:
-        c = zlib.compressobj(9, zlib.DEFLATED, -15)
-        data = c.compress(text.encode('utf-8')) + c.flush()
-        link = a.base + '#b1z' + base64.urlsafe_b64encode(data).decode().rstrip('=')
+        link = make_link(a.base, '#b1z', text)
         print(f'Link ({len(link)} characters):')
         print(link)
         if len(link) > LINK_WARN:

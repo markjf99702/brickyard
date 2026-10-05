@@ -12,7 +12,7 @@
   <img src="docs/phone-review.png" alt="Adding seven sets from Claude: a list with tick boxes, and fields to put them all in one room, shelf or moving box" width="250">
 </p>
 
-Brickyard is one app with three parts. **My sets** and **Build from your box** are here now: Claude designs a new model from only the pieces you own, Brickyard checks you can really build it, and shows it in 3D step by step. The **Shelf planner** (fit your built sets onto your shelves) comes next. All three read from the same catalog.
+Brickyard is one app with three parts, all reading from the same catalog: **My sets**; **Build from your box**, where Claude designs a new model from only the pieces you own, Brickyard checks you can really build it, and shows it in 3D step by step; and the **Shelf planner**, which fits your built sets onto your bookcases.
 
 ## How it works
 
@@ -46,6 +46,14 @@ python3 skill/brickyard-cataloger/scripts/make_brickyard.py sets.json
 python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
 ```
 
+## Shelf planner
+
+- **Bookcases**: add each one with its inside width and depth and the clear height of each shelf (presets for an IKEA Billy, a narrow Billy and a Kallax column). Each is drawn from the front, to scale, with your sets on it.
+- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put. Anything that doesn't fit says why (too tall, too deep, no room left).
+- Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. **Put these places in My sets** copies each set's room and shelf into the catalog.
+- **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them.
+- Bookcases are saved with the catalog, so backups and merges carry them.
+
 ## Running it
 
 It's a static site: plain HTML, CSS and JavaScript, with no build step.
@@ -61,14 +69,15 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 
 ### Files
 
-- `index.html`: the home screen, the catalog and the builder.
+- `index.html`: the home screen, the catalog, the builder and the shelf planner.
 - `js/core.js`: cleaning sets, merging catalogs, finding doubles, search, links and the spreadsheet. No DOM, so the tests run it in Node.
 - `js/app.js`: the screens, sheets and storage (`brickyard.v1` in localStorage).
 - `js/build-core.js`: the builder's checks and model links, no DOM; `js/build.js`: the builder's screens and 3D view.
+- `js/shelf-core.js`: the shelf planner's fitting and sizes links, no DOM; `js/shelves.js`: its screen and drawings.
 - `parts/`: part shapes on the stud grid, LDraw colours, and each set's parts list. `models/`: the example cottage.
 - `css/app.css`: light and dark palettes.
 - `skill/brickyard-cataloger/`, `skill/brickyard-designer/`: the Claude skills and their scripts.
-- `test/core.test.cjs`, `test/build.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
+- `test/core.test.cjs`, `test/build.test.cjs`, `test/shelf.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
 - `fonts/`: Rubik (SIL Open Font License, `fonts/OFL.txt`), served from here so nothing loads from elsewhere.
 - `sw.js`: keeps a copy for using offline.
 

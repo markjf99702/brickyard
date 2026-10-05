@@ -56,11 +56,12 @@
   }
 
   // ---------- screens ----------
-  // #catalog is My sets; #build, #model-… and model links (#d1z…) belong to Build from your box (js/build.js).
+  // #catalog is My sets; #build, #model-… and model links (#d1z…) belong to Build from your box (js/build.js);
+  // #shelves and sizes links (#z1z…) to the shelf planner (js/shelves.js).
   function route() {
-    var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h);
-    $('home').hidden = onCat || onBuild; $('catalog').hidden = !onCat; $('build').hidden = !onBuild;
-    if (onCat) renderCatalog(); else if (!onBuild) renderHome();
+    var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h), onShelves = /^#(shelves|z1[zj])/.test(h);
+    $('home').hidden = onCat || onBuild || onShelves; $('catalog').hidden = !onCat; $('build').hidden = !onBuild; $('shelves').hidden = !onShelves;
+    if (onCat) renderCatalog(); else if (!onBuild && !onShelves) renderHome();
     window.scrollTo(0, 0);
     document.dispatchEvent(new CustomEvent('brickyard:route', { detail: h }));
   }
@@ -75,6 +76,9 @@
     var models = 0;
     try { models = Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {}).length; } catch (e) { /* none saved */ }
     $('home-build-stat').textContent = models ? plural(models, 'model') + ' from Claude' : 'Try the example cottage';
+    var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
+    var on = Object.keys(window.ShelfCore.placements(cases)).filter(function (id) { return DOC.sets[id] && !DOC.sets[id].del; }).length;
+    $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + plural(on, 'set') + ' on shelves' : 'Start with your bookcases';
   }
 
   var FILTERS = [
@@ -396,7 +400,11 @@
   }
   window.brickyard = {
     doc: function () { return DOC; },
-    // Build from your box adds the brick box to My sets when there's nothing to build from yet.
+    // For the shelf planner (js/shelves.js) and Build from your box (js/build.js), which adds the brick box.
+    putSet: function (x) { putSet(x); save(); },
+    putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
+    removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
+    newId: newId,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     toast: toast, openSheet: openSheet, closeSheet: closeSheet, esc: esc, plural: plural, FRAMED: FRAMED,
   };

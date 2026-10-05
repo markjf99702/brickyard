@@ -61,6 +61,10 @@ Every field but a set number or name is optional; `references/brickyard-format.m
 
 Without code tools, write the JSON by hand wrapped as `{"brickyard": 1, "batch": {…}}` and give it as text to paste into Brickyard (**Add from photos** › paste box). The link needs the script.
 
+## Sizes for the shelf planner
+
+Brickyard's shelf planner needs each built set's size, and its **Copy these for Claude** button sends a list of sets without one. Give each set's built size in cm: `w` across the front as it's displayed, `d` front to back, `h` tall. Use the measurements LEGO publishes for the set ("measures over 33 cm high, 51 cm long and 25 cm wide") when you know them, and say in `note` where a size came from if it's a rough estimate. Leave out a set you can't size rather than guess wildly; they can measure it. Write `{"sizes": [{"num": "10497", "w": 51, "d": 25, "h": 33, "note": "…"}]}` and run the same script on it; it prints a sizes link (`#z1z…`). Hand it over the same way, with the sizes listed and the estimates marked.
+
 ## 4. Hand it over
 
 1. One line: how many sets, and from where.

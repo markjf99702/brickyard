@@ -30,7 +30,11 @@ ${body}<script>window.BRICKYARD_EXAMPLE = ${script(JSON.stringify({ brickyard: 1
 <script>
 ${script(await read('js/core.js'))}</script>
 <script>
+${script(await read('js/shelf-core.js'))}</script>
+<script>
 ${script(await read('js/app.js'))}</script>
+<script>
+${script(await read('js/shelves.js'))}</script>
 <script>window.BRICKYARD_DATA = ${script(JSON.stringify(data))};</script>
 <script>
 ${script(await read('js/build-core.js'))}</script>

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { deflateRawSync } from 'node:zlib';
 
 const require = createRequire(import.meta.url);
 let pw;
@@ -152,7 +153,6 @@ assert.equal(await page.textContent('#step-n'), 'Done');
 assert.match(await page.textContent('#model-check'), /every piece/);
 const cottage = JSON.parse(await readFile(join(root, 'models/cottage.json'), 'utf8'));
 cottage.model.name = 'Linked cottage';
-const { deflateRawSync } = await import('node:zlib');
 await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(cottage)).toString('base64url'));
 await page.waitForFunction(() => location.hash.startsWith('#model-m'));
 assert.equal(await page.textContent('#build-title'), 'Linked cottage');
@@ -160,6 +160,28 @@ await page.goto(base + '#build');
 await page.waitForSelector('#build-list .group');
 assert.match(await page.textContent('#build-list'), /Linked cottage/);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen scrolls sideways on a phone');
+
+// Shelf planner: sizes from Claude, a bookcase, fit the sets, and copy their places into My sets.
+await page.goto(base + '#catalog');
+const builtIds = await page.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del && (x.state === 'built' || x.state === 'partial') && x.num).map(x => x.num));
+assert.ok(builtIds.length >= 2, 'the test catalog has built sets');
+const sizeList = builtIds.map((num, i) => ({ num, w: 20 + i * 5, d: 15, h: 10 + i * 3 }));
+await page.goto(base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: sizeList })).toString('base64url'));
+await page.waitForSelector('#zr-go');
+await page.click('#zr-go');
+await page.waitForSelector('[data-act="add-case"]');
+await page.click('[data-act="add-case"]');
+await page.fill('#k-name', 'Hall Billy'); await page.fill('#k-room', 'Hall');
+await page.click('#k-save');
+await page.click('[data-act="fill"]');
+assert.equal(await page.locator('.sv-set').count(), builtIds.length, 'every built set is on a shelf');
+await page.click('[data-act="apply"]');
+assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => x.room === 'Hall' && /^Hall Billy, shelf \d$/.test(x.spot)).length), builtIds.length, 'places copied into My sets');
+await page.click('.sv-set');
+await page.selectOption('#z-where', '');
+await page.click('#z-save');
+assert.equal(await page.locator('.sv-set').count(), builtIds.length - 1, 'a set taken off its shelf');
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the shelf planner scrolls sideways on a phone');
 
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {

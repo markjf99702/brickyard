@@ -99,9 +99,36 @@
     return o;
   }
 
-  function emptyDoc() { return { sets: {}, seen: {} }; }
+  function emptyDoc() { return { sets: {}, seen: {}, cases: {} }; }
 
-  // A library file or backup: {"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: t}}}.
+  // A bookcase for the shelf planner: its inside width and depth in cm, and its shelves from the top down, each
+  // with the height clear above it and the sets standing on it, left to right ({id, turn} where turn means the
+  // set stands side-on, its depth facing out).
+  function cleanCase(x, id, t) {
+    if (!x || typeof x !== 'object') return null;
+    var key = s(x.id || id, 40); if (!key) return null;
+    t = typeof t === 'number' && isFinite(t) ? t : (typeof x.t === 'number' && isFinite(x.t) ? x.t : 0);
+    if (x.del) return { id: key, t: t, del: 1 };
+    var levels = (Array.isArray(x.levels) ? x.levels : []).slice(0, 20).map(function (l) {
+      var h = measure(l && typeof l === 'object' ? l.h : l);
+      if (!h) return null;
+      var seen = {}, sets = (l && Array.isArray(l.sets) ? l.sets : []).map(function (y) {
+        var sid = s(y && typeof y === 'object' ? y.id : y, 40);
+        if (!sid || seen[sid]) return null;
+        seen[sid] = 1;
+        var o = { id: sid }; if (y && y.turn === true) o.turn = true;
+        return o;
+      }).filter(Boolean).slice(0, 200);
+      return { h: h, sets: sets };
+    }).filter(Boolean);
+    var w = measure(x.w), d = measure(x.d);
+    if (!w || !d || !levels.length) return null;
+    var o = { id: key, t: t, name: s(x.name, 60) || 'Bookcase', w: w, d: d, levels: levels };
+    var room = s(x.room, 60); if (room) o.room = room;
+    return o;
+  }
+
+  // A library file or backup: {"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: t}, "cases": {id: case}}}.
   function cleanDoc(o) {
     var c = o && (o.catalog || o), doc = emptyDoc();
     var sets = c && c.sets;
@@ -117,16 +144,22 @@
     if (seen && typeof seen === 'object') Object.keys(seen).forEach(function (k) {
       if (typeof seen[k] === 'number' && isFinite(seen[k])) doc.seen[s(k, 80)] = seen[k];
     });
+    var cases = c && c.cases;
+    if (cases && typeof cases === 'object') Object.keys(cases).forEach(function (id) {
+      var y = cleanCase(cases[id], id); if (y) doc.cases[y.id] = y;
+    });
     return doc;
   }
 
-  // Set by set, the newer change wins; a removal is a change too. Same answer in any order.
+  // Set by set (and bookcase by bookcase), the newer change wins; a removal is a change too. Same answer in any order.
   function mergeDocs(a, b) {
     var out = emptyDoc();
     [a, b].forEach(function (d) {
-      Object.keys(d.sets).forEach(function (id) {
-        var x = d.sets[id], y = out.sets[id];
-        if (!y || x.t > y.t || (x.t === y.t && JSON.stringify(x) > JSON.stringify(y))) out.sets[id] = x;
+      ['sets', 'cases'].forEach(function (kind) {
+        Object.keys(d[kind] || {}).forEach(function (id) {
+          var x = d[kind][id], y = out[kind][id];
+          if (!y || x.t > y.t || (x.t === y.t && JSON.stringify(x) > JSON.stringify(y))) out[kind][id] = x;
+        });
       });
       Object.keys(d.seen).forEach(function (k) { out.seen[k] = Math.max(out.seen[k] || 0, d.seen[k]); });
     });
@@ -257,7 +290,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanDoc: cleanDoc, mergeDocs: mergeDocs, live: live, findDup: findDup, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, live: live, findDup: findDup, cleanBatch: cleanBatch,
     hash: hash, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
