@@ -166,6 +166,14 @@
     return out;
   }
 
+  // The same catalog, whatever order its keys were written in.
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+    return JSON.stringify(v);
+  }
+  function sameDoc(a, b) { return canon(a) === canon(b); }
+
   function live(doc) {
     return Object.keys(doc.sets).map(function (k) { return doc.sets[k]; }).filter(function (x) { return !x.del; });
   }
@@ -290,7 +298,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, live: live, findDup: findDup, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
     hash: hash, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

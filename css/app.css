@@ -59,6 +59,13 @@ a { color: var(--blue); }
 .back { width: 40px; height: 40px; margin-left: -8px; border: 0; background: none; border-radius: 10px; cursor: pointer; display: grid; place-items: center; }
 .back:hover, .back:focus-visible { background: var(--soft); }
 
+/* ---------- Drive sync ---------- */
+.sync-btn { border: 0; background: var(--soft); color: var(--ink); border-radius: 99px; padding: 7px 12px 7px 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.sync-btn i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+.sync-btn[data-s="busy"] i { background: var(--yellow); }
+.sync-btn[data-s="tap"] i, .sync-btn[data-s="err"] i { background: var(--red); }
+.link-btn { border: 0; background: none; padding: 0; margin: -12px 0 16px; color: var(--blue); font-weight: 600; font-size: 14.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
 /* ---------- buttons ---------- */
 .btn {
   border: 0; border-radius: 11px; padding: 10px 16px; font-weight: 600; cursor: pointer;

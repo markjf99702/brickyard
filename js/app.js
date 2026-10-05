@@ -12,7 +12,10 @@
   var DOC = C.cleanDoc(read(KEY) || {});
   var prefs = Object.assign({ pics: true, group: 'room', show: 'all' }, read(PREFS) || {});
   if (FRAMED) prefs.pics = false;
-  function save() { if (!write(KEY, { brickyard: 1, catalog: DOC })) toast('This browser wouldn’t save. Download a backup from the menu.'); }
+  function save() {
+    if (!write(KEY, { brickyard: 1, catalog: DOC })) toast('This browser wouldn’t save. Download a backup from the menu.');
+    document.dispatchEvent(new CustomEvent('brickyard:saved')); // Drive sync (js/sync.js) picks it up
+  }
   function savePrefs() { write(PREFS, prefs); }
 
   function newId() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -366,13 +369,18 @@
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
       '<li><button type="button" id="m-claude"><span>Add from photos<small>Send Claude pictures of your sets and open its link</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
+      (window.BrickyardSync && window.BrickyardSync.here ? '<li><button type="button" id="m-sync"><span>Sync with Google Drive<small>The same catalog on every device</small></span></button></li>' : '') +
+      '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets from Claude</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-csv"><span>Download a spreadsheet<small>CSV, for Excel, Numbers or Google Sheets</small></span></button></li>') +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
-      '</ul><p class="note">Your catalog is kept in this browser only. Download a backup now and then, and before you clear your browser’s data.</p></div>');
+      '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'
+        : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.') + '</p></div>');
     panel.querySelector('[data-close]').onclick = closeSheet;
     $('m-claude').onclick = claudeSheet;
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
+    $('m-link').onclick = copyAll;
+    if ($('m-sync')) $('m-sync').onclick = function () { closeSheet(); window.BrickyardSync.sheet(); };
     if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1)); };
     if ($('m-csv')) $('m-csv').onclick = function () {
       closeSheet();
@@ -380,6 +388,34 @@
       download('Brickyard sets ' + today() + '.csv', 'text/csv', '﻿' + C.toCsv(sets));
     };
     if ($('m-pics')) $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
+  }
+
+  // A catalog merged in from elsewhere (Drive sync): keep it, and show it without moving the page.
+  function takeDoc(doc) {
+    DOC = doc; write(KEY, { brickyard: 1, catalog: DOC });
+    if (openScrim) return;
+    if (!$('catalog').hidden) renderCatalog(); else if (!$('home').hidden) renderHome();
+    document.dispatchEvent(new CustomEvent('brickyard:changed'));
+  }
+
+  // The whole catalog as one link, to open on another device or at Brickyard's own address (the claude.ai copy
+  // can't download files). Opening it merges, like a backup.
+  function copyAll() {
+    var text = JSON.stringify({ brickyard: 1, catalog: DOC }), bytes = new TextEncoder().encode(text);
+    var b64 = function (u8) { var bin = ''; for (var i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    var made = typeof CompressionStream === 'undefined' ? Promise.resolve('#b1j' + b64(bytes))
+      : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return '#b1z' + b64(new Uint8Array(b)); });
+    made.then(function (h) {
+      var link = SITE + h;
+      var show = function () {
+        var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Your catalog as a link</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+          '<div class="bd"><p class="note">Copy this and open it on the other device. It adds what that device doesn’t have.</p><textarea class="paste" id="all-link" readonly style="min-height:160px">' + esc(link) + '</textarea></div>');
+        panel.querySelector('[data-close]').onclick = closeSheet;
+        $('all-link').select();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function () { closeSheet(); toast('Copied. Open the link on your other device.'); }, show);
+      else show();
+    });
   }
 
   // Another tab changed the catalog.
@@ -404,7 +440,7 @@
     putSet: function (x) { putSet(x); save(); },
     putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
     removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
-    newId: newId,
+    newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     toast: toast, openSheet: openSheet, closeSheet: closeSheet, esc: esc, plural: plural, FRAMED: FRAMED,
   };

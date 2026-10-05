@@ -2,9 +2,9 @@
 // Your catalog lives in localStorage, not here. Set pictures come from Rebrickable and need a signal.
 // Network first, so a new version shows up as soon as you're online.
 
-const CACHE = 'brickyard-v3'; // bump the number when the file list changes
+const CACHE = 'brickyard-v4'; // bump the number when the file list changes
 const SHELL = [
-  './', 'index.html', 'css/app.css', 'js/core.js', 'js/shelf-core.js', 'js/app.js', 'js/shelves.js', 'js/build-core.js', 'js/build.js',
+  './', 'index.html', 'css/app.css', 'js/core.js', 'js/shelf-core.js', 'js/app.js', 'js/shelves.js', 'js/sync.js', 'js/build-core.js', 'js/build.js',
   'js/vendor/three.module.js', 'js/vendor/three.core.js', 'js/vendor/OrbitControls.js',
   'parts/shapes.json', 'parts/colors.json', 'parts/index.json', 'parts/sets/10698-1.json', 'models/cottage.json', 'fonts/rubik.woff2', 'icon.svg', 'icon-180.png', 'icon-192.png', 'manifest.webmanifest',
 ];

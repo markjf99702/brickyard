@@ -21,7 +21,7 @@ Brickyard is one app with three parts, all reading from the same catalog: **My s
 - **Find things.** Search covers every field, and "box 3" finds what's packed in box 3. Filter by state, missing pieces or to check, and group by room, moving box, theme or state.
 - **Pictures** of each set come from [Rebrickable](https://rebrickable.com/) by set number. Turn them off in the menu and nothing leaves your browser.
 - **Backups.** Download the whole catalog as a file and open it on another device (it merges), or download a spreadsheet (CSV).
-- No account and no server. Your catalog stays in your browser. It works offline and installs to a phone's home screen.
+- No account and no server. Your catalog stays in your browser unless you turn on Google Drive sync (below). It works offline and installs to a phone's home screen.
 
 ## Adding sets with Claude
 
@@ -53,6 +53,16 @@ python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
 - Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. **Put these places in My sets** copies each set's room and shelf into the catalog.
 - **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them.
 - Bookcases are saved with the catalog, so backups and merges carry them.
+
+## Sync with Google Drive
+
+Your catalog is saved in each browser on its own. To have the same sets on your laptop and phone, tap **Sync across your devices with Google Drive** (or the cloud button) on each one and sign in with the same Google account.
+
+- **What syncs:** My sets and your bookcases, as one file, `Brickyard catalog.json`, in a **Brickyard** folder in your Drive. Changes on each device are merged set by set; when the same set is changed on two devices, the later change wins, and a set removed on one is removed on all.
+- **What stays on each device:** models from Claude, which taken-apart sets are ticked as your pieces, and settings such as pictures on or off.
+- **Permission:** only `drive.file`, so Brickyard sees the files it made and nothing else in your Drive. It shares one Google sign-in with the other [junkdrawer.works](https://junkdrawer.works/privacy.html) projects.
+- **Stop syncing on this device** in the sync sheet stops this device and leaves the file in Drive. To remove access entirely, remove junkdrawer.works at [myaccount.google.com/connections](https://myaccount.google.com/connections), and delete the Brickyard folder if you like.
+- Sync works only at brickyard.junkdrawer.works. In a copy somewhere else (such as one opened inside Claude), **Copy everything as a link** in the menu makes a link that carries the whole catalog to Brickyard, where opening it merges it in.
 
 ## Running it
 
