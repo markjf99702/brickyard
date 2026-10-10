@@ -79,6 +79,19 @@ await A.page.waitForTimeout(9000); await synced(A.page); await synced(B.page);
 await syncNow(A.page);
 assert.equal(await A.page.evaluate(() => window.brickyard.doc().sets.a2.room), 'Attic', 'the later edit of one set wins');
 
+// Loose pieces travel too: a lot added on one device arrives on the other, and so does removing it.
+const lots = page => page.evaluate(() => Object.values(window.brickyard.doc().loose).filter(x => !x.del).map(x => x.name + ' ' + x.parts.reduce((n, r) => n + r[2], 0)));
+await A.page.goto(SITE + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: { id: 'sf-sync', name: 'Blue tub', parts: [['3001', 4, 40], ['2780', 0, 30]] } })).toString('base64url'));
+await A.page.click('#ls-add');
+await A.page.waitForTimeout(2600); await synced(A.page);
+await syncNow(B.page);
+assert.deepEqual(await lots(B.page), ['Blue tub 70'], 'a lot added on one device arrives on the other');
+await B.page.evaluate(() => window.brickyard.removeLot('sf-sync'));
+await B.page.waitForTimeout(2600); await synced(B.page);
+await syncNow(A.page);
+assert.deepEqual(await lots(A.page), [], 'a lot removed on one device is gone on the other');
+await A.page.goto(SITE); // the lot's link left this device on Build from your box; the rest of the test starts from home
+
 // A removal travels.
 await B.page.goto(SITE + '#catalog');
 await B.page.click('[data-id="b1"]');

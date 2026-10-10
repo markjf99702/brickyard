@@ -14,7 +14,9 @@ What matters, in order:
 
 ## 1. Their pieces
 
-Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box` and then `part/colour ×count` for every piece the builder knows. That list is the budget. If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `parts/sets/` (`data/sets/` when this skill is used outside the repo) and `parts/index.json` says which sets have one. A set without a list can't be used yet; say so.
+Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `parts/sets/` (`data/sets/` when this skill is used outside the repo) and `parts/index.json` says which sets have one. A set without a list can't be used yet; say so.
+
+When the pasted list includes loose pieces, the sets alone are not the budget. Save what they pasted to a text file and give it to the script with `--pieces pieces.txt --sets` (an empty `--sets`, so the sets aren't counted twice: the pasted list already includes them). A `.brickyard-loose.json` file works with `--pieces` too, on top of `--sets`.
 
 Part shapes are in `parts/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `parts/colors.json`. Only parts in shapes.json can be used; wheels, hinges and other specials can't yet.
 
@@ -55,7 +57,7 @@ python3 skill/brickyard-designer/scripts/check_model.py lighthouse.json --layers
 
 - It prints any problems with the parts they concern (numbered from 1) and exits 1. Fix and run again until it's clean.
 - `--layers` draws every plate-height layer from above, one letter per part, with a key. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
-- `--sets` overrides the model's own `sets`. Without any sets it can't check counts, so always give them.
+- `--sets` overrides the model's own `sets`, and `--pieces FILE` adds loose pieces or a pasted list. Without any sets or pieces it can't check counts, so always give them.
 - When it passes it writes `NAME.brickyard-model.json` to `--out` and prints a link starting `https://brickyard.junkdrawer.works/#d1z`.
 
 Write the JSON and outputs to a scratch folder, not the repo.

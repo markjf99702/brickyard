@@ -37,9 +37,10 @@ python3 skill/brickyard-cataloger/scripts/make_brickyard.py sets.json
 
 <p align="center"><img src="docs/phone-build.png" alt="The example cottage in 3D: yellow walls, a blue door, grey ridge and chimney and a tree on a green plate, with step controls and a note that you have every piece for it from the Large Creative Brick Box" width="250"></p>
 
-- **Your pieces** are the parts lists of the sets in My sets that are taken apart (tick or untick each one). Brickyard has a parts list for the Large Creative Brick Box (10698) so far; `parts/sets/` holds one file per set and `parts/index.json` lists them, so adding a set is adding its list there.
+- **Your pieces** are the parts lists of the sets in My sets that are taken apart (tick or untick each one), plus any **loose pieces** you've added (below). Brickyard has a parts list for the Large Creative Brick Box (10698) so far; `parts/sets/` holds one file per set and `parts/index.json` lists them, so adding a set is adding its list there.
 - **Copy my pieces for Claude** copies the whole pool as `part/colour ×count`. Paste it to Claude with what you'd like built.
 - **Models** from Claude open from a link (`#d1z…`) or a pasted file, and stay in this browser. Each one is checked against your pieces: enough of every part in every colour, nothing overlapping, everything joined by studs, and every step joining onto what's built. A 3D view (three.js, in `js/vendor/`) shows each step with the pieces to find.
+- **Loose pieces** are bricks that aren't a set: a tub, a bag, a moving box. A lot of them arrives as a link (`#l1z…`) or a `.brickyard-loose.json` file, from Stud Finder (a tray scanner that counts and names loose parts) or from anything else that can write the format. Opening one shows what's in it and how much of it the builder can use today, and adds it to Your pieces, where it can be unticked or removed. Each lot keeps its id, so opening a recount replaces the lot instead of doubling it. Parts the builder can't draw yet are kept and start counting when their shapes are added to `parts/shapes.json`.
 - `skill/brickyard-designer/` is the skill Claude designs with. Its script does the same checks as the page and makes the link:
 
 ```sh
@@ -58,8 +59,8 @@ python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
 
 Your catalog is saved in each browser on its own. To have the same sets on your laptop and phone, tap **Sync across your devices with Google Drive** (or the cloud button) on each one and sign in with the same Google account.
 
-- **What syncs:** My sets and your bookcases, as one file, `Brickyard catalog.json`, in a **Brickyard** folder in your Drive. Changes on each device are merged set by set; when the same set is changed on two devices, the later change wins, and a set removed on one is removed on all.
-- **What stays on each device:** models from Claude, which taken-apart sets are ticked as your pieces, and settings such as pictures on or off.
+- **What syncs:** My sets, your bookcases and your loose pieces, as one file, `Brickyard catalog.json`, in a **Brickyard** folder in your Drive. Changes on each device are merged set by set; when the same set is changed on two devices, the later change wins, and a set removed on one is removed on all.
+- **What stays on each device:** models from Claude, which sets and lots are ticked as your pieces, and settings such as pictures on or off.
 - **Permission:** only `drive.file`, so Brickyard sees the files it made and nothing else in your Drive. It shares one Google sign-in with the other [junkdrawer.works](https://junkdrawer.works/privacy.html) projects.
 - **Stop syncing on this device** in the sync sheet stops this device and leaves the file in Drive. To remove access entirely, remove junkdrawer.works at [myaccount.google.com/connections](https://myaccount.google.com/connections), and delete the Brickyard folder if you like.
 - Sync works only at brickyard.junkdrawer.works. In a copy somewhere else (such as one opened inside Claude), **Copy everything as a link** in the menu makes a link that carries the whole catalog to Brickyard, where opening it merges it in.
@@ -80,7 +81,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 ### Files
 
 - `index.html`: the home screen, the catalog, the builder and the shelf planner.
-- `js/core.js`: cleaning sets, merging catalogs, finding doubles, search, links and the spreadsheet. No DOM, so the tests run it in Node.
+- `js/core.js`: cleaning sets and lots of loose pieces, merging catalogs, finding doubles, search, links and the spreadsheet. No DOM, so the tests run it in Node.
 - `js/app.js`: the screens, sheets and storage (`brickyard.v1` in localStorage).
 - `js/build-core.js`: the builder's checks and model links, no DOM; `js/build.js`: the builder's screens and 3D view.
 - `js/shelf-core.js`: the shelf planner's fitting and sizes links, no DOM; `js/shelves.js`: its screen and drawings.

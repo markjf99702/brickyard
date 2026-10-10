@@ -37,10 +37,20 @@ function poolSets() {
 function missingLists() {
   return Object.values(app.doc().sets).filter(x => !x.del && x.num && !index[x.num]).length;
 }
+// Lots of loose pieces (from a scanner, or a list from Claude). They count unless unticked.
+function poolLots() {
+  const prefs = read(POOL, {});
+  return Object.values(app.doc().loose || {}).filter(x => !x.del)
+    .map(x => ({ id: x.id, name: x.name, box: x.box || '', parts: x.parts, kinds: x.parts.length,
+      pieces: x.parts.reduce((n, r) => n + r[2], 0), usable: x.parts.reduce((n, r) => n + (shapes[r[0]] ? r[2] : 0), 0),
+      on: x.id in prefs ? prefs[x.id] : true }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
 async function currentPool() {
-  const on = poolSets().filter(s => s.on);
+  const on = poolSets().filter(s => s.on), lots = poolLots().filter(l => l.on);
   const invs = await Promise.all(on.map(s => get('parts/sets/' + s.num + '.json')));
-  return { sets: on, pool: B.poolOf(invs), pieces: on.reduce((n, s) => n + s.pieces, 0) };
+  return { sets: on, lots, any: on.length + lots.length > 0, pool: B.poolOf(invs.concat(lots)),
+    pieces: on.reduce((n, s) => n + s.pieces, 0) + lots.reduce((n, l) => n + l.pieces, 0) };
 }
 
 // Models are kept in this browser, keyed by their content, so opening the same link twice keeps one copy.
@@ -96,30 +106,34 @@ async function renderList() {
   $('model-menu').hidden = true;
   $('model-view').hidden = true;
   $('build-list').hidden = false;
-  const sets = poolSets(), on = sets.filter(s => s.on), none = missingLists();
-  const { pool, pieces } = await currentPool();
+  const sets = poolSets(), on = sets.filter(s => s.on), none = missingLists(), lots = poolLots();
+  const { pool, pieces, any } = await currentPool();
 
   let html = '<section class="pieces"><h2 class="group"><span>Your pieces</span><span>' + (pieces ? pieces.toLocaleString() : '') + '</span></h2>';
-  if (!sets.length) {
+  if (!sets.length && !lots.length) {
     html += '<div class="how"><p style="margin:0 0 10px">Brickyard builds from the sets in My sets that are taken apart. Your Large Creative Brick Box isn’t in My sets yet.</p>' +
       '<button class="btn" type="button" id="add-box">Add the Large Creative Brick Box</button></div>';
   } else {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
-      '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (s.state === 'apart' ? '' : s.state === 'built' ? ' · built, so off unless you take it apart' : '') + '</small></span></label></li>').join('') + '</ul>';
-    if (!on.length) html += '<p class="flag"><span>Tick a set to build from its pieces.</span></p>';
+      '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (s.state === 'apart' ? '' : s.state === 'built' ? ' · built, so off unless you take it apart' : '') + '</small></span></label></li>').join('') +
+      lots.map(l => '<li class="lot"><label><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + '>' +
+        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · box ' + esc(l.box) : '') +
+        (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></label>' +
+        '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
+    if (!any) html += '<p class="flag"><span>Tick a set or a lot to build from its pieces.</span></p>';
   }
   if (none) html += '<p class="note">' + (none === 1 ? 'One of your sets doesn’t' : none + ' of your sets don’t') + ' have a parts list here yet. Tell Claude which ones you’ve taken apart and it can add their pieces.</p>';
-  html += '<div class="acts-row"><button class="btn quiet" type="button" id="copy-pool"' + (on.length ? '' : ' disabled') + '>Copy my pieces for Claude</button><button class="btn quiet" type="button" id="open-model">Open a model</button></div></section>';
+  html += '<div class="acts-row"><button class="btn quiet" type="button" id="copy-pool"' + (any ? '' : ' disabled') + '>Copy my pieces for Claude</button><button class="btn quiet" type="button" id="open-model">Open a model</button></div></section>';
 
   const mine = Object.entries(saved()).sort((a, b) => b[1].added - a[1].added).map(([id, v]) => ({ id, model: B.cleanModel(v.model) })).filter(x => x.model);
   const examples = await Promise.all(EXAMPLES.map(async n => ({ id: 'x-' + n, model: await modelById('x-' + n), example: true })));
   const rows = mine.concat(examples);
   html += '<h2 class="group"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {
-    const res = B.check(r.model, shapes, on.length ? pool : null);
+    const res = B.check(r.model, shapes, any ? pool : null);
     const shortBy = res.short.reduce((n, x) => n + (x.need - x.have), 0);
     const other = res.problems.filter(p => p.kind !== 'count').length;
     // With no pieces chosen there's nothing to count against, so only a broken model gets a badge.
-    const state = other ? '<span class="badge sealed">Needs fixing</span>' : !on.length ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
+    const state = other ? '<span class="badge sealed">Needs fixing</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
     return '<li><a class="item" href="#model-' + esc(r.id) + '">' + swatchStack(r.model) +
       '<div class="main"><div class="t">' + esc(r.model.name) + (r.example ? ' <span class="m" style="display:inline">· example</span>' : '') + '</div>' +
       '<div class="m">' + plural(res.pieces, 'piece') + ' · ' + plural(res.steps.length, 'step') + '</div></div>' + state + '</a></li>';
@@ -132,8 +146,19 @@ async function renderList() {
   $('build-list').querySelectorAll('[data-pool]').forEach(cb => cb.onchange = () => {
     const prefs = read(POOL, {}); prefs[cb.dataset.pool] = cb.checked; write(POOL, prefs); renderList();
   });
+  $('build-list').querySelectorAll('[data-lot]').forEach(b => b.onclick = () => dropLot(lots.find(l => l.id === b.dataset.lot)));
   $('copy-pool').onclick = copyPool;
   $('open-model').onclick = openSheet;
+}
+document.addEventListener('brickyard:changed', () => { if (!$('build').hidden && !$('build-list').hidden) renderList(); });
+
+function dropLot(l) {
+  if (!l) return;
+  const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Remove these loose pieces?</h2><button class="btn sm quiet" type="button" data-close>Keep them</button></div>' +
+    '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening the lot’s link or file again brings it back.</p></div>' +
+    '<div class="ft"><span></span><button class="btn" type="button" id="lot-drop">Remove</button></div>');
+  panel.querySelector('[data-close]').onclick = app.closeSheet;
+  $('lot-drop').onclick = () => { app.removeLot(l.id); app.closeSheet(); toast('Removed ' + l.name); renderList(); };
 }
 
 // A little stack of the model's main colours, for the list.
@@ -145,10 +170,10 @@ function swatchStack(m) {
 }
 
 async function copyPool() {
-  const { sets, pool } = await currentPool();
+  const { sets, lots, pool } = await currentPool();
   const rows = Object.keys(pool).filter(k => shapes[k.split('/')[0]]).sort();
   const other = Object.keys(pool).length - rows.length;
-  const text = 'My Brickyard pieces, from ' + sets.map(s => s.num + ' ' + s.name).join(' + ') + '.\n' +
+  const text = 'My Brickyard pieces, from ' + sets.map(s => s.num + ' ' + s.name).concat(lots.map(l => 'loose pieces (' + l.name + ')')).join(' + ') + '.\n' +
     'Pieces the builder knows, as LDraw part/colour ×count:\n' + rows.map(k => k + ' ×' + pool[k]).join(', ') +
     (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n';
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude with what you’d like built.'); }
@@ -177,9 +202,9 @@ function openSheet() {
 async function openModel(id) {
   const model = await modelById(id);
   if (!model) { toast('That model isn’t here any more'); location.hash = '#build'; return; }
-  const { pool, sets } = await currentPool();
-  const res = B.check(model, shapes, sets.length ? pool : null);
-  current = { id, model, res, steps: res.steps, at: 0, pool: sets.length ? pool : null, sets };
+  const { pool, sets, any } = await currentPool();
+  const res = B.check(model, shapes, any ? pool : null);
+  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets };
   $('build-title').textContent = model.name;
   $('build-back').setAttribute('href', '#build');
   $('model-menu').hidden = false;

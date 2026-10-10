@@ -161,6 +161,54 @@ await page.waitForSelector('#build-list .group');
 assert.match(await page.textContent('#build-list'), /Linked cottage/);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen scrolls sideways on a phone');
 
+// Loose pieces from a scanner: open the link, review, add; they join Your pieces; opening it again replaces it.
+const lot = { brickyard: 1, loose: { id: 'sf-test', name: 'Blue tub', box: '14', parts: [['3001', 4, 40], ['3020', 15, 2], ['2780', 0, 30, 'Technic Pin with Friction']] } };
+const lotLink = n => base + '#l1z' + deflateRawSync(JSON.stringify(n)).toString('base64url');
+await page.goto(base + '#catalog');
+await page.goto(lotLink(lot));
+await page.waitForSelector('#ls-add');
+assert.match(await page.textContent('.sheet .lede'), /Blue tub.*72 pieces of 3 kinds/);
+await page.waitForFunction(() => /can use 42 of them/.test(document.getElementById('ls-use').textContent));
+assert.equal(await page.inputValue('#ls-box'), '14');
+await page.fill('#ls-name', 'Blue tub (garage)');
+await page.click('#ls-add');
+await page.waitForSelector('li.lot [data-pool="sf-test"]');
+assert.equal(await page.evaluate(() => location.hash), '#build');
+assert.match(await page.textContent('li.lot'), /Blue tub \(garage\).*Loose · 72 pieces · box 14 · the builder can use 42/);
+assert.equal(await page.isChecked('[data-pool="sf-test"]'), true, 'loose pieces count unless unticked');
+let stored = (await doc()).loose['sf-test'];
+assert.deepEqual([stored.name, stored.box, stored.parts.length], ['Blue tub (garage)', '14', 3]);
+assert.match(await page.textContent('.pieces .group'), /876/, 'the pool is the box (804) plus the tub (72)');
+await page.goto(base + '#');
+await page.waitForFunction(() => /72 loose pieces/.test(document.getElementById('home-build-stat').textContent));
+// A model that needs more red 2x4s than the box has is short without the tub and fine with it.
+const reds = { brickyard: 1, model: { name: 'Red wall', parts: Array.from({ length: 12 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
+await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(reds)).toString('base64url'));
+await page.waitForFunction(() => location.hash.startsWith('#model-m'));
+assert.match(await page.textContent('#model-check'), /every piece/);
+await page.goto(base + '#build');
+await page.waitForSelector('li.lot');
+await page.uncheck('[data-pool="sf-test"]');
+await page.waitForFunction(() => /short/.test(document.querySelector('#build-list .list').textContent));
+await page.check('[data-pool="sf-test"]');
+await page.waitForFunction(() => !/short/.test(document.querySelector('#build-list .list').textContent));
+// The same lot again, recounted: it replaces, never doubles.
+lot.loose.parts[0][2] = 45;
+await page.goto(lotLink(lot));
+await page.waitForSelector('#ls-add');
+assert.match(await page.textContent('.sheet .flag'), /already have this lot \(72 pieces\)/);
+assert.equal(await page.textContent('#ls-add'), 'Replace it');
+await page.click('#ls-add');
+await page.waitForFunction(() => /77 pieces/.test(document.querySelector('li.lot').textContent));
+assert.equal(Object.keys((await doc()).loose).length, 1);
+// A lot can be removed, and comes back from its link.
+await page.click('li.lot [data-lot]');
+await page.waitForSelector('#lot-drop');
+await page.click('#lot-drop');
+await page.waitForFunction(() => !document.querySelector('li.lot'));
+assert.equal((await doc()).loose['sf-test'].del, 1);
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen with a lot scrolls sideways on a phone');
+
 // Shelf planner: sizes from Claude, a bookcase, fit the sets, and copy their places into My sets.
 await page.goto(base + '#catalog');
 const builtIds = await page.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del && (x.state === 'built' || x.state === 'partial') && x.num).map(x => x.num));
