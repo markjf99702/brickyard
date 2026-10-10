@@ -55,3 +55,23 @@ Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front
 ## A backup
 
 **Download a backup** in Brickyard's menu saves `{"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: time}, "cases": {id: bookcase}}}`. Each set also has `id`, `t` (last changed, in milliseconds) and `added` (date). `"del": 1` marks a removed set, kept so a merge doesn't bring it back. Opening a backup merges it set by set, newest change winning. A bookcase is `{"id", "t", "name", "room", "w", "d", "levels": [{"h", "sets": [{"id", "turn"}]}]}`: inside width and depth in cm, and its shelves from the top down, each with its clear height and the sets on it left to right (`turn` when a set stands side-on). Bookcases merge the same way.
+
+## A lot of loose pieces
+
+Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scanner) makes these; so can anything that can count parts.
+
+```json
+{"brickyard": 1, "loose": {
+  "id": "sf1a2b3c4d5e", "name": "Blue tub", "box": "14", "note": "",
+  "parts": [["3001", 4, 12], ["3020", 15, 7], ["2780", 0, 40, "Technic Pin with Friction"]]}}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Keeps the lot the same lot. Opening a lot whose id Brickyard already has **replaces** it, so a re-scan never doubles the count. Left out, one is made from the contents |
+| `name` | Up to 80 characters; "Loose pieces" if left out |
+| `box` | Moving-box label, up to 40 characters |
+| `note` | Free text, up to 300 characters |
+| `parts[]` | Rows of `[LDraw part, LDraw colour, count]`. A fourth item is the part's name, worth adding for parts the builder can't draw (not in `parts/shapes.json`). The same part and colour twice is added up; rows that don't fit are dropped |
+
+Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed. Opening one shows the lot to review, then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.

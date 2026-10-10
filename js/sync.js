@@ -1,4 +1,4 @@
-// Sync through Google Drive: the catalog (sets and bookcases) in one file, "Brickyard catalog.json", in a
+// Sync through Google Drive: the catalog (sets, bookcases and loose pieces) in one file, "Brickyard catalog.json", in a
 // Brickyard folder in the person's own Drive, the same way the other junkdrawer.works apps do it. Each device
 // keeps working from its own copy; a sync reads the file, merges it with this device's catalog set by set
 // (newest change wins, removals included) and writes it back if this device had anything new.

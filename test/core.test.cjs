@@ -144,6 +144,35 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     check(/twice/.test(o), 'script flags doubles');
   } else console.log('  (python3 not found; skipped the skill script)');
 
+  // Lots of loose pieces: cleaned, added up, kept in the catalog, merged like sets, carried by links.
+  const lot = C.cleanLot({ id: 'sf1', name: ' Blue  tub ', box: '14', parts: [['3001', 4, 12], ['3001', '4', 3], ['3020', 15, 7, 'Plate 2 x 4'],
+    ['BAD ID', 1, 1], ['3004', -1, 2], ['3005', 1.5, 2], ['3005', 0, 0], ['2780', 0, 40, 'Technic Pin'], 'junk', ['3024']] });
+  eq(lot, { id: 'sf1', t: 0, name: 'Blue tub', parts: [['2780', 0, 40, 'Technic Pin'], ['3001', 4, 15], ['3020', 15, 7, 'Plate 2 x 4']], box: '14' },
+    'a lot is cleaned: bad rows dropped, the same part and colour added up, rows in order');
+  eq(C.lotTotals(lot), { pieces: 62, kinds: 3 }, 'a lot’s pieces and kinds');
+  eq(C.cleanLot({ id: 'x', parts: [['nope!', 1, 1]] }), null, 'a lot with no usable rows is nothing');
+  eq(C.cleanLot({ parts: [['3001', 0, 1]] }).id, C.cleanLot({ parts: [['3001', '0', 1]] }).id, 'a lot with no id gets one from what’s in it');
+  eq(C.cleanLot({ id: 'x', parts: [['3001', 0, 2]] }).parts, [['3001', 0, 2]], 'colour 0 (black) is a colour');
+  const withLot = C.cleanDoc({ catalog: { sets: {}, loose: { sf1: Object.assign({}, lot, { t: 5 }), gone: { del: 1, t: 9 }, bad: { parts: [] } } } });
+  eq(Object.keys(withLot.loose).sort(), ['gone', 'sf1'], 'lots live in the catalog; an empty one is dropped');
+  eq(C.liveLots(withLot).map(l => l.id), ['sf1'], 'a removed lot isn’t live');
+  eq(C.cleanDoc(JSON.parse(JSON.stringify({ catalog: withLot }))), withLot, 'a catalog with lots survives a save and a load');
+  const older = C.cleanDoc({ catalog: { loose: { sf1: { id: 'sf1', t: 3, name: 'Old count', parts: [['3001', 4, 1]] } } } });
+  eq(C.mergeDocs(withLot, older).loose.sf1.name, 'Blue tub', 'the newer copy of a lot wins');
+  eq(C.mergeDocs(older, withLot), C.mergeDocs(withLot, older), 'lots merge the same in either order');
+  eq(C.mergeDocs(withLot, C.cleanDoc({ catalog: { loose: { sf1: { del: 1, t: 8 } } } })).loose.sf1, { id: 'sf1', t: 8, del: 1 }, 'removing a lot later wins');
+  eq(C.mergeDocs(C.cleanDoc({ catalog: { sets: {} } }), withLot).loose.sf1.name, 'Blue tub', 'a catalog from before lots existed merges with one that has them');
+  const lotDoc = JSON.stringify({ brickyard: 1, loose: lot });
+  const fromLotFile = await C.parseIncoming(lotDoc);
+  eq([fromLotFile.kind, fromLotFile.lot], ['loose', lot], 'a loose-pieces file is recognised');
+  const lz = 'https://brickyard.junkdrawer.works/#l1z' + zlib.deflateRawSync(Buffer.from(lotDoc)).toString('base64url');
+  eq((await C.parseIncoming(lz)).lot, lot, 'a loose-pieces link (#l1z) opens');
+  eq((await C.parseIncoming('https://brickyard.junkdrawer.works/#l1j' + Buffer.from(lotDoc).toString('base64url'))).lot, lot, 'and uncompressed (#l1j)');
+  let threw = false;
+  try { await C.parseIncoming(JSON.stringify({ brickyard: 1, loose: { parts: [] } })); } catch (e) { threw = true; }
+  check(threw, 'an empty lot is refused');
+  eq((await C.parseIncoming(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10698' }] } }))).kind, 'batch', 'a batch of sets is still a batch');
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

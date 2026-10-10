@@ -94,6 +94,31 @@ print(json.dumps(out))`, script, path.join(root, 'parts/shapes.json'), path.join
     eq({ problems: r.problems.map(p => [p.kind, p.parts.slice().sort((a, b) => a - b)]), notes: r.notes.map(n => n.step), size: r.size, steps: r.steps }, py[k], 'script and page agree: ' + k);
   } else console.log('  (python3 not found; skipped the skill script)');
 
+  // Loose pieces join the pool, and the script counts them the same way from a lot file or from pasted text.
+  const lot = { id: 'sf1', name: 'Blue tub', parts: [['3001', 4, 5], ['3020', 15, 2], ['2780', 0, 40, 'Technic Pin']] };
+  const both = B.poolOf([box, lot]);
+  eq(both['3001/4'], pool['3001/4'] + 5, 'a lot adds to what the sets give');
+  eq(both['2780/0'], 40, 'parts the builder can’t draw are still in the pool');
+  const greedy = M(Array.from({ length: pool['3001/4'] + 3 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]));
+  eq(kinds(B.check(greedy, shapes, pool)), ['count'], 'a tower of red 2x4s is too many for the box alone');
+  eq(kinds(B.check(greedy, shapes, both)), [], 'and fine with the loose ones');
+  if (py) {
+    const os = require('os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickyard-'));
+    const model = path.join(dir, 'tower.json'), lotFile = path.join(dir, 'tub.brickyard-loose.json'), pasted = path.join(dir, 'pieces.txt');
+    fs.writeFileSync(model, JSON.stringify({ name: 'Tower', sets: ['10698-1'], parts: greedy.parts }));
+    fs.writeFileSync(lotFile, JSON.stringify({ brickyard: 1, loose: lot }));
+    fs.writeFileSync(pasted, 'My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub).\nPieces the builder knows, as LDraw part/colour ×count:\n' +
+      Object.keys(both).filter(k => shapes[k.split('/')[0]]).sort().map(k => k + ' ×' + both[k]).join(', ') + '\n');
+    const run = args => { try { return [0, execFileSync('python3', [script, model, '--out', dir, '--no-link'].concat(args), { encoding: 'utf8' })]; } catch (e) { return [e.status, String(e.stdout)]; } };
+    const alone = run([]);
+    check(alone[0] === 1 && /Needs \d+ of 3001\/4/.test(alone[1]), 'script: the box alone is short');
+    eq(run(['--pieces', lotFile])[0], 0, 'script: the box plus a lot file is enough');
+    eq(run(['--sets', '--pieces', pasted])[0], 0, 'script: the pasted list on its own is enough');
+    const lotOnly = run(['--sets', '--pieces', lotFile]);
+    check(lotOnly[0] === 1 && /you have 5\b/.test(lotOnly[1]), 'script: with no sets, a lot file is the whole budget');
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

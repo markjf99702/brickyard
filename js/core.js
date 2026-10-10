@@ -99,7 +99,46 @@
     return o;
   }
 
-  function emptyDoc() { return { sets: {}, seen: {}, cases: {} }; }
+  function emptyDoc() { return { sets: {}, seen: {}, cases: {}, loose: {} }; }
+
+  // A lot of loose pieces: one tub, bag or moving box of bricks that aren't a set, counted by a scanner (Stud
+  // Finder) or listed by hand. Rows are [LDraw part, LDraw colour, count], with the part's name as a fourth
+  // item when the sender added one (for parts the builder can't draw yet, so the list can still say what they
+  // are). The same part and colour twice is added up. A lot keeps its id, so opening it again replaces it.
+  function partNum(v) { var t = s(v, 24).toLowerCase(); return /^[a-z0-9]{1,24}$/.test(t) ? t : ''; }
+  function colourNum(v) {
+    if (typeof v === 'number' ? !isFinite(v) || v % 1 : !/^\d{1,5}$/.test(String(v == null ? '' : v))) return -1;
+    var n = Number(v); return n >= 0 && n <= 99999 ? n : -1;
+  }
+  function cleanLot(x, id, t) {
+    if (!x || typeof x !== 'object') return null;
+    var key = s(x.id || id, 40);
+    t = typeof t === 'number' && isFinite(t) ? t : (typeof x.t === 'number' && isFinite(x.t) ? x.t : 0);
+    if (x.del) return key ? { id: key, t: t, del: 1 } : null;
+    var byKey = {}, parts = [];
+    (Array.isArray(x.parts) ? x.parts : []).slice(0, 20000).forEach(function (r) {
+      if (!Array.isArray(r)) return;
+      var p = partNum(r[0]), c = colourNum(r[1]), n = whole(r[2], 0, 100000);
+      if (!p || c < 0 || n < 1) return;
+      var k = p + '/' + c, row = byKey[k];
+      if (row) { row[2] = Math.min(100000, row[2] + n); return; }
+      row = [p, c, n];
+      var nm = s(r[3], 60); if (nm) row.push(nm);
+      byKey[k] = row; parts.push(row);
+    });
+    if (!parts.length) return null;
+    parts.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]; });
+    var o = { id: key || 'l' + hash(JSON.stringify(parts)), t: t, name: s(x.name, 80) || 'Loose pieces', parts: parts };
+    var box = s(x.box, 40); if (box) o.box = box;
+    var note = para(x.note, 300); if (note) o.note = note;
+    return o;
+  }
+  function lotTotals(lot) {
+    return { pieces: (lot.parts || []).reduce(function (n, r) { return n + r[2]; }, 0), kinds: (lot.parts || []).length };
+  }
+  function liveLots(doc) {
+    return Object.keys(doc.loose || {}).map(function (k) { return doc.loose[k]; }).filter(function (x) { return !x.del; });
+  }
 
   // A bookcase for the shelf planner: its inside width and depth in cm, and its shelves from the top down, each
   // with the height clear above it and the sets standing on it, left to right ({id, turn} where turn means the
@@ -128,7 +167,8 @@
     return o;
   }
 
-  // A library file or backup: {"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: t}, "cases": {id: case}}}.
+  // A library file or backup: {"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: t}, "cases": {id: case},
+  // "loose": {id: lot}}}.
   function cleanDoc(o) {
     var c = o && (o.catalog || o), doc = emptyDoc();
     var sets = c && c.sets;
@@ -148,14 +188,19 @@
     if (cases && typeof cases === 'object') Object.keys(cases).forEach(function (id) {
       var y = cleanCase(cases[id], id); if (y) doc.cases[y.id] = y;
     });
+    var loose = c && c.loose;
+    if (loose && typeof loose === 'object') Object.keys(loose).forEach(function (id) {
+      var y = cleanLot(loose[id], id); if (y) doc.loose[y.id] = y;
+    });
     return doc;
   }
 
-  // Set by set (and bookcase by bookcase), the newer change wins; a removal is a change too. Same answer in any order.
+  // Set by set (and bookcase by bookcase, and lot by lot), the newer change wins; a removal is a change too. Same
+  // answer in any order.
   function mergeDocs(a, b) {
     var out = emptyDoc();
     [a, b].forEach(function (d) {
-      ['sets', 'cases'].forEach(function (kind) {
+      ['sets', 'cases', 'loose'].forEach(function (kind) {
         Object.keys(d[kind] || {}).forEach(function (id) {
           var x = d[kind][id], y = out[kind][id];
           if (!y || x.t > y.t || (x.t === y.t && JSON.stringify(x) > JSON.stringify(y))) out[kind][id] = x;
@@ -265,10 +310,11 @@
   }
 
   // brickyard/#b1z… carries a batch as deflated JSON in base64url (#b1j… uncompressed); #batch= is URL-encoded
-  // JSON for writing by hand. The part after # never reaches a server.
+  // JSON for writing by hand. #l1z… / #l1j… carry a lot of loose pieces the same way. The part after # never
+  // reaches a server.
   function linkText(h) {
     h = String(h || '');
-    var m = /#(b1[zj])([A-Za-z0-9_-]+)/.exec(h);
+    var m = /#([bl]1[zj])([A-Za-z0-9_-]+)/.exec(h);
     if (!m) {
       var b = /#batch=(\S+)/.exec(h);
       if (!b) return Promise.resolve('');
@@ -276,19 +322,24 @@
     }
     var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    if (m[1] === 'b1j') return Promise.resolve(new TextDecoder().decode(bytes));
+    if (m[1].charAt(2) === 'j') return Promise.resolve(new TextDecoder().decode(bytes));
     if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.'));
     return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
   }
 
-  // Anything pasted or opened: a link, a batch, or a whole catalog.
+  // Anything pasted or opened: a link, a batch, a lot of loose pieces, or a whole catalog.
   function parseIncoming(t) {
     t = String(t || '').trim();
     var c = t.charAt(0);
-    if (c !== '{' && /#(b1[zj][A-Za-z0-9_-]+|batch=\S+)\s*$/.test(t)) return linkText(t).then(parseIncoming);
+    if (c !== '{' && /#([bl]1[zj][A-Za-z0-9_-]+|batch=\S+)\s*$/.test(t)) return linkText(t).then(parseIncoming);
     return Promise.resolve().then(function () {
       var o = JSON.parse(t);
       if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
+      if (o && o.loose && !o.sets && !o.batch) {
+        var lot = cleanLot(o.loose);
+        if (!lot || lot.del) throw new Error('empty');
+        return { kind: 'loose', lot: lot };
+      }
       var b = cleanBatch(o);
       if (!b || !b.sets.length) throw new Error('empty');
       return { kind: 'batch', batch: b };
@@ -298,7 +349,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
     hash: hash, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

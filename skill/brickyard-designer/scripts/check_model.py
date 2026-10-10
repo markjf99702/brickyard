@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a LEGO model against the pieces someone owns, show it layer by layer, and make a Brickyard link.
 
-    python3 check_model.py model.json [--sets 10698-1 ...] [--data DIR] [--out DIR] [--layers] [--no-link]
+    python3 check_model.py model.json [--sets 10698-1 ...] [--pieces FILE ...] [--data DIR] [--out DIR] [--layers] [--no-link]
 
 model.json:
 
@@ -19,11 +19,15 @@ x runs left to right and z back to front, both in studs; y runs up in plates (a 
 A part's x, y, z is the back-left-bottom corner of its footprint after turning; turn is 0, 90, 180 or 270 and at
 90 or 270 the part's width runs front to back. Parts and colours are LDraw numbers (3001 is a 2x4 brick, 4 is red).
 
+--pieces adds pieces that aren't from a set's parts list: a loose-pieces lot (a .brickyard-loose.json file from
+Stud Finder or Brickyard), or a text file holding what "Copy my pieces for Claude" gave (part/colour ×count,
+…). Given with no --sets and a model that names none, the pieces files are the whole budget.
+
 It checks what Brickyard checks, the same way (js/build-core.js): every part is one the builder knows, there
 are enough of each part in each colour, no two parts overlap, everything is joined by studs, and every step
 joins onto what's already built. It exits 1 if anything fails. With --layers it prints each layer from above.
 """
-import argparse, base64, json, sys, zlib
+import argparse, base64, json, re, sys, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -225,10 +229,41 @@ def layers(model, shapes, colors):
     return '\n'.join(out)
 
 
+def read_pieces(path):
+    """Pieces from a loose-pieces lot (JSON) or from pasted "My Brickyard pieces" text: {"part/colour": count}."""
+    text = Path(path).read_text(encoding='utf-8')
+    pool = {}
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        lot = doc.get('loose', doc)
+        rows = lot.get('parts') if isinstance(lot, dict) else None
+        if not isinstance(rows, list):
+            sys.exit(f'{path}: no "parts" list of [part, colour, count] rows.')
+        for r in rows:
+            if isinstance(r, list) and len(r) >= 3 and re.fullmatch(r'[0-9a-z]{1,24}', str(r[0]).lower()) and str(r[1]).isdigit():
+                try:
+                    n = int(r[2])
+                except (TypeError, ValueError):
+                    continue
+                if n > 0:
+                    k = f'{str(r[0]).lower()}/{int(r[1])}'
+                    pool[k] = pool.get(k, 0) + n
+        return pool
+    for p, c, n in re.findall(r'\b([0-9a-z]{1,24})/(\d{1,5})\s*[×x]\s*(\d+)', text):
+        pool[f'{p}/{int(c)}'] = pool.get(f'{p}/{int(c)}', 0) + int(n)
+    if not pool:
+        sys.exit(f'{path}: no pieces found. Expected a loose-pieces file or "part/colour ×count" text.')
+    return pool
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('file')
     ap.add_argument('--sets', nargs='*', help='sets whose pieces it may use (default: the model’s own "sets")')
+    ap.add_argument('--pieces', nargs='*', default=[], help='loose-pieces files, or pasted "My Brickyard pieces" text files, to add')
     ap.add_argument('--data')
     ap.add_argument('--out', default='.')
     ap.add_argument('--base', default=DEFAULT_BASE)
@@ -251,12 +286,16 @@ def main():
             for p, c, n in json.loads(f.read_text())['parts']:
                 pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
         model['sets'] = sets
+    for f in a.pieces:
+        pool = pool if pool is not None else {}
+        for k, n in read_pieces(f).items():
+            pool[k] = pool.get(k, 0) + n
     res = check(model, shapes, pool)
     cm = dict(w=res['size']['w'] * 0.8, d=res['size']['d'] * 0.8, h=round(res['size']['h'] * 0.32, 1))
     print(f'{model["name"]}: {res["pieces"]} pieces, {len(res["steps"])} steps, '
           f'{res["size"]["w"]}x{res["size"]["d"]} studs, {res["size"]["h"]} plates tall ({cm["w"]:g} x {cm["d"]:g} x {cm["h"]:g} cm)')
     if pool is None:
-        print('NOTE: no sets given, so piece counts weren’t checked.')
+        print('NOTE: no sets or pieces given, so piece counts weren’t checked.')
     for p in res['problems']:
         print('PROBLEM: ' + p['text'] + f'  (parts {", ".join(str(i + 1) for i in p["parts"][:12])})')
     for n in res['notes']:

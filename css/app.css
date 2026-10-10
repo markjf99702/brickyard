@@ -197,6 +197,10 @@ a.item { color: inherit; text-decoration: none; }
 .pieces .menu.pool { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; margin-bottom: 10px; }
 .menu.pool label { padding: 11px 0; }
 .menu.pool input { width: 20px; height: 20px; flex: none; accent-color: var(--red); }
+.menu.pool li.lot { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.menu.pool li.lot:last-child { border-bottom: 0; }
+.menu.pool li.lot label { flex: 1; min-width: 0; border-bottom: 0; }
+.menu.pool li.lot .btn { flex: none; width: auto; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .acts-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
 .acts-row .btn { flex: 1 1 auto; justify-content: center; }
 .btn[disabled] { opacity: .5; cursor: default; }

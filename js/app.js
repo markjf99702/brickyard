@@ -75,10 +75,11 @@
 
   function renderHome() {
     var t = C.totals(C.live(DOC));
+    var loose = C.liveLots(DOC).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'Nothing here yet. Start with your sets.';
     var models = 0;
     try { models = Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {}).length; } catch (e) { /* none saved */ }
-    $('home-build-stat').textContent = models ? plural(models, 'model') + ' from Claude' : 'Try the example cottage';
+    $('home-build-stat').textContent = [models ? plural(models, 'model') + ' from Claude' : '', loose ? plural(loose, 'loose piece') : ''].filter(Boolean).join(' · ') || 'Try the example cottage';
     var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
     var on = Object.keys(window.ShelfCore.placements(cases)).filter(function (id) { return DOC.sets[id] && !DOC.sets[id].del; }).length;
     $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + plural(on, 'set') + ' on shelves' : 'Start with your bookcases';
@@ -288,13 +289,14 @@
   }
 
   function takeIncoming(p) {
-    return p.then(function (r) { if (r.kind === 'catalog') catalogSheet(r.doc); else reviewSheet(r.batch); })
+    return p.then(function (r) { if (r.kind === 'catalog') catalogSheet(r.doc); else if (r.kind === 'loose') looseSheet(r.lot); else reviewSheet(r.batch); })
       .catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like sets from Claude or a Brickyard file'); });
   }
   function checkLink() {
     var h = location.hash;
-    if (!/^#(b1[zj]|batch=)/.test(h)) return false;
-    try { history.replaceState(null, '', location.pathname + location.search + '#catalog'); } catch (e) { location.hash = '#catalog'; }
+    if (!/^#([bl]1[zj]|batch=)/.test(h)) return false;
+    var to = h.charAt(1) === 'l' ? '#build' : '#catalog'; // loose pieces belong to Build from your box
+    try { history.replaceState(null, '', location.pathname + location.search + to); } catch (e) { location.hash = to; }
     route();
     takeIncoming(C.linkText(h).then(function (t) { if (!t) throw new Error('empty'); return C.parseIncoming(t); }));
     return true;
@@ -353,10 +355,41 @@
     count();
   }
 
+  // A lot of loose pieces, from a scanner or from Claude. Opening the same lot again replaces it, so nothing is
+  // ever counted twice.
+  function shapeIds() {
+    if (window.BRICKYARD_DATA) return Promise.resolve(window.BRICKYARD_DATA['parts/shapes.json'] || {});
+    return fetch('parts/shapes.json').then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  }
+  function looseSheet(lot) {
+    var had = DOC.loose[lot.id] && !DOC.loose[lot.id].del ? DOC.loose[lot.id] : null, n = C.lotTotals(lot);
+    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add loose pieces</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
+      '<p class="lede"><b>' + esc(lot.name) + '</b> · ' + plural(n.pieces, 'piece') + ' of ' + plural(n.kinds, 'kind') + '</p>' +
+      (had ? '<p class="flag"><span>You already have this lot (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding it again replaces it, so nothing is counted twice.</span></p>' : '') +
+      '<p class="note" id="ls-use"></p>' +
+      '<div class="bulk"><span class="lbl">Call it</span><input id="ls-name" value="' + esc(lot.name) + '" maxlength="80" autocomplete="off" aria-label="Name of this lot">' +
+      '<input id="ls-box" list="dl-box" placeholder="Moving box" value="' + esc(lot.box || (had && had.box) || '') + '" maxlength="40" autocomplete="off" aria-label="Moving box"></div>' +
+      '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove a lot there.</p></div>' +
+      '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace it' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
+    panel.querySelector('[data-close]').onclick = closeSheet;
+    shapeIds().then(function (shapes) {
+      var use = lot.parts.reduce(function (k, r) { return k + (shapes[r[0]] ? r[2] : 0); }, 0);
+      if ($('ls-use')) $('ls-use').textContent = use === n.pieces ? 'The builder can use all of them.'
+        : 'The builder can use ' + use.toLocaleString() + ' of them today. The rest are kept, and count once Brickyard learns their shapes.';
+    });
+    $('ls-add').onclick = function () {
+      var y = C.cleanLot(Object.assign({}, lot, { name: $('ls-name').value, box: $('ls-box').value }), lot.id, Date.now());
+      if (!y) return;
+      DOC.loose[y.id] = y; save(); closeSheet();
+      toast((had ? 'Replaced ' : 'Added ') + plural(n.pieces, 'loose piece'));
+      if (location.hash === '#build') route(); else location.hash = '#build';
+    };
+  }
+
   function catalogSheet(doc) {
     var incoming = C.live(doc).length;
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Open a Brickyard file</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
-      '<p class="lede">This file has ' + plural(incoming, 'set') + '. Bringing it in merges it with what’s here, set by set, keeping whichever copy was changed last. Nothing here is lost.</p></div>' +
+      '<p class="lede">This file has ' + plural(incoming, 'set') + (C.liveLots(doc).length ? ' and ' + plural(C.liveLots(doc).length, 'lot') + ' of loose pieces' : '') + '. Bringing it in merges it with what’s here, set by set, keeping whichever copy was changed last. Nothing here is lost.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
     panel.querySelector('[data-close]').onclick = closeSheet;
     $('cs-go').onclick = function () {
@@ -440,6 +473,7 @@
     putSet: function (x) { putSet(x); save(); },
     putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
     removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
+    removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     toast: toast, openSheet: openSheet, closeSheet: closeSheet, esc: esc, plural: plural, FRAMED: FRAMED,
