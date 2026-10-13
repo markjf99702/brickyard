@@ -71,17 +71,19 @@
   // Why a waiting set isn't on a shelf: what the last fill said, or what stops it fitting now.
   function whyNot(x, all, ids) { return lastLeft[x.id] || (all.length ? S.whyNot(all, x, ids) : ''); }
 
-  // A bookcase from the front, drawn to scale in cm.
+  // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
+  // above it (its size or the shelf's height changed after it was placed), is marked in red.
   function caseHtml(c, ids) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], over = 0;
+    var W = c.w + 2 * T, H = T, y = T, parts = [], over = 0, high = 0;
     c.levels.forEach(function (l) { H += l.h + T; });
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
-      var x0 = T, u = S.used(l, ids);
+      var x0 = T, u = S.used(l, ids), tall = 0;
       if (u > c.w + 0.01) over++;
       l.sets.forEach(function (p) {
         var x = ids[p.id]; if (!x || !S.hasSize(x)) return;
+        if (x.size.h > l.h) tall++;
         var f = S.footprint(x, p.turn), top = y + l.h - f.h, col = colourOf(x);
         parts.push('<g class="sv-set" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
           '<rect x="' + (x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8" fill="' + col + '"' + (p.turn ? ' stroke-dasharray="1.2 0.8" class="turned"' : '') + '/>' +
@@ -89,8 +91,8 @@
         x0 += f.along + S.GAP;
       });
       parts.push('<text x="' + (T + c.w - 0.8) + '" y="' + (y + 3) + '" class="sv-h" text-anchor="end">' + (li + 1) + ' · ' + cm(l.h) + ' cm</text>');
-      y += l.h;
-      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (u > c.w + 0.01 ? ' style="fill:var(--red)"' : '') + '/>');
+      y += l.h; high += tall;
+      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (u > c.w + 0.01 || tall ? ' style="fill:var(--red)"' : '') + '/>');
       y += T;
     });
     var n = c.levels.reduce(function (k, l) { return k + l.sets.filter(function (p) { return ids[p.id]; }).length; }, 0);
@@ -98,6 +100,7 @@
       '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(n, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
       (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
+      (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
       '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="width:min(100%,' + Math.round(W * 7) + 'px,calc(72vh * ' + (W / H).toFixed(3) + '))" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + '</svg></section>';
   }
 

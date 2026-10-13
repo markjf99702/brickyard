@@ -328,6 +328,21 @@ await page.dblclick('#k-del');
 assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().cases).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
 await page.click('[data-close]');
 
+// A set made taller than its shelf after it was placed is marked, like an overfull shelf.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },
+    cases: { k: { id: 'k', t: 1, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }, { h: 33, sets: [{ id: 't' }] }] } } });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.sv-set');
+  assert.equal(await p.locator('.case .flag.bad').count(), 0, 'nothing marked at first');
+  await p.click('.sv-set');
+  await p.fill('#z-h', '60');
+  await p.click('#z-save');
+  assert.equal(await p.locator('.case .flag.bad').count(), 1, 'a set taller than its shelf is marked');
+  assert.match(await p.textContent('.case .flag.bad'), /A set is too tall for its shelf, marked in red/);
+  await c.close();
+}
+
 // A catalog brought in by Drive sync (which hands it to app.takeDoc) shows on the planner, and behind an open sheet.
 {
   const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree', state: 'built' } } });
