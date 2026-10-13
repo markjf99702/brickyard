@@ -41,6 +41,21 @@ await page.goto(base);
 await page.evaluate(() => document.fonts.ready);
 assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
 
+// A link cut short (as a chat app can leave it) says so when Brickyard opens on it, and everything else still works.
+{
+  const p = await ctx.newPage();
+  p.on('pageerror', e => problems.push(e.message));
+  for (const [h, says] of [['#b1zAAAAA', 'doesn’t look like sets'], ['#l1zA', 'doesn’t look like sets'], ['#z1zA', 'doesn’t hold sizes']]) {
+    await p.goto('about:blank');
+    await p.goto(base + h);
+    await p.waitForFunction(w => (document.querySelector('.toast') || {}).textContent?.includes(w), says, { timeout: 10000 });
+    assert.equal(await p.evaluate(() => typeof window.brickyard), 'object', 'Brickyard started after a cut-off ' + h);
+  }
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list .group');
+  await p.close();
+}
+
 // Add a set by hand.
 await page.click('#go-catalog');
 await page.waitForSelector('.empty');

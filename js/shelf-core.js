@@ -149,11 +149,14 @@
   function sizesText(h) {
     var m = /#(z1[zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
     if (!m) return Promise.resolve('');
-    var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    if (m[1] === 'z1j') return Promise.resolve(new TextDecoder().decode(bytes));
-    if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('This browser is too old to open Brickyard links.'));
-    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    // Inside the promise, so a link cut short (which atob refuses) is turned down instead of throwing.
+    return Promise.resolve().then(function () {
+      var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (m[1] === 'z1j') return new TextDecoder().decode(bytes);
+      if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links.');
+      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    });
   }
   function isSizesLink(t) { return /#z1[zj][A-Za-z0-9_-]+\s*$/.test(String(t || '').trim()); }
   function parseSizes(t) {

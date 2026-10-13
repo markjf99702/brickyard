@@ -66,6 +66,11 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
   check(B.isModelLink(link), 'model link recognised');
   eq((await B.parseModel(link)).parts, cottage.parts, 'd1z link opens');
   eq((await B.parseModel('#d1j' + Buffer.from(doc).toString('base64url'))).name, 'Cottage', 'd1j link opens');
+  for (const h of ['#d1zA', '#d1jAAAAA']) {
+    let threw = null, refused = false;
+    try { await B.parseModel('https://brickyard.junkdrawer.works/' + h).catch(() => { refused = true; }); } catch (e) { threw = e; }
+    check(!threw && refused, 'a cut-off model link is refused, not thrown: ' + h);
+  }
 
   // The designer skill's script checks the same way as the page.
   const script = path.join(root, 'skill/brickyard-designer/scripts/check_model.py');

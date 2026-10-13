@@ -320,11 +320,15 @@
       if (!b) return Promise.resolve('');
       try { return Promise.resolve(decodeURIComponent(b[1])); } catch (e) { return Promise.reject(e); }
     }
-    var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    if (m[1].charAt(2) === 'j') return Promise.resolve(new TextDecoder().decode(bytes));
-    if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.'));
-    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    // Inside the promise, so a link cut short (which atob refuses) is turned down like any bad link instead of
+    // throwing while the page starts.
+    return Promise.resolve().then(function () {
+      var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
+      if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.');
+      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    });
   }
 
   // Anything pasted or opened: a link, a batch, a lot of loose pieces, or a whole catalog.

@@ -120,6 +120,15 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
   eq(cat.kind, 'catalog', 'a backup opens as a catalog');
   let bad = null; try { await C.parseIncoming('not json'); } catch (e) { bad = e; }
   check(bad, 'rubbish is refused');
+  // A link cut short, as a chat app can leave it, is refused like any bad link and never thrown: the page opens
+  // links while it starts, and a throw there stopped Brickyard starting at all.
+  for (const h of ['#b1zA', '#b1zAAAAA', '#b1jAAAAA', '#l1zA']) {
+    for (const [what, open] of [['parseIncoming', t => C.parseIncoming('https://brickyard.junkdrawer.works/' + t)], ['linkText', t => C.linkText(t)]]) {
+      let threw = null, refused = false;
+      try { await open(h).catch(() => { refused = true; }); } catch (e) { threw = e; }
+      check(!threw && refused, what + ' refuses a cut-off link, not throws: ' + h + (threw ? ' (threw ' + threw.message + ')' : ''));
+    }
+  }
 
   let py = true; try { execFileSync('python3', ['--version']); } catch (e) { py = false; }
   if (py) {

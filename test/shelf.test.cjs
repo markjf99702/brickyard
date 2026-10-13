@@ -71,6 +71,11 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
   eq(await S.parseSizes('#z1z' + zlib.deflateRawSync(doc).toString('base64url')), clean, 'z1z link opens');
   eq(await S.parseSizes('#z1j' + Buffer.from(doc).toString('base64url')), clean, 'z1j link opens');
   eq(await S.parseSizes(doc), clean, 'pasted file opens');
+  for (const h of ['#z1zA', '#z1jAAAAA']) {
+    let threw = null, refused = false;
+    try { await S.parseSizes('https://brickyard.junkdrawer.works/' + h).catch(() => { refused = true; }); } catch (e) { threw = e; }
+    check(!threw && refused, 'a cut-off sizes link is refused, not thrown: ' + h);
+  }
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickyard-'));
   fs.writeFileSync(path.join(dir, 'sizes.json'), doc);
