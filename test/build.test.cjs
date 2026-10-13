@@ -88,9 +88,13 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]),
   };
   let py = null;
+  // Importing the script would leave a __pycache__ folder in the repo (and on the site), so it writes no bytecode.
+  const bytecode = () => { try { return fs.readdirSync(path.join(root, 'skill/brickyard-designer/scripts/__pycache__')).sort(); } catch (e) { return []; } };
+  const bytecodeBefore = bytecode();
   try {
     py = JSON.parse(execFileSync('python3', ['-c', `
 import json, sys, importlib.util
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('cm', sys.argv[1]); cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
 shapes = json.load(open(sys.argv[2])); pool = {}
 for p, c, n in json.load(open(sys.argv[3]))['parts']: pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
@@ -100,6 +104,7 @@ for k, m in json.loads(sys.stdin.read()).items():
     out[k] = dict(problems=[(p['kind'], sorted(p['parts'])) for p in r['problems']], notes=[n['step'] for n in r['notes']], size=r['size'], steps=r['steps'])
 print(json.dumps(out))`, script, path.join(root, 'parts/shapes.json'), path.join(root, 'parts/sets/10698-1.json')], { input: JSON.stringify(cases) }).toString());
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  if (py) eq(bytecode(), bytecodeBefore, 'checking the script leaves no bytecode behind in the repo');
   if (py) for (const k in cases) {
     const r = B.check(cases[k], shapes, pool);
     eq({ problems: r.problems.map(p => [p.kind, p.parts.slice().sort((a, b) => a - b)]), notes: r.notes.map(n => n.step), size: r.size, steps: r.steps }, py[k], 'script and page agree: ' + k);
