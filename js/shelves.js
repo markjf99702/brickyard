@@ -310,5 +310,7 @@
     render();
   }
   document.addEventListener('brickyard:route', route);
+  // The catalog changed under the planner (Drive sync, or another tab).
+  document.addEventListener('brickyard:changed', function () { if (!$('shelves').hidden) render(); });
   route();
 })();

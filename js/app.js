@@ -443,12 +443,17 @@
     if ($('m-pics')) $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
   }
 
-  // A catalog merged in from elsewhere (Drive sync): keep it, and show it without moving the page.
+  // Show the catalog as it is now on whichever screen is open, without moving the page. A sheet keeps its own
+  // copy of what it shows, so the screen behind an open one catches up too.
+  function refresh() {
+    if (!$('catalog').hidden) renderCatalog(); else if (!$('home').hidden) renderHome();
+    document.dispatchEvent(new CustomEvent('brickyard:changed')); // the builder and the shelf planner redraw
+  }
+
+  // A catalog merged in from elsewhere (Drive sync): keep it, and show it.
   function takeDoc(doc) {
     DOC = doc; write(KEY, { brickyard: 1, catalog: DOC });
-    if (openScrim) return;
-    if (!$('catalog').hidden) renderCatalog(); else if (!$('home').hidden) renderHome();
-    document.dispatchEvent(new CustomEvent('brickyard:changed'));
+    refresh();
   }
 
   // The whole catalog as one link, to open on another device or at Brickyard's own address (the claude.ai copy

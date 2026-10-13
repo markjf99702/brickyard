@@ -328,6 +328,26 @@ await page.dblclick('#k-del');
 assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().cases).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
 await page.click('[data-close]');
 
+// A catalog brought in by Drive sync (which hands it to app.takeDoc) shows on the planner, and behind an open sheet.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree', state: 'built' } } });
+  const takeIn = extra => p.evaluate(x => {
+    const d = JSON.parse(JSON.stringify(window.brickyard.doc()));
+    Object.assign(d.sets, x.sets || {}); Object.assign(d.cases, x.cases || {});
+    window.brickyard.takeDoc(d);
+  }, extra);
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('[data-act="add-case"]');
+  await takeIn({ cases: { k: { id: 'k', t: 5, name: 'Hall Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
+  await p.waitForSelector('#shelves .case', { timeout: 5000 });
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await takeIn({ sets: { g: { id: 'g', t: 5, name: 'Galaxy Explorer', state: 'built' } } });
+  await p.click('[data-close]');
+  assert.deepEqual(await p.locator('#list-wrap .item .t').allTextContents(), ['Bonsai Tree', 'Galaxy Explorer'], 'My sets caught up behind the sheet');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);
