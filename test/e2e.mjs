@@ -94,10 +94,12 @@ assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
   await c2.close();
 }
 
-// Add a set by hand.
+// Add a set by hand. With no sets yet, the empty state's buttons are the only ones (not repeated at the bottom).
 await page.click('#go-catalog');
 await page.waitForSelector('.empty');
-await page.click('#add-btn');
+assert.equal(await page.locator('#catalog .fab-row').isHidden(), true, 'the bottom buttons wait until there are sets');
+assert.equal(await page.locator('#catalog button:visible', { hasText: 'Add a set' }).count(), 1, 'one + Add a set on an empty catalog');
+await page.click('.empty [data-act="add"]');
 await page.fill('#e-num', '10698');
 await page.fill('#e-name', 'Large Creative Brick Box');
 await page.fill('#e-pieces', '790');
@@ -109,6 +111,7 @@ let sets = await live();
 assert.equal(sets.length, 1);
 assert.deepEqual([sets[0].num, sets[0].state, sets[0].box, sets[0].pieces], ['10698-1', 'apart', '7', 790]);
 assert.equal(await page.locator('.item').count(), 1);
+assert.equal(await page.locator('#catalog .fab-row').isVisible(), true, 'the bottom buttons are back once there are sets');
 await page.waitForSelector('.item .pic.none'); // the picture was asked for, and failed here
 assert.ok(pictures.some(u => u.includes('10698-1')), 'asked Rebrickable for the picture');
 

@@ -131,6 +131,8 @@
   function renderCatalog() {
     var all = C.live(DOC), q = $('q').value.trim(), t = C.totals(all);
     $('cat-tools').hidden = !all.length;
+    // With no sets yet the empty state has the same two buttons, so the row at the bottom would only repeat them.
+    document.querySelector('#catalog .fab-row').hidden = !all.length;
     if (!FILTERS.some(function (f) { return f[0] === prefs.show; })) prefs.show = 'all';
     $('chips').innerHTML = FILTERS.filter(function (f) {
       return f[0] === 'all' || f[0] === prefs.show || (f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : t[f[0]]);
