@@ -61,6 +61,16 @@ for (const [name, hash, act] of shots) {
   await page.screenshot({ path: join(root, `docs/phone-${name}.png`) });
   await page.context().close();
 }
+// Build from your box: the example cottage at its last step, from the sample's Large Creative Brick Box (taken
+// apart). The 3D view needs WebGL, which headless Chromium draws in software.
+{
+  const page = await open({ width: 390, height: 844 }, 2, '#model-x-cottage');
+  await page.waitForSelector('#model-view:not([hidden])');
+  await page.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: join(root, 'docs/phone-build.png'), fullPage: true });
+  await page.context().close();
+}
 // What opening a link from Claude looks like, on an empty catalog.
 {
   const z = execSync(`python3 skill/brickyard-cataloger/scripts/make_brickyard.py test/fixtures/sample.json --out ${JSON.stringify(join(root, 'node_modules/.tmp'))}`, { cwd: root }).toString();
