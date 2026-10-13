@@ -169,6 +169,22 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 
+// One group per room or box, however it's spelled ("Office" and "office", box "3" and "03").
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, name: 'Alpha', room: 'Office', box: 'Kitchen 2' }, b: { id: 'b', t: 1, name: 'Bravo', room: 'office', box: 'kitchen 2' },
+    c: { id: 'c', t: 1, name: 'Charlie', room: 'Office', box: '3' }, d: { id: 'd', t: 1, name: 'Delta', room: 'office', box: '03' },
+    e: { id: 'e', t: 1, name: 'Echo', room: 'Office' } } });
+  await p.goto(base + '#catalog');
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => [h.children[0].textContent.toLowerCase(), +h.children[1].textContent]));
+  assert.deepEqual(await heads(), [['office', 5]], 'one room, whatever its spelling');
+  await p.selectOption('#group', 'box');
+  assert.deepEqual(await heads(), [['box 3', 2], ['box kitchen 2', 2], ['not packed', 1]], 'one moving box, whatever its spelling');
+  await p.selectOption('#group', 'new');
+  assert.deepEqual([await p.locator('#list-wrap .group').count(), await p.locator('#list-wrap .list').count(), await p.locator('#list-wrap .item').count()], [0, 1, 5], 'newest first is one list');
+  await c.close();
+}
+
 // Edit: clear a check, then remove a set.
 await page.click('.item:has-text("Lamborghini")');
 await page.click('#e-ok');

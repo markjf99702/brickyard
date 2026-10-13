@@ -160,12 +160,14 @@
       return C.natural(ga, gb) || C.natural(a.name || '', b.name || '');
     });
 
+    // Groups are told apart the way they're sorted, so "Office" and "office" (or box "3" and "03") make one group,
+    // headed by the first spelling.
     var html = '', last = null;
     shown.forEach(function (x) {
       var g = groupOf(x);
-      if (g !== last) {
+      if (last === null || C.natural(g, last) !== 0) {
         if (last !== null) html += '</ul>';
-        var n = shown.filter(function (y) { return groupOf(y) === g; }).length;
+        var n = shown.filter(function (y) { return C.natural(groupOf(y), g) === 0; }).length;
         html += (g ? '<h3 class="group"><span>' + esc(g) + '</span><span>' + n + '</span></h3>' : '') + '<ul class="list">';
         last = g;
       }
