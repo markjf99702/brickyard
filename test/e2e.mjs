@@ -234,6 +234,13 @@ assert.match(await page.textContent('a[href="#model-x-cottage"]'), /Can build/);
 await page.click('a[href="#model-x-cottage"]');
 await page.waitForSelector('#model-view:not([hidden])');
 assert.equal(await page.textContent('#step-n'), 'Step 1');
+// Arrow keys move one step, on the step slider or with nothing focused.
+await page.focus('#step-range');
+await page.keyboard.press('ArrowRight');
+assert.equal(await page.textContent('#step-n'), 'Step 2', 'an arrow key on the slider moves one step');
+await page.evaluate(() => document.activeElement.blur());
+await page.keyboard.press('ArrowLeft');
+assert.equal(await page.textContent('#step-n'), 'Step 1', 'and with nothing focused');
 assert.match(await page.textContent('#step-parts'), /Plate 6x12/);
 await page.click('#step-next');
 assert.equal(await page.textContent('#step-n'), 'Step 2');

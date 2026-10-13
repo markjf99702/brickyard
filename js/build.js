@@ -265,6 +265,7 @@ $('step-next').onclick = () => showStep(current.at === current.steps.length ? 0 
 $('step-range').oninput = e => showStep(+e.target.value, false);
 document.addEventListener('keydown', e => {
   if (!current || $('model-view').hidden || document.querySelector('.scrim')) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return; // the step slider moves itself
   if (e.key === 'ArrowRight') showStep(current.at + 1);
   if (e.key === 'ArrowLeft') showStep(current.at - 1);
 });
