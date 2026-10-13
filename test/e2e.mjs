@@ -407,6 +407,17 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A long reason under a set that doesn't fit is shown whole on a phone, not cut off.
+{
+  const { c, p } = await withSets({ sets: { l: { id: 'l', t: 1, name: 'Lamborghini Sián FKP 37', state: 'built', size: { w: 60, d: 26, h: 15 } } },
+    cases: { k: { id: 'k', t: 1, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] } } });
+  await p.goto(base + '#shelves');
+  const why = p.locator('#shelves-body .list .item:has-text("Lamborghini") .warn');
+  assert.equal(await why.textContent(), 'Too big for every bookcase (60 × 26 cm)');
+  assert.equal(await why.evaluate(e => e.scrollWidth <= e.clientWidth), true, 'the reason is shown whole');
+  await c.close();
+}
+
 // Sizes for sets that aren't in My sets are counted in plain words.
 {
   const { c, p } = await withSets({ sets: { g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } } });

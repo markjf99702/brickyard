@@ -136,7 +136,7 @@ a.item { color: inherit; text-decoration: none; }
 .badge.partial { background: color-mix(in srgb, var(--yellow) 30%, transparent); color: color-mix(in srgb, var(--ink) 80%, var(--yellow)); }
 .badge.apart { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue); }
 .badge.sealed { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
-.item .m.warn { color: var(--red); font-weight: 600; }
+.item .m.warn { color: var(--red); font-weight: 600; white-space: normal; text-wrap: balance; }
 .empty { text-align: center; padding: 34px 10px 10px; color: var(--muted); }
 .empty h2 { color: var(--ink); font-size: 20px; margin: 10px 0 6px; }
 .empty .acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
