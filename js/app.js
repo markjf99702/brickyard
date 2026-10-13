@@ -13,7 +13,12 @@
   var prefs = Object.assign({ pics: true, group: 'room', show: 'all' }, read(PREFS) || {});
   if (FRAMED) prefs.pics = false;
   function save() {
-    if (!write(KEY, { brickyard: 1, catalog: DOC })) toast('This browser wouldn’t save. Download a backup from the menu.');
+    // Held, so the "Added" or "Saved" that follows in the same tap doesn't cover it: it's the only sign the change
+    // will be gone after a reload. The preview copy has no backup download, but it can copy everything as a link.
+    if (!write(KEY, { brickyard: 1, catalog: DOC })) {
+      toast(FRAMED ? 'This browser wouldn’t save. Copy everything as a link from the menu to keep your sets.'
+        : 'This browser wouldn’t save. Download a backup from the menu.', true);
+    }
     document.dispatchEvent(new CustomEvent('brickyard:saved')); // Drive sync (js/sync.js) picks it up
   }
   function savePrefs() { write(PREFS, prefs); }
@@ -27,12 +32,17 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function plural(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
-  var toastTimer;
-  function toast(msg) {
+  var toastTimer, heldUntil = 0;
+  // A held message stays up for longer, and nothing else replaces it meanwhile.
+  function toast(msg, hold) {
+    var now = Date.now();
+    if (!hold && now < heldUntil) return;
     var el = document.querySelector('.toast');
     if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
     el.textContent = msg; el.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, 3200);
+    var ms = hold ? 6000 : 3200;
+    heldUntil = hold ? now + ms : 0;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, ms);
   }
   function picHtml(x, cls) {
     var brick = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';

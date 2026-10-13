@@ -56,6 +56,33 @@ assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
   await p.close();
 }
 
+// A browser that won't save says so, and "Added" doesn't cover the warning.
+{
+  const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  await c2.route('https://cdn.rebrickable.com/**', r => r.fulfill({ status: 404 }));
+  await c2.addInitScript(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (k === 'brickyard.v1') throw new DOMException('full', 'QuotaExceededError'); return real.call(this, k, v); };
+  });
+  const p = await c2.newPage();
+  p.on('pageerror', e => problems.push(e.message));
+  await p.goto(base + '#catalog');
+  await p.click('.empty [data-act="add"]');
+  await p.fill('#e-num', '10698');
+  await p.click('#e-save');
+  assert.match(await p.textContent('.toast'), /wouldn’t save. Download a backup/, 'the save warning shows, not Added');
+  await p.evaluate(() => window.brickyard.toast('Something else'));
+  assert.match(await p.textContent('.toast'), /wouldn’t save/, 'the warning stays up');
+  // The preview copy (in a frame) can't download a backup, so it points at the link instead.
+  await p.setContent(`<iframe src="${base}#catalog" style="width:390px;height:800px"></iframe>`);
+  const f = await (await p.waitForSelector('iframe')).contentFrame();
+  await f.click('.empty [data-act="add"]');
+  await f.fill('#e-num', '10698');
+  await f.click('#e-save');
+  assert.match(await f.textContent('.toast'), /wouldn’t save. Copy everything as a link/, 'the preview says to copy a link');
+  await c2.close();
+}
+
 // Add a set by hand.
 await page.click('#go-catalog');
 await page.waitForSelector('.empty');
