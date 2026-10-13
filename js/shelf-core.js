@@ -169,12 +169,16 @@
       return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
     });
   }
-  function isSizesLink(t) { return /#z1[zj][A-Za-z0-9_-]+\s*$/.test(String(t || '').trim()); }
+  // Pasted text can carry more than the link or the file (a sentence around the link, ```json fences around the
+  // file), so the link is found wherever it is, and the JSON is what runs from the first { to the last }, as in
+  // js/core.js (parseIncoming).
+  function isSizesLink(t) { return /#z1[zj][A-Za-z0-9_-]+/.test(String(t || '')); }
   function parseSizes(t) {
     t = String(t || '').trim();
     if (t.charAt(0) !== '{' && isSizesLink(t)) return sizesText(t).then(parseSizes);
     return Promise.resolve().then(function () {
-      var z = cleanSizes(JSON.parse(t));
+      var i = t.indexOf('{'), j = t.lastIndexOf('}');
+      var z = cleanSizes(JSON.parse(i >= 0 && j > i ? t.slice(i, j + 1) : t));
       if (!z) throw new Error('empty');
       return z;
     });

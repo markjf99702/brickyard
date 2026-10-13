@@ -335,7 +335,8 @@
     if (!m) {
       var b = /#batch=(\S+)/.exec(h);
       if (!b) return Promise.resolve('');
-      try { return Promise.resolve(decodeURIComponent(b[1])); } catch (e) { return Promise.reject(e); }
+      // A full stop or bracket after the link in a sentence isn't part of it; the JSON in it ends with } (or %7D).
+      try { return Promise.resolve(decodeURIComponent(b[1].replace(/[.,;:!?)\]>"'’”»…—–]+$/, ''))); } catch (e) { return Promise.reject(e); }
     }
     // Inside the promise, so a link cut short (which atob refuses) is turned down like any bad link instead of
     // throwing while the page starts.
@@ -348,13 +349,21 @@
     });
   }
 
-  // Anything pasted or opened: a link, a batch, a lot of loose pieces, or a whole catalog.
+  // The JSON in what was pasted: from the first { to the last }, so ```json fences or a line above it don't matter.
+  function jsonPart(t) {
+    var i = t.indexOf('{'), j = t.lastIndexOf('}');
+    return i >= 0 && j > i ? t.slice(i, j + 1) : t;
+  }
+
+  // Anything pasted or opened: a link, a batch, a lot of loose pieces, or a whole catalog. Copying a whole message
+  // from Claude brings more than that along, so a link is found wherever it is in the text (in a sentence, with a
+  // full stop after it), and the JSON inside whatever surrounds it.
   function parseIncoming(t) {
     t = String(t || '').trim();
     var c = t.charAt(0);
-    if (c !== '{' && /#([bl]1[zj][A-Za-z0-9_-]+|batch=\S+)\s*$/.test(t)) return linkText(t).then(parseIncoming);
+    if (c !== '{' && /#([bl]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(parseIncoming);
     return Promise.resolve().then(function () {
-      var o = JSON.parse(t);
+      var o = JSON.parse(jsonPart(t));
       if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
       if (o && o.loose && !o.sets && !o.batch) {
         var lot = cleanLot(o.loose);

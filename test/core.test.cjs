@@ -141,6 +141,29 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
   eq(cat.kind, 'catalog', 'a backup opens as a catalog');
   let bad = null; try { await C.parseIncoming('not json'); } catch (e) { bad = e; }
   check(bad, 'rubbish is refused');
+  // Copying a whole message from Claude brings more than the link or the file along: a sentence around the link,
+  // a full stop after it, ```json fences or a line above the file. All of it opens; rubbish is still refused.
+  {
+    const url = 'https://brickyard.junkdrawer.works/' + z;
+    for (const [t, what] of [
+      [url + '.', 'a link with a full stop after it'],
+      ['Here is your Brickyard link: ' + url + ' Open it and tap Add.', 'a link in a sentence'],
+      ['<' + url + '>', 'a link in angle brackets'],
+      ['[Open in Brickyard](' + url + ')', 'a link in Markdown'],
+      [url + '\nOpen it, check the list, and tap Add.', 'a link with a line after it'],
+      ['Or this one: https://brickyard.junkdrawer.works/#batch=' + encodeURIComponent(text) + '.', 'a hand-written link with a full stop after it'],
+      ['```json\n' + JSON.stringify(sample, null, 1) + '\n```', 'the file in ```json fences'],
+      ['Brickyard batch:\n' + text, 'the file with a line above it'],
+      [text + '\n\nThat’s one set.', 'the file with a line after it'],
+    ]) {
+      let r = null; try { r = await C.parseIncoming(t); } catch (e) { /* refused */ }
+      eq(r && [r.kind, r.batch.sets[0].num], ['batch', '10698-1'], what + ' opens');
+    }
+    for (const t of ['Here is your link: none yet.', 'see {this}', '{"brickyard": 1, "batch": {"sets": []}}']) {
+      let refused = false; try { await C.parseIncoming(t); } catch (e) { refused = true; }
+      check(refused, 'still refused: ' + t);
+    }
+  }
   // A link cut short, as a chat app can leave it, is refused like any bad link and never thrown: the page opens
   // links while it starts, and a throw there stopped Brickyard starting at all.
   for (const h of ['#b1zA', '#b1zAAAAA', '#b1jAAAAA', '#l1zA']) {
@@ -198,6 +221,7 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
   const lz = 'https://brickyard.junkdrawer.works/#l1z' + zlib.deflateRawSync(Buffer.from(lotDoc)).toString('base64url');
   eq((await C.parseIncoming(lz)).lot, lot, 'a loose-pieces link (#l1z) opens');
   eq((await C.parseIncoming('https://brickyard.junkdrawer.works/#l1j' + Buffer.from(lotDoc).toString('base64url'))).lot, lot, 'and uncompressed (#l1j)');
+  eq(await C.parseIncoming('Stud Finder counted your tub: ' + lz + '. Open it in Brickyard.').then(r => r.lot, () => null), lot, 'a loose-pieces link in a sentence opens');
   let threw = false;
   try { await C.parseIncoming(JSON.stringify({ brickyard: 1, loose: { parts: [] } })); } catch (e) { threw = true; }
   check(threw, 'an empty lot is refused');

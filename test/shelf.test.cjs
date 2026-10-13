@@ -82,6 +82,14 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
   eq(await S.parseSizes('#z1z' + zlib.deflateRawSync(doc).toString('base64url')), clean, 'z1z link opens');
   eq(await S.parseSizes('#z1j' + Buffer.from(doc).toString('base64url')), clean, 'z1j link opens');
   eq(await S.parseSizes(doc), clean, 'pasted file opens');
+  // A whole message from Claude, copied: the link in a sentence, or the file in ```json fences.
+  for (const [t, what] of [
+    ['Here are the sizes: https://brickyard.junkdrawer.works/#z1z' + zlib.deflateRawSync(doc).toString('base64url') + '. Tap Add sizes.', 'a sizes link in a sentence'],
+    ['```json\n' + doc + '\n```', 'a sizes file in ```json fences'],
+  ]) {
+    let z = null; try { z = await S.parseSizes(t); } catch (e) { /* refused */ }
+    eq(z, clean, what + ' opens');
+  }
   for (const h of ['#z1zA', '#z1jAAAAA']) {
     let threw = null, refused = false;
     try { await S.parseSizes('https://brickyard.junkdrawer.works/' + h).catch(() => { refused = true; }); } catch (e) { threw = e; }

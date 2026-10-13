@@ -66,6 +66,12 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
   check(B.isModelLink(link), 'model link recognised');
   eq((await B.parseModel(link)).parts, cottage.parts, 'd1z link opens');
   eq((await B.parseModel('#d1j' + Buffer.from(doc).toString('base64url'))).name, 'Cottage', 'd1j link opens');
+  // A whole message from Claude, copied: the link with a full stop after it or in a sentence, or the file in fences.
+  for (const [t, what] of [[link + '.', 'a model link with a full stop after it'], ['Your cottage: ' + link + ' Open it in Brickyard.', 'a model link in a sentence'],
+    ['```json\n' + doc + '\n```', 'a model file in ```json fences']]) {
+    let m = null; try { m = await B.parseModel(t); } catch (e) { /* refused */ }
+    eq(m && m.parts, cottage.parts, what + ' opens');
+  }
   for (const h of ['#d1zA', '#d1jAAAAA']) {
     let threw = null, refused = false;
     try { await B.parseModel('https://brickyard.junkdrawer.works/' + h).catch(() => { refused = true; }); } catch (e) { threw = e; }
