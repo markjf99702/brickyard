@@ -277,7 +277,8 @@
     });
     if (!rows.length) { toast('None of those sets are in My sets'); return; }
     var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
-      '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' + (unknown ? ' ' + plural(unknown, 'set') + ' in the list aren’t in My sets.' : '') + '</p>' +
+      '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
+        (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
         return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add this size">' +
           '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div>' +

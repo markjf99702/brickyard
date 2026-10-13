@@ -403,6 +403,20 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Sizes for sets that aren't in My sets are counted in plain words.
+{
+  const { c, p } = await withSets({ sets: { g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } } });
+  const sizes = nums => base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: nums.map(num => ({ num, w: 20, d: 15, h: 10 })) })).toString('base64url');
+  await p.goto(sizes(['10497', '99999']));
+  await p.waitForSelector('#zr-go');
+  assert.match(await p.textContent('.sheet .note'), /\. One set in the list isn’t in My sets\.$/);
+  await p.goto('about:blank');
+  await p.goto(sizes(['10497', '99999', '99998']));
+  await p.waitForSelector('#zr-go');
+  assert.match(await p.textContent('.sheet .note'), /\. 2 sets in the list aren’t in My sets\.$/);
+  await c.close();
+}
+
 // Why a set isn't on a shelf is worked out afresh: adding a bookcase that takes it clears the old reason.
 {
   const { c, p } = await withSets({ sets: {
