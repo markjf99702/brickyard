@@ -348,6 +348,30 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A save in another tab shows here without moving this tab to the top or a model back to its first step.
+{
+  const many = {};
+  for (let i = 0; i < 20; i++) many['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), room: 'Office' };
+  const { c, p } = await withSets({ sets: many });
+  const other = await c.newPage();
+  other.on('pageerror', e => problems.push(e.message));
+  await other.goto(base + '#catalog');
+  const saveThere = note => other.evaluate(n => window.brickyard.putSet(Object.assign({}, window.brickyard.doc().sets.s0, { notes: n })), note);
+  const seen = note => p.waitForFunction(n => window.brickyard.doc().sets.s0.notes === n, note);
+  await p.goto(base + '#catalog');
+  await p.evaluate(() => window.scrollTo(0, 400));
+  await saveThere('one'); await seen('one');
+  assert.equal(await p.evaluate(() => Math.round(window.scrollY)), 400, 'a save in another tab leaves this one where it was');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.click('#step-next'); await p.click('#step-next');
+  assert.equal(await p.textContent('#step-n'), 'Step 3');
+  await saveThere('two'); await seen('two');
+  await p.waitForTimeout(1000);
+  assert.equal(await p.textContent('#step-n'), 'Step 3', 'a model being built stays on its step');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

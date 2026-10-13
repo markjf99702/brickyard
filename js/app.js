@@ -476,11 +476,11 @@
     });
   }
 
-  // Another tab changed the catalog.
+  // Another tab changed the catalog: show it here without moving the page or a model back to its first step.
   window.addEventListener('storage', function (e) {
     if (e.key !== KEY) return;
     DOC = C.mergeDocs(DOC, C.cleanDoc(read(KEY) || {}));
-    if (!openScrim) route();
+    refresh();
   });
 
   if ('serviceWorker' in navigator && window.isSecureContext && !FRAMED) navigator.serviceWorker.register('sw.js').catch(function () {});
