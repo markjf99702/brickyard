@@ -206,6 +206,9 @@
 
   // ---------- sheets ----------
   var openScrim = null, lastFocus = null;
+  // While a sheet is open the screens behind it (and the footer) are inert, so Tab and screen readers stay in the
+  // sheet. The toast is outside them, so it's still read out.
+  function behind(on) { document.querySelectorAll('body > section, body > .jd-foot').forEach(function (el) { el.inert = on; }); }
   function openSheet(html, onClose) {
     closeSheet();
     lastFocus = document.activeElement;
@@ -216,6 +219,7 @@
     scrim._onClose = onClose;
     document.body.appendChild(scrim);
     document.body.style.overflow = 'hidden';
+    behind(true);
     openScrim = scrim;
     var f = scrim.querySelector('[autofocus]') || scrim.firstChild;
     if (f === scrim.firstChild) f.tabIndex = -1;
@@ -225,7 +229,7 @@
   function closeSheet() {
     if (!openScrim) return;
     var s = openScrim; openScrim = null;
-    s.remove(); document.body.style.overflow = '';
+    s.remove(); document.body.style.overflow = ''; behind(false);
     if (s._onClose) s._onClose();
     if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus();
   }

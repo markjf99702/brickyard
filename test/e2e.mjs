@@ -208,6 +208,18 @@ await page.click('#e-del');
 assert.equal((await live()).length, 6);
 assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 'removal is remembered');
 
+// Tab stays in an open sheet, never reaching the page behind it, and closing it gives focus back.
+await page.focus('#menu-btn');
+await page.keyboard.press('Enter');
+await page.waitForSelector('.sheet');
+for (let i = 0; i < 14; i++) {
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest('body > section, .jd-foot')), false, 'Tab ' + (i + 1) + ' stays out of the page behind the sheet');
+}
+await page.keyboard.press('Escape');
+assert.equal(await page.evaluate(() => document.activeElement.id), 'menu-btn', 'focus goes back to the menu button');
+assert.equal(await page.evaluate(() => document.getElementById('catalog').inert), false, 'the page works again once the sheet is closed');
+
 // Pictures can be turned off.
 await page.click('#menu-btn');
 await page.click('#m-pics');
