@@ -109,8 +109,8 @@ let sets = await live();
 assert.equal(sets.length, 1);
 assert.deepEqual([sets[0].num, sets[0].state, sets[0].box, sets[0].pieces], ['10698-1', 'apart', '7', 790]);
 assert.equal(await page.locator('.item').count(), 1);
+await page.waitForSelector('.item .pic.none'); // the picture was asked for, and failed here
 assert.ok(pictures.some(u => u.includes('10698-1')), 'asked Rebrickable for the picture');
-await page.waitForSelector('.item .pic.none');
 
 // A bad set number is refused.
 await page.click('#add-btn');
