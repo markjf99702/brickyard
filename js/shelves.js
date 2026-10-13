@@ -288,6 +288,7 @@
     function count() { $('zr-n').textContent = plural(rows.filter(function (r) { return r.on; }).length, 'set'); }
     count();
     $('zr').onchange = function (e) { var r = rows[+e.target.dataset.i]; r.on = e.target.checked; e.target.parentNode.classList.toggle('off', !r.on); count(); };
+    $('zr').onclick = app.tickRow;
     $('zr-go').onclick = function () {
       var n = 0;
       rows.forEach(function (r) {

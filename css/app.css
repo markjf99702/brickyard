@@ -184,7 +184,7 @@ a.item { color: inherit; text-decoration: none; }
 
 /* review list */
 .rv { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.rv li { display: grid; grid-template-columns: 24px 56px 1fr; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.rv li { display: grid; grid-template-columns: 24px 56px 1fr; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; cursor: pointer; }
 .rv li.off { opacity: .55; }
 .rv .pic { width: 56px; height: 46px; }
 .rv input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--red); }

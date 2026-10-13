@@ -231,6 +231,15 @@
   }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openScrim) closeSheet(); });
 
+  // In a list of rows to tick (sets from Claude, sizes), a tap anywhere on a row ticks or unticks it, not only on
+  // its little box. The box's own taps tick it already.
+  function tickRow(e) {
+    var li = e.target.closest('li'), box = li && li.querySelector('input[type="checkbox"]');
+    if (!box || e.target === box) return;
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   function field(label, inner) { return '<label class="field"><span>' + label + '</span>' + inner + '</label>'; }
   function input(id, val, extra) { return '<input id="' + id + '" value="' + esc(val == null ? '' : val) + '" autocomplete="off"' + (extra || '') + '>'; }
 
@@ -356,6 +365,7 @@
       var li = e.target.closest('li'); if (!li) return;
       rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
     };
+    $('rv').onclick = tickRow;
     $('rv-add').onclick = function () {
       var room = $('rv-room').value.trim(), spot = $('rv-spot').value.trim(), box = $('rv-box').value.trim(), n = 0, day = today();
       rows.forEach(function (r) {
@@ -501,7 +511,7 @@
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
-    toast: toast, openSheet: openSheet, closeSheet: closeSheet, secondTap: secondTap, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, openSheet: openSheet, closeSheet: closeSheet, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();
