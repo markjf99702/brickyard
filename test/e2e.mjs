@@ -283,6 +283,18 @@ await page.waitForSelector('#build-list .group');
 assert.match(await page.textContent('#build-list'), /Linked cottage/);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen scrolls sideways on a phone');
 
+// A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
+{
+  const { c, p } = await withSets({ sets: {} });
+  await p.evaluate(m => localStorage.setItem('brickyard.models', JSON.stringify({ a: null, b: { added: 1 }, c: { model: Object.assign({}, m, { name: 'Saved cottage' }), added: 2 } })), cottage.model);
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list .list', { timeout: 10000 });
+  assert.deepEqual(await p.locator('#build-list .list .item .t').allTextContents(), ['Saved cottage', 'Cottage · example']);
+  await p.goto(base);
+  assert.match(await p.textContent('#home-build-stat'), /^1 model from Claude/);
+  await c.close();
+}
+
 // Loose pieces from a scanner: open the link, review, add; they join Your pieces; opening it again replaces it.
 const lot = { brickyard: 1, loose: { id: 'sf-test', name: 'Blue tub', box: '14', parts: [['3001', 4, 40], ['3020', 15, 2], ['2780', 0, 30, 'Technic Pin with Friction']] } };
 const lotLink = n => base + '#l1z' + deflateRawSync(JSON.stringify(n)).toString('base64url');

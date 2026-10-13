@@ -125,7 +125,9 @@ async function renderList() {
   if (none) html += '<p class="note">' + (none === 1 ? 'One of your sets doesn’t' : none + ' of your sets don’t') + ' have a parts list here yet. Tell Claude which ones you’ve taken apart and it can add their pieces.</p>';
   html += '<div class="acts-row"><button class="btn quiet" type="button" id="copy-pool"' + (any ? '' : ' disabled') + '>Copy my pieces for Claude</button><button class="btn quiet" type="button" id="open-model">Open a model</button></div></section>';
 
-  const mine = Object.entries(saved()).sort((a, b) => b[1].added - a[1].added).map(([id, v]) => ({ id, model: B.cleanModel(v.model) })).filter(x => x.model);
+  // A saved entry with no model in it (a damaged save) is skipped rather than stopping the whole list.
+  const mine = Object.entries(saved()).filter(([, v]) => v && v.model).sort((a, b) => (b[1].added || 0) - (a[1].added || 0))
+    .map(([id, v]) => ({ id, model: B.cleanModel(v.model) })).filter(x => x.model);
   const examples = await Promise.all(EXAMPLES.map(async n => ({ id: 'x-' + n, model: await modelById('x-' + n), example: true })));
   const rows = mine.concat(examples);
   html += '<h2 class="group"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {

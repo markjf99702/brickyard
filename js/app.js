@@ -96,7 +96,10 @@
     var loose = C.liveLots(DOC).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'Nothing here yet. Start with your sets.';
     var models = 0;
-    try { models = Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {}).length; } catch (e) { /* none saved */ }
+    try {
+      var saved = JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {};
+      models = Object.keys(saved).filter(function (k) { return saved[k] && saved[k].model; }).length; // as Build from your box lists them
+    } catch (e) { /* none saved */ }
     $('home-build-stat').textContent = [models ? plural(models, 'model') + ' from Claude' : '', loose ? plural(loose, 'loose piece') : ''].filter(Boolean).join(' · ') || 'Try the example cottage';
     var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
     var on = Object.keys(window.ShelfCore.placements(cases)).filter(function (id) { return DOC.sets[id] && !DOC.sets[id].del; }).length;
