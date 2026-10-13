@@ -100,6 +100,8 @@ await page.waitForSelector('.empty');
 assert.equal(await page.locator('#catalog .fab-row').isHidden(), true, 'the bottom buttons wait until there are sets');
 assert.equal(await page.locator('#catalog button:visible', { hasText: 'Add a set' }).count(), 1, 'one + Add a set on an empty catalog');
 await page.click('.empty [data-act="add"]');
+assert.deepEqual(await page.$$eval('#e-num, #e-name, #e-theme, #e-room, #e-spot', els => els.map(e => e.placeholder)),
+  ['e.g. 10698', 'e.g. Large Creative Brick Box', 'e.g. Classic', 'e.g. Office', 'e.g. Top shelf'], 'examples say they’re examples');
 await page.fill('#e-num', '10698');
 await page.fill('#e-name', 'Large Creative Brick Box');
 await page.fill('#e-pieces', '790');
@@ -139,6 +141,7 @@ await page.waitForSelector('.rv');
 assert.equal(await page.locator('.rv li').count(), 7);
 assert.equal(await page.locator('.rv li.off').count(), 1, 'the set already owned is unticked');
 assert.match(await page.textContent('#rv-add'), /Add 6 sets/);
+assert.deepEqual(await page.$$eval('.bulk label > span', s => s.map(x => x.textContent)), ['Room', 'Shelf or spot', 'Moving box'], 'the fields for the whole batch have labels');
 // A tap anywhere on a row ticks or unticks it, not only on its little box.
 await page.click('.rv li >> nth=1 >> .t');
 assert.match(await page.textContent('#rv-add'), /Add 5 sets/, 'tapping a set’s name unticks it');
@@ -307,6 +310,7 @@ await page.waitForSelector('#ls-add');
 assert.match(await page.textContent('.sheet .lede'), /Blue tub.*72 pieces of 3 kinds/);
 await page.waitForFunction(() => /can use 42 of them/.test(document.getElementById('ls-use').textContent));
 assert.equal(await page.inputValue('#ls-box'), '14');
+assert.deepEqual(await page.$$eval('.sheet .bulk label > span', s => s.map(x => x.textContent)), ['Call it', 'Moving box'], 'the lot’s name and box each have a label');
 await page.fill('#ls-name', 'Blue tub (garage)');
 await page.click('#ls-add');
 await page.waitForSelector('li.lot [data-pool="sf-test"]');

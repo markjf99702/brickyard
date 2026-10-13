@@ -261,13 +261,13 @@
       '<div class="bd">' +
       (isNew ? '' : picHtml(x, 'head-pic')) +
       (x.check ? '<p class="flag"><span><b>Check:</b> ' + esc(x.check) + '</span><button class="btn sm quiet" type="button" id="e-ok">It’s right</button></p>' : '') +
-      '<div class="two">' + field('Set number', input('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="10698"' + (isNew ? ' autofocus' : ''))) + field('Year', input('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
-      field('Name', input('e-name', x.name, ' placeholder="Large Creative Brick Box"')) +
-      '<div class="two">' + field('Pieces', input('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', input('e-theme', x.theme, ' list="dl-theme" placeholder="Classic"')) + '</div>' +
+      '<div class="two">' + field('Set number', input('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', input('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
+      field('Name', input('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
+      '<div class="two">' + field('Pieces', input('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', input('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
       '<div class="field"><span class="lbl">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
         return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k].replace('Taken apart', 'Apart') + '</button>';
       }).join('') + '</div></div>' +
-      '<div class="two">' + field('Room', input('e-room', x.room, ' list="dl-room" placeholder="Office"')) + field('Shelf or spot', input('e-spot', x.spot, ' list="dl-spot" placeholder="Top shelf"')) + '</div>' +
+      '<div class="two">' + field('Room', input('e-room', x.room, ' list="dl-room" placeholder="e.g. Office"')) + field('Shelf or spot', input('e-spot', x.spot, ' list="dl-spot" placeholder="e.g. Top shelf"')) + '</div>' +
       field('Moving box', input('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
       field('Missing pieces', '<textarea id="e-missing" placeholder="e.g. one red 2×4 brick, the minifigure’s hat">' + esc(x.missing) + '</textarea>') +
       '<label class="check"><input type="checkbox" id="e-instr"' + (x.instr ? ' checked' : '') + '> I have the paper instructions</label>' +
@@ -352,8 +352,8 @@
     var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
       (seenAt ? '<p class="flag"><span>You opened this link before. Sets you already have are unticked.</span></p>' : '') +
-      '<div class="bulk"><span class="lbl">Put them all in</span><div class="two"><input id="rv-room" list="dl-room" placeholder="Room" value="' + esc(batch.room) + '" autocomplete="off"><input id="rv-spot" list="dl-spot" placeholder="Shelf or spot" value="' + esc(batch.spot) + '" autocomplete="off"></div>' +
-      '<input id="rv-box" list="dl-box" placeholder="Moving box" value="' + esc(batch.box) + '" autocomplete="off">' +
+      '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
+      field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
       '<span class="note" style="margin:0">Leave these blank to keep what Claude put for each set.</span></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · ');
@@ -406,8 +406,8 @@
       '<p class="lede"><b>' + esc(lot.name) + '</b> · ' + plural(n.pieces, 'piece') + ' of ' + plural(n.kinds, 'kind') + '</p>' +
       (had ? '<p class="flag"><span>You already have this lot (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding it again replaces it, so nothing is counted twice.</span></p>' : '') +
       '<p class="note" id="ls-use"></p>' +
-      '<div class="bulk"><span class="lbl">Call it</span><input id="ls-name" value="' + esc(lot.name) + '" maxlength="80" autocomplete="off" aria-label="Name of this lot">' +
-      '<input id="ls-box" list="dl-box" placeholder="Moving box" value="' + esc(lot.box || (had && had.box) || '') + '" maxlength="40" autocomplete="off" aria-label="Moving box"></div>' +
+      '<div class="bulk">' + field('Call it', input('ls-name', lot.name, ' maxlength="80"')) +
+      field('Moving box', input('ls-box', lot.box || (had && had.box) || '', ' list="dl-box" maxlength="40" placeholder="Leave blank if it’s not packed"')) + '</div>' +
       '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove a lot there.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace it' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
     panel.querySelector('[data-close]').onclick = closeSheet;
