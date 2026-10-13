@@ -202,9 +202,9 @@ function openSheet() {
 async function openModel(id) {
   const model = await modelById(id);
   if (!model) { toast('That model isn’t here any more'); location.hash = '#build'; return; }
-  const { pool, sets, any } = await currentPool();
+  const { pool, sets, lots, any } = await currentPool();
   const res = B.check(model, shapes, any ? pool : null);
-  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets };
+  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots };
   $('build-title').textContent = model.name;
   $('build-back').setAttribute('href', '#build');
   $('model-menu').hidden = false;
@@ -219,7 +219,7 @@ async function openModel(id) {
 }
 
 function renderCheck() {
-  const { res, pool, sets } = current;
+  const { res, pool, sets, lots } = current;
   let html = '';
   const fails = res.problems.filter(p => p.kind !== 'count');
   if (fails.length) html += '<div class="flag bad"><span><b>This model can’t be built as it is.</b> ' + fails.slice(0, 4).map(p => esc(p.text)).join('. ') + '. Ask Claude to fix it.</span></div>';
@@ -229,7 +229,11 @@ function renderCheck() {
       const [p, c] = x.key.split('/');
       return (x.need - x.have) + ' × ' + esc(colorOf(c).name) + ' ' + esc(partName(p).toLowerCase());
     }).join(', ') + '. Swap colours where it doesn’t matter, or ask Claude for another version.</span></div>';
-  } else if (!fails.length) html += '<p class="note ok">✓ You have every piece for this, from ' + esc(sets.map(s => s.name).join(' and ')) + '.</p>';
+  } else if (!fails.length) {
+    // Named the way Copy my pieces for Claude names them: the sets, then each lot as "loose pieces (Red tub)".
+    const from = sets.map(s => s.name).concat(lots.map(l => 'loose pieces (' + l.name + ')'));
+    html += '<p class="note ok">✓ You have every piece for this, from ' + esc(from.length > 1 ? from.slice(0, -1).join(', ') + ' and ' + from[from.length - 1] : from[0]) + '.</p>';
+  }
   const cm = B.sizeCm(res.size);
   html += '<p class="note">' + plural(res.pieces, 'piece') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + cm.w.toFixed(1).replace(/\.0$/, '') + ' × ' + cm.d.toFixed(1).replace(/\.0$/, '') + ' cm, ' + cm.h.toFixed(1).replace(/\.0$/, '') + ' cm tall</p>';
   $('model-check').innerHTML = html;

@@ -285,13 +285,23 @@ await page.waitForFunction(() => /72 loose pieces/.test(document.getElementById(
 const reds = { brickyard: 1, model: { name: 'Red wall', parts: Array.from({ length: 12 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
 await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(reds)).toString('base64url'));
 await page.waitForFunction(() => location.hash.startsWith('#model-m'));
-assert.match(await page.textContent('#model-check'), /every piece/);
+assert.match(await page.textContent('#model-check'), /every piece for this, from Large Creative Brick Box and loose pieces \(Blue tub \(garage\)\)\./, 'the lot is named with the box');
 await page.goto(base + '#build');
 await page.waitForSelector('li.lot');
 await page.uncheck('[data-pool="sf-test"]');
 await page.waitForFunction(() => /short/.test(document.querySelector('#build-list .list').textContent));
 await page.check('[data-pool="sf-test"]');
 await page.waitForFunction(() => !/short/.test(document.querySelector('#build-list .list').textContent));
+// With the box unticked the tub alone covers it, and the check names the tub.
+await page.uncheck('.menu.pool li:not(.lot) [data-pool]');
+await page.waitForFunction(() => /^72$/.test(document.querySelector('.pieces .group span:last-child').textContent));
+await page.click('#build-list a.item:has-text("Red wall")');
+await page.waitForSelector('#model-view:not([hidden])');
+assert.match(await page.textContent('#model-check'), /every piece for this, from loose pieces \(Blue tub \(garage\)\)\./, 'a lot on its own is named');
+await page.goto(base + '#build');
+await page.waitForSelector('li.lot');
+await page.check('.menu.pool li:not(.lot) [data-pool]');
+await page.waitForFunction(() => /876/.test(document.querySelector('.pieces .group').textContent));
 // The same lot again, recounted: it replaces, never doubles.
 lot.loose.parts[0][2] = 45;
 await page.goto(lotLink(lot));
