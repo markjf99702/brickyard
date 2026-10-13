@@ -59,6 +59,17 @@ eq(S.used(r.cases[0].levels[2], ids(sets)), 61, 'shelf use counts the gap');
 const k3 = JSON.parse(JSON.stringify(r.cases[0])); S.takeOff([k3], 'b');
 eq(k3.levels[1].sets.map(p => p.id), ['mid'], 'take a set off');
 eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it fits', 'no room left');
+// A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
+// shelf that would take it when empty can be short of room.
+const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
+eq(S.fits(kallax, 0, lambo, ids([lambo])).why, 'Too big (60 × 26 cm, the shelf is 33 × 37)', 'too wide facing out and too deep side-on');
+eq(S.whyNot([kallax], lambo, ids([lambo])), 'Too big for every bookcase (60 × 26 cm)', 'too big for an empty shelf is not short of room');
+const square = set('sq', 40, 40, 10);
+eq(S.fits(shelf(33, 45, [20]), 0, square, ids([square])).why, 'Too wide (40 cm, the shelf is 33)', 'too wide both ways');
+eq(S.whyNot([shelf(33, 45, [20])], square, ids([square])), 'Too wide for every bookcase (40 cm)', 'too wide for every bookcase');
+const galaxy = set('galaxy', 51, 25, 33), billy = { id: 'b', name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 32, sets: [] }] };
+eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 'too tall for one bookcase and too big for the other');
+eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
 
 // Sizes from Claude, and the cataloger script makes the same.
 const list = [{ num: '10497', w: '51', d: 33.04, h: 14, note: '  LEGO   says ' }, { num: '10497', w: 1, d: 1, h: 1 }, { num: 'nope', w: 1, d: 1, h: 1 }, { num: 21318, w: 22, d: 22 }];

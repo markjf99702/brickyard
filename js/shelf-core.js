@@ -29,21 +29,28 @@
   }
 
   // Can set x go on level li of bookcase c (leaving out where it already is)? Returns the way it fits
-  // ({turn}) or why not ({why}). Facing out is preferred; side-on only when facing out won't fit.
+  // ({turn}) or why not ({why}). Facing out is preferred; side-on only when facing out won't fit. Only a shelf
+  // that would take the set if it were empty is short of room; otherwise the set is too deep, too wide, or too
+  // wide facing out and too deep side-on ("too big").
   function fits(c, li, x, byId, preferTurn) {
     if (!hasSize(x)) return { why: 'It needs a size' };
     var level = c.levels[li];
     if (x.size.h > level.h) return { why: 'Too tall (' + x.size.h + ' cm, the shelf has ' + level.h + ')' };
     var u = used(level, byId, x.id), others = level.sets.filter(function (p) { return p.id !== x.id && byId[p.id] && hasSize(byId[p.id]); }).length;
     var room = c.w - u - (others ? GAP : 0);
-    var ways = preferTurn ? [true, false] : [false, true], why = '';
+    var ways = preferTurn ? [true, false] : [false, true], deep = 0, wide = 0;
     for (var i = 0; i < 2; i++) {
       var f = footprint(x, ways[i]);
-      if (f.deep > c.d) { why = why || 'Too deep (' + Math.min(x.size.w, x.size.d) + ' cm, the shelf is ' + c.d + ')'; continue; }
-      if (f.along > room) { why = 'Not enough room left on this shelf'; continue; }
+      if (f.deep > c.d) { deep++; continue; }
+      if (f.along > c.w) { wide++; continue; }
+      if (f.along > room) continue;
       return { turn: ways[i] };
     }
-    return { why: why };
+    var least = Math.min(x.size.w, x.size.d);
+    if (deep === 2) return { why: 'Too deep (' + least + ' cm, the shelf is ' + c.d + ')' };
+    if (wide === 2) return { why: 'Too wide (' + least + ' cm, the shelf is ' + c.w + ')' };
+    if (deep && wide) return { why: 'Too big (' + x.size.w + ' × ' + x.size.d + ' cm, the shelf is ' + c.w + ' × ' + c.d + ')' };
+    return { why: 'Not enough room left on this shelf' };
   }
 
   // Why a set fits on no shelf at all, or '' if it fits somewhere. Running out of room says more than being
@@ -57,10 +64,14 @@
       if (!f.why) return '';
       why.push(f.why);
     }
+    var all = function (re) { return why.every(function (w) { return re.test(w); }); };
     if (why.some(function (w) { return /room/.test(w); })) return 'No room left on a shelf it fits';
-    if (why.every(function (w) { return /deep/.test(w); })) return 'Too deep for every bookcase (' + Math.min(x.size.w, x.size.d) + ' cm)';
-    if (why.every(function (w) { return /tall/.test(w); })) return 'Too tall for every shelf (' + x.size.h + ' cm)';
-    return 'Too tall or too deep for every shelf';
+    if (all(/deep/)) return 'Too deep for every bookcase (' + Math.min(x.size.w, x.size.d) + ' cm)';
+    if (all(/tall/)) return 'Too tall for every shelf (' + x.size.h + ' cm)';
+    if (all(/wide/)) return 'Too wide for every bookcase (' + Math.min(x.size.w, x.size.d) + ' cm)';
+    if (all(/deep|wide|big/)) return 'Too big for every bookcase (' + x.size.w + ' × ' + x.size.d + ' cm)';
+    if (all(/deep|tall/)) return 'Too tall or too deep for every shelf';
+    return 'Too big for every shelf';
   }
 
   // Where every set is: id → {c: case id, l: level index, turn}.

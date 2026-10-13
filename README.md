@@ -50,7 +50,7 @@ python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
 ## Shelf planner
 
 - **Bookcases**: add each one with its inside width and depth and the clear height of each shelf (presets for an IKEA Billy, a narrow Billy and a Kallax column). Each is drawn from the front, to scale, with your sets on it.
-- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put. Anything that doesn't fit says why (too tall, too deep, no room left).
+- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put. Anything that doesn't fit says why (too tall, too deep, too wide, no room left).
 - Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. **Put these places in My sets** copies each set's room and shelf into the catalog.
 - **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them.
 - Bookcases are saved with the catalog, so backups and merges carry them.
