@@ -138,7 +138,8 @@
       return;
     }
 
-    var shown = all.filter(function (x) { return passes(x) && C.matches(x, q); });
+    var labels = Object.keys(all.reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
+    var shown = all.filter(function (x) { return passes(x) && C.matches(x, q, labels); });
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
     if (!shown.length) { $('list-wrap').innerHTML = '<div class="empty"><p>Nothing matches. Try another word or filter.</p></div>'; return; }

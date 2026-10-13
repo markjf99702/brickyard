@@ -276,13 +276,30 @@
     }, { sets: 0, pieces: 0, missing: 0, check: 0 });
   }
 
-  function matches(x, q) {
+  // "box 3" means moving box 3, not any set with "box" and a 3 somewhere. A label can be more than one word
+  // ("box kitchen 2"), so what follows "box" is matched against the catalog's labels and the longest that fits
+  // wins, so "box kitchen 2" isn't box "Kitchen" and a 2 somewhere. "#" before the label is fine, and words after
+  // it are searched as usual ("box 3 typewriter"). Returns the label (null if none fits) and the rest of the query.
+  function boxSearch(q, labels) {
+    var bm = /(?:^|\s)box\s+(\S.*)$/i.exec(q);
+    if (!bm) return null;
+    var rest = bm[1].toLowerCase().replace(/\s+/g, ' ').trim(), tries = [rest], best = null;
+    if (rest.charAt(0) === '#') tries.push(rest.slice(1).trim());
+    labels.forEach(function (l) {
+      var k = String(l || '').toLowerCase();
+      if (!k || (best && k.length <= best.label.length)) return;
+      tries.forEach(function (t) { if (t === k || t.indexOf(k + ' ') === 0) best = { label: k, after: t.slice(k.length) }; });
+    });
+    return { label: best ? best.label : null, rest: q.slice(0, bm.index) + ' ' + (best ? best.after : '') };
+  }
+
+  // labels: every moving-box label in the catalog. Without them, the set's own is the only one known.
+  function matches(x, q, labels) {
     if (!q) return true;
-    // "box 3" means moving box 3, not any set with "box" and a 3 somewhere.
-    var bm = /(?:^|\s)box\s+(\S+)/i.exec(q);
-    if (bm) {
-      if (String(x.box || '').toLowerCase() !== bm[1].toLowerCase()) return false;
-      q = q.replace(bm[0], ' ');
+    var b = boxSearch(q, labels || (x.box ? [x.box] : []));
+    if (b) {
+      if (!b.label || String(x.box || '').toLowerCase() !== b.label) return false;
+      q = b.rest;
     }
     var hay = [x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
       .join(' ').toLowerCase();

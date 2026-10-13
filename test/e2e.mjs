@@ -36,6 +36,17 @@ page.on('request', r => { if (!r.url().startsWith(base) && !r.url().startsWith('
 page.on('dialog', d => { problems.push('dialog: ' + d.message()); d.dismiss(); });
 const doc = () => page.evaluate(() => window.brickyard.doc());
 const live = async () => Object.values((await doc()).sets).filter(x => !x.del);
+// A browser of its own with this catalog already saved in it, for checks that need particular sets.
+async function withSets(catalog, opts = {}) {
+  const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, serviceWorkers: 'block', ...opts });
+  await c.route('https://cdn.rebrickable.com/**', r => r.fulfill({ status: 404 }));
+  const p = await c.newPage();
+  p.on('pageerror', e => problems.push(e.message));
+  await p.goto(base);
+  await p.evaluate(cat => localStorage.setItem('brickyard.v1', JSON.stringify({ brickyard: 1, catalog: cat })), catalog);
+  await p.reload();
+  return { c, p };
+}
 
 await page.goto(base);
 await page.evaluate(() => document.fonts.ready);
@@ -138,6 +149,17 @@ assert.equal(await page.locator('.item').count(), 2);
 await page.fill('#q', '');
 await page.selectOption('#group', 'box');
 assert.deepEqual(await page.locator('.group span:first-child').allTextContents(), ['Box 3', 'Box 7', 'Box 12', 'Not packed']);
+
+// A moving box with a label of two words, next to a shorter label.
+{
+  const { c, p } = await withSets({ sets: {
+    k2a: { id: 'k2a', t: 1, name: 'Bonsai Tree', box: 'Kitchen 2' }, k2b: { id: 'k2b', t: 1, name: 'Orchid', box: 'Kitchen 2' },
+    k1: { id: 'k1', t: 1, name: 'Spice Rack', year: 2012, box: 'Kitchen' } } });
+  await p.goto(base + '#catalog');
+  await p.fill('#q', 'box kitchen 2');
+  assert.deepEqual(await p.locator('.item .t').allTextContents(), ['Bonsai Tree', 'Orchid'], '"box kitchen 2" finds that box only');
+  await c.close();
+}
 
 // Edit: clear a check, then remove a set.
 await page.click('.item:has-text("Lamborghini")');

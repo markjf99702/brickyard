@@ -96,6 +96,27 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   check(C.matches(x, 'box 3'), 'search finds a moving box');
   check(C.matches(x, 'partly'), 'search finds the state');
   check(!C.matches(x, 'castle'), 'search misses');
+  check(C.matches(C.cleanSet({ name: 'Bonsai Tree', box: 'Kitchen 2' }), 'box kitchen 2'), 'a box label of two words, with no list of labels');
+}
+// Moving boxes by label: labels of more than one word, "#" before a number, words after the label, and the
+// longest label in the catalog winning, so "box kitchen 2" isn't box "Kitchen" plus a 2 somewhere.
+{
+  const sets = [
+    C.cleanSet({ name: 'Bonsai Tree', box: 'Kitchen 2' }), C.cleanSet({ name: 'Orchid', box: 'kitchen 2' }),
+    C.cleanSet({ name: 'Spice Rack', box: 'Kitchen', year: 2012 }),
+    C.cleanSet({ name: 'Typewriter', box: '3' }), C.cleanSet({ name: 'Galaxy Explorer', box: '13' }),
+  ];
+  const labels = sets.map(x => x.box);
+  const find = q => sets.filter(x => C.matches(x, q, labels)).map(x => x.name);
+  eq(find('box kitchen 2'), ['Bonsai Tree', 'Orchid'], 'box kitchen 2');
+  eq(find('Box Kitchen 2'), ['Bonsai Tree', 'Orchid'], 'Box Kitchen 2, whatever the case');
+  eq(find('box kitchen'), ['Spice Rack'], 'box kitchen is only that box');
+  eq(find('box #3'), ['Typewriter'], 'box #3');
+  eq(find('box 3 typewriter'), ['Typewriter'], 'words after the box label are searched as usual');
+  eq(find('typewriter box 3'), ['Typewriter'], 'and before it');
+  eq(find('box 3 castle'), [], 'every word still has to match');
+  eq(find('box 3'), ['Typewriter'], 'box 3 is not box 13');
+  eq(find('box 99'), [], 'a box with nothing in it finds nothing');
 }
 eq(['10', '2', 'B', 'a'].sort(C.natural), ['2', '10', 'a', 'B'], 'boxes sort as people count');
 
