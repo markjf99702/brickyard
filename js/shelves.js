@@ -12,7 +12,6 @@
     { k: 'custom', label: 'My own', name: '', w: '', d: '', levels: [] },
   ];
   var COLOURS = ['#c8322b', '#1f5ba6', '#2f8a4e', '#e08a1e', '#6d4fa0', '#20817a', '#8a5a3c', '#5b6770'];
-  var lastLeft = {}; // id → why it didn't fit, from the last fill
   function $(id) { return document.getElementById(id); }
 
   function cases() {
@@ -68,8 +67,9 @@
       (why ? '<div class="m warn">' + esc(why) + '</div>' : '') + '</div><span></span></button></li>';
   }
 
-  // Why a waiting set isn't on a shelf: what the last fill said, or what stops it fitting now.
-  function whyNot(x, all, ids) { return lastLeft[x.id] || (all.length ? S.whyNot(all, x, ids) : ''); }
+  // Why a waiting set isn't on a shelf, from the bookcases and sizes as they are now: right after a fill that's
+  // what the fill found, and it never outlives a bookcase or a size changing.
+  function whyNot(x, all, ids) { return all.length ? S.whyNot(all, x, ids) : ''; }
 
   // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
   // above it (its size or the shelf's height changed after it was placed), is marked in red.
@@ -134,8 +134,6 @@
   function fillAll() {
     var before = cases(), r = S.fill(before, sets()), moved = 0;
     r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) { app.putCase(c); } });
-    lastLeft = {};
-    r.left.forEach(function (x) { lastLeft[x.set.id] = x.why; });
     moved = S.sort(sets(), r.cases).placed.length - S.sort(sets(), before).placed.length;
     render();
     toast(moved ? plural(moved, 'set') + ' placed' + (r.left.length ? '; ' + r.left.length + ' didn’t fit' : '') : 'Nothing else fits. See why under each set.');
@@ -190,7 +188,7 @@
       if (w && d && h) y.size = { w: w, d: d, h: h };
       else if (!w && !d && !h) delete y.size;
       else { toast('Give all three sizes, or none'); return; }
-      if (JSON.stringify(y.size || null) !== JSON.stringify(x.size || null)) { app.putSet(y); delete lastLeft[id]; }
+      if (JSON.stringify(y.size || null) !== JSON.stringify(x.size || null)) app.putSet(y);
       var want = $('z-where') ? $('z-where').value : '', turn = $('z-turn') ? $('z-turn').checked : false;
       var now = at ? at.c + ':' + at.l : '';
       if (want !== now || (at && turn !== at.turn)) {

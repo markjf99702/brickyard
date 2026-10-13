@@ -343,6 +343,25 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Why a set isn't on a shelf is worked out afresh: adding a bookcase that takes it clears the old reason.
+{
+  const { c, p } = await withSets({ sets: {
+    th: { id: 'th', t: 1, name: 'Tree House', state: 'built', size: { w: 30, d: 20, h: 39 } },
+    bt: { id: 'bt', t: 1, name: 'Bonsai Tree', state: 'built', size: { w: 20, d: 15, h: 18 } } },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 32, sets: [] }] } } });
+  await p.goto(base + '#shelves');
+  await p.click('[data-act="fill"]');
+  const why = () => p.locator('#shelves-body .list .item:has-text("Tree House") .warn').allTextContents();
+  assert.deepEqual(await why(), ['Too tall for every shelf (39 cm)']);
+  await p.click('[data-act="add-case"]');
+  await p.click('#k-preset [data-k="3"]');
+  await p.fill('#k-name', 'Tall one'); await p.fill('#k-w', '40'); await p.fill('#k-d', '30'); await p.fill('#k-levels', '45');
+  await p.click('#k-save');
+  assert.match(await p.textContent('[data-act="fill"]'), /Fit 1 set/);
+  assert.deepEqual(await why(), [], 'the old reason goes once a bookcase would take the set');
+  await c.close();
+}
+
 // A catalog brought in by Drive sync (which hands it to app.takeDoc) shows on the planner, and behind an open sheet.
 {
   const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree', state: 'built' } } });
