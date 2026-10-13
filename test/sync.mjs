@@ -95,7 +95,7 @@ await A.page.goto(SITE); // the lot's link left this device on Build from your b
 // A removal travels.
 await B.page.goto(SITE + '#catalog');
 await B.page.click('[data-id="b1"]');
-await B.page.click('#e-del'); await B.page.click('#e-del');
+await B.page.click('#e-del'); await B.page.waitForTimeout(700); await B.page.click('#e-del'); // a second tap, not a double tap
 await B.page.waitForTimeout(2600); await synced(B.page);
 await syncNow(A.page);
 assert.deepEqual(await names(A.page), ['Bonsai Tree', 'Typewriter'], 'a set removed on one device is gone on the other');

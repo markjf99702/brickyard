@@ -119,6 +119,14 @@ await page.click('#e-save');
 assert.equal((await live()).length, 1);
 await page.click('[data-close]');
 
+// A set you already have takes a second tap to add again, and a double tap is still one tap.
+await page.click('#add-btn');
+await page.fill('#e-num', '10698');
+await page.dblclick('#e-save');
+assert.equal((await live()).length, 1, 'a double tap does not add a second copy');
+assert.equal(await page.textContent('#e-save'), 'Add another copy');
+await page.click('[data-close]');
+
 // Open a link from Claude's script: the 10698 already owned comes in unticked.
 const dir = await mkdtemp(join(tmpdir(), 'brickyard-'));
 const out = execSync(`python3 skill/brickyard-cataloger/scripts/make_brickyard.py test/fixtures/sample.json --out ${JSON.stringify(dir)}`, { cwd: root }).toString();
@@ -167,8 +175,9 @@ await page.click('#e-ok');
 await page.click('#e-save');
 assert.ok(!(await live()).find(x => /Lamborghini/.test(x.name)).check);
 await page.click('.item:has-text("Medieval Castle")');
-await page.click('#e-del');
-assert.equal((await live()).length, 7, 'one tap does not remove');
+await page.dblclick('#e-del');
+assert.equal((await live()).length, 7, 'one tap, or a double tap, does not remove');
+await page.waitForTimeout(700);
 await page.click('#e-del');
 assert.equal((await live()).length, 6);
 assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 'removal is remembered');
@@ -220,6 +229,10 @@ cottage.model.name = 'Linked cottage';
 await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(cottage)).toString('base64url'));
 await page.waitForFunction(() => location.hash.startsWith('#model-m'));
 assert.equal(await page.textContent('#build-title'), 'Linked cottage');
+await page.click('#model-menu');
+await page.dblclick('#mm-del');
+assert.equal(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('brickyard.models'))).length), 1, 'a double tap does not remove a model');
+await page.click('[data-close]');
 await page.goto(base + '#build');
 await page.waitForSelector('#build-list .group');
 assert.match(await page.textContent('#build-list'), /Linked cottage/);
@@ -294,6 +307,10 @@ await page.selectOption('#z-where', '');
 await page.click('#z-save');
 assert.equal(await page.locator('.sv-set').count(), builtIds.length - 1, 'a set taken off its shelf');
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the shelf planner scrolls sideways on a phone');
+await page.click('[data-case]');
+await page.dblclick('#k-del');
+assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().cases).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
+await page.click('[data-close]');
 
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {

@@ -231,7 +231,7 @@
       if (p.k === 'custom') $('k-name').focus();
     };
     if ($('k-del')) $('k-del').onclick = function () {
-      if (!this.dataset.sure) { this.dataset.sure = '1'; this.textContent = 'Tap again to remove'; return; }
+      if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
       app.removeCase(c.id); app.closeSheet(); render(); toast('Removed. Its sets are back in Not on a shelf yet.');
     };
     $('k-save').onclick = function () {

@@ -44,6 +44,14 @@
     heldUntil = hold ? now + ms : 0;
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, ms);
   }
+  // Removing and doubling up take a second tap, so nothing goes on one slip. It has to come a moment after the
+  // first, so a double tap is still one tap. True when this tap is the one that confirms.
+  function secondTap(btn, key) {
+    key = key || 'sure';
+    var first = Number(btn.dataset[key] || 0);
+    if (!first) { btn.dataset[key] = String(Date.now()); return false; }
+    return Date.now() - first >= 600;
+  }
   function picHtml(x, cls) {
     var brick = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
     if (!prefs.pics || !x.num) return '<div class="pic none ' + (cls || '') + '">' + brick + '</div>';
@@ -259,8 +267,7 @@
     };
     if ($('e-ok')) $('e-ok').onclick = function () { delete x.check; this.parentNode.remove(); };
     if ($('e-del')) $('e-del').onclick = function () {
-      // A second tap confirms, so nothing goes on one slip.
-      if (!this.dataset.sure) { this.dataset.sure = '1'; this.textContent = 'Tap again to remove'; return; }
+      if (!secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
       removeSet(x.id); save(); closeSheet(); renderCatalog(); toast('Removed');
     };
     $('e-save').onclick = function () {
@@ -275,8 +282,8 @@
       if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
       if (isNew) {
         var dup = C.findDup(DOC, y);
-        if (dup && !this.dataset.again) {
-          this.dataset.again = '1'; this.textContent = 'Add another copy';
+        if (dup && !secondTap(this, 'again')) {
+          this.textContent = 'Add another copy';
           toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + '. Tap again to add a second copy.');
           return;
         }
@@ -487,7 +494,7 @@
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
-    toast: toast, openSheet: openSheet, closeSheet: closeSheet, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, openSheet: openSheet, closeSheet: closeSheet, secondTap: secondTap, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

@@ -277,7 +277,7 @@ $('model-menu').onclick = () => {
   panel.querySelector('[data-close]').onclick = app.closeSheet;
   $('mm-parts').onclick = partsSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {
-    if (!this.dataset.sure) { this.dataset.sure = '1'; this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
+    if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
     const all = saved(); delete all[current.id]; write(MODELS, all); app.closeSheet(); location.hash = '#build';
   };
 };
