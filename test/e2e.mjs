@@ -438,6 +438,29 @@ await page.waitForSelector('#build-list .group');
 assert.match(await page.textContent('#build-list'), /Linked cottage/);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the build screen scrolls sideways on a phone');
 
+// A reload reopens a model on the step it was on (kept for the tab, per model), with the address still #model-ID.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const step = () => p.textContent('#step-n');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.click('#step-next'); await p.click('#step-next');
+  assert.equal(await step(), 'Step 3');
+  await p.reload();
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.deepEqual([await step(), await p.evaluate(() => location.hash)], ['Step 3', '#model-x-cottage'], 'a reload reopens the model on its step');
+  const wall = { brickyard: 1, model: { name: 'Wall', parts: Array.from({ length: 4 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(wall)).toString('base64url'));
+  await p.waitForFunction(() => location.hash.startsWith('#model-m'));
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await step(), 'Step 1', 'another model starts at its first step');
+  await p.goto(base + '#build');
+  await p.click('#build-list a[href="#model-x-cottage"]');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await step(), 'Step 3', 'and the first is still on its step');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

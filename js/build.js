@@ -13,6 +13,11 @@ const $ = id => document.getElementById(id);
 
 function read(k, d) { try { return JSON.parse(localStorage.getItem(k) || 'null') || d; } catch (e) { return d; } }
 function write(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* the page still works without saving */ } }
+// The step each model is on, for this tab only, so a reload (or the phone dropping the tab and bringing it back)
+// reopens a model where you were. The address stays #model-ID.
+const STEP = 'brickyard.step.';
+function stepOf(id) { try { return Math.max(0, parseInt(sessionStorage.getItem(STEP + id), 10) || 0); } catch (e) { return 0; } }
+function keepStep(id, at) { try { sessionStorage.setItem(STEP + id, String(at)); } catch (e) { /* it starts at step 1 instead */ } }
 
 // ---------- data ----------
 // The site fetches parts/…; the single-file preview carries the same files in window.BRICKYARD_DATA.
@@ -219,7 +224,7 @@ async function openModel(id) {
   renderCheck();
   startStage();
   buildScene(model);
-  showStep(0, false);
+  showStep(stepOf(id), false);
 }
 
 function renderCheck() {
@@ -247,6 +252,7 @@ function renderCheck() {
 function showStep(k, animate = true) {
   const n = current.steps.length;
   current.at = Math.max(0, Math.min(n, k));
+  keepStep(current.id, current.at);
   const done = current.at === n, step = done ? Infinity : current.steps[current.at];
   $('step-n').textContent = done ? 'Done' : 'Step ' + (current.at + 1);
   $('step-of').textContent = done ? ' · ' + plural(current.res.pieces, 'piece') : ' of ' + n;
