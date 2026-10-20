@@ -120,7 +120,7 @@
 
   function groupOf(x) {
     switch (prefs.group) {
-      case 'box': return x.box ? 'Box ' + x.box : 'Not packed';
+      case 'box': return x.box ? 'Box ' + C.boxName(x.box) : 'Not packed';
       case 'theme': return x.theme || 'No theme';
       case 'state': return C.STATE_NAMES[x.state] || 'State not set';
       case 'new': return '';
@@ -176,7 +176,7 @@
         html += (g ? '<h3 class="group"><span>' + esc(g) + '</span><span>' + n + '</span></h3>' : '') + '<ul class="list">';
         last = g;
       }
-      var sub = prefs.group === 'room' ? (x.box ? 'Box ' + x.box : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
+      var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
       html += '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
         '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
         (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +

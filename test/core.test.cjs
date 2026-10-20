@@ -130,6 +130,26 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   eq(find('box 3'), ['Typewriter'], 'box 3 is not box 13');
   eq(find('box 99'), [], 'a box with nothing in it finds nothing');
 }
+// "Box 5", "box #5" and "#5" typed as a label are all box 5: shown as "Box 5", never "Box Box 5", and found by
+// "box 5". Only showing and searching changes; the label is kept as typed.
+eq(['Box 5', 'box #5', '#5', '# 5', 'Box5', 'BOX 5', '5', 'Box Kitchen 2', 'Kitchen 2', 'Boxes', 'Box', '#', ''].map(C.boxName),
+  ['5', '5', '5', '5', '5', '5', '5', 'Kitchen 2', 'Kitchen 2', 'Boxes', 'Box', '#', ''], 'a box label without Box or # in front');
+eq(C.where({ room: 'Office', spot: 'Closet', box: 'Box 5' }), 'Office › Closet · Box 5', 'where: Box 5, not Box Box 5');
+eq(C.where({ box: '#5' }), 'Box 5', 'where: #5 is Box 5');
+eq(C.cleanSet({ name: 'x', box: 'Box 5' }).box, 'Box 5', 'the label is saved as typed');
+{
+  const sets = [C.cleanSet({ name: 'Galaxy Explorer', box: 'Box 5' }), C.cleanSet({ name: 'Tree House', box: '#5' }),
+    C.cleanSet({ name: 'Typewriter', box: '5' }), C.cleanSet({ name: 'Castle', box: 'Box 15' }), C.cleanSet({ name: 'Orchid', box: 'Box Kitchen 2' })];
+  const labels = sets.map(x => x.box);
+  const find = q => sets.filter(x => C.matches(x, q, labels)).map(x => x.name);
+  eq(find('box 5'), ['Galaxy Explorer', 'Tree House', 'Typewriter'], 'box 5 finds Box 5, #5 and 5');
+  eq(find('Box #5'), ['Galaxy Explorer', 'Tree House', 'Typewriter'], 'and so does Box #5');
+  eq(find('box 15'), ['Castle'], 'box 15 is still only box 15');
+  eq(find('box kitchen 2'), ['Orchid'], 'Box Kitchen 2 is box kitchen 2');
+  eq(find('box 5 tree'), ['Tree House'], 'words after a box are searched as usual');
+  check(C.matches(sets[0], 'box 5'), 'Box 5 is found with no list of labels');
+  check(C.matches(sets[1], '#5'), 'a label is still found as it was typed');
+}
 eq(['10', '2', 'B', 'a'].sort(C.natural), ['2', '10', 'a', 'B'], 'boxes sort as people count');
 
 // Spreadsheet.

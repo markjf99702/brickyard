@@ -117,7 +117,7 @@ async function renderList() {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
       '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (s.state === 'apart' ? '' : s.state === 'built' ? ' · built, so off unless you take it apart' : '') + '</small></span></label></li>').join('') +
       lots.map(l => '<li class="lot"><label><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + '>' +
-        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · box ' + esc(l.box) : '') +
+        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · box ' + esc(window.BrickCore.boxName(l.box)) : '') +
         (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></label>' +
         '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
     if (!any) html += '<p class="flag"><span>Tick a set or a lot to build from its pieces.</span></p>';

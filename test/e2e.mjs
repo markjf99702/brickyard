@@ -201,6 +201,26 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 
+// A box typed as "Box 5" or "#5" is box 5: shown as "Box 5", never "Box Box 5", one group with "5", and "box 5" finds it.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, name: 'Alpha', room: 'Office', box: 'Box 5' }, b: { id: 'b', t: 1, name: 'Bravo', room: 'Office', box: '#5' },
+    c: { id: 'c', t: 1, name: 'Charlie', room: 'Office', box: '5' }, d: { id: 'd', t: 1, name: 'Delta', room: 'Office', box: 'Box 15' } } });
+  await p.goto(base + '#catalog');
+  const subs = () => p.locator('#list-wrap .item .m').evaluateAll(ms => ms.map(m => m.textContent).filter(Boolean));
+  assert.deepEqual(await subs(), ['Box 5', 'Box 5', 'Box 5', 'Box 15'], 'grouped by room, each set says Box 5, not Box Box 5');
+  await p.selectOption('#group', 'box');
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => [h.children[0].textContent, +h.children[1].textContent]));
+  assert.deepEqual(await heads(), [['Box 5', 3], ['Box 15', 1]], 'Box 5, #5 and 5 are one box');
+  await p.selectOption('#group', 'theme');
+  assert.deepEqual(await subs(), ['Office · Box 5', 'Office · Box 5', 'Office · Box 5', 'Office · Box 15'], 'and say so grouped any other way');
+  await p.fill('#q', 'box 5');
+  assert.deepEqual(await p.locator('#list-wrap .item .t').allTextContents(), ['Alpha', 'Bravo', 'Charlie'], '"box 5" finds Box 5, #5 and 5');
+  await p.click('.item:has-text("Alpha")');
+  assert.equal(await p.inputValue('#e-box'), 'Box 5', 'the label is kept as it was typed');
+  await c.close();
+}
+
 // Edit: clear a check, then remove a set.
 await page.click('.item:has-text("Lamborghini")');
 await page.click('#e-ok');

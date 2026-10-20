@@ -263,9 +263,14 @@
     return h.toString(36);
   }
 
+  // A moving box's label without a "Box" or "#" in front, the way it's shown and searched: "Box 5", "box #5" and
+  // "#5" are all box 5, so it never reads "Box Box 5" and "box 5" finds it. The label is kept as it was typed.
+  function bareBox(t) { var u = t.replace(/^box(?:\s+|(?=[#\d]))/i, '').replace(/^#\s*/, ''); return u || t; }
+  function boxName(b) { return bareBox(s(b, 40)); }
+
   function where(x) {
     var place = [x.room, x.spot].filter(Boolean).join(' › ');
-    if (x.box) place = place ? place + ' · Box ' + x.box : 'Box ' + x.box;
+    if (x.box) place = (place ? place + ' · ' : '') + 'Box ' + boxName(x.box);
     return place;
   }
 
@@ -281,15 +286,16 @@
 
   // "box 3" means moving box 3, not any set with "box" and a 3 somewhere. A label can be more than one word
   // ("box kitchen 2"), so what follows "box" is matched against the catalog's labels and the longest that fits
-  // wins, so "box kitchen 2" isn't box "Kitchen" and a 2 somewhere. "#" before the label is fine, and words after
-  // it are searched as usual ("box 3 typewriter"). Returns the label (null if none fits) and the rest of the query.
+  // wins, so "box kitchen 2" isn't box "Kitchen" and a 2 somewhere. Labels are matched without a "Box" or "#" in
+  // front (boxName), on either side, and words after the label are searched as usual ("box 3 typewriter").
+  // Returns the label (null if none fits) and the rest of the query.
   function boxSearch(q, labels) {
     var bm = /(?:^|\s)box\s+(\S.*)$/i.exec(q);
     if (!bm) return null;
     var rest = bm[1].toLowerCase().replace(/\s+/g, ' ').trim(), tries = [rest], best = null;
-    if (rest.charAt(0) === '#') tries.push(rest.slice(1).trim());
+    if (bareBox(rest) !== rest) tries.push(bareBox(rest));
     labels.forEach(function (l) {
-      var k = String(l || '').toLowerCase();
+      var k = boxName(l).toLowerCase();
       if (!k || (best && k.length <= best.label.length)) return;
       tries.forEach(function (t) { if (t === k || t.indexOf(k + ' ') === 0) best = { label: k, after: t.slice(k.length) }; });
     });
@@ -301,10 +307,10 @@
     if (!q) return true;
     var b = boxSearch(q, labels || (x.box ? [x.box] : []));
     if (b) {
-      if (!b.label || String(x.box || '').toLowerCase() !== b.label) return false;
+      if (!b.label || boxName(x.box).toLowerCase() !== b.label) return false;
       q = b.rest;
     }
-    var hay = [x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
+    var hay = [x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
       .join(' ').toLowerCase();
     return String(q).toLowerCase().split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; });
   }
@@ -383,7 +389,7 @@
     linkText: linkText, parseIncoming: parseIncoming,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
-    hash: hash, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);
