@@ -288,7 +288,9 @@
   // ("box kitchen 2"), so what follows "box" is matched against the catalog's labels and the longest that fits
   // wins, so "box kitchen 2" isn't box "Kitchen" and a 2 somewhere. Labels are matched without a "Box" or "#" in
   // front (boxName), on either side, and words after the label are searched as usual ("box 3 typewriter").
-  // Returns the label (null if none fits) and the rest of the query.
+  // A word after "box" that's neither a label nor a number is just a word ("creative brick box large"): then
+  // it's no box search at all (null). Otherwise it returns the label (null for a box with nothing in it, such as
+  // "box 3" before anything is packed in box 3) and the rest of the query.
   function boxSearch(q, labels) {
     var bm = /(?:^|\s)box\s+(\S.*)$/i.exec(q);
     if (!bm) return null;
@@ -299,6 +301,7 @@
       if (!k || (best && k.length <= best.label.length)) return;
       tries.forEach(function (t) { if (t === k || t.indexOf(k + ' ') === 0) best = { label: k, after: t.slice(k.length) }; });
     });
+    if (!best && !/^\d+$/.test(tries[tries.length - 1].split(' ')[0])) return null;
     return { label: best ? best.label : null, rest: q.slice(0, bm.index) + ' ' + (best ? best.after : '') };
   }
 

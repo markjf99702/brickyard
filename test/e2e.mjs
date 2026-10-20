@@ -170,6 +170,11 @@ assert.equal(await page.locator('.item').count(), 1);
 await page.click('.chip[data-f="all"]');
 await page.fill('#q', 'box 3');
 assert.equal(await page.locator('.item').count(), 2);
+// "box" then a word that isn't a box is an ordinary search; a box with nothing in it finds nothing.
+await page.fill('#q', 'creative brick box large');
+assert.deepEqual(await page.locator('.item .t').allTextContents(), ['Large Creative Brick Box'], '"creative brick box large" is an ordinary search');
+await page.fill('#q', 'box 4');
+assert.match(await page.textContent('#list-wrap'), /Nothing matches/, 'box 4 has nothing in it');
 await page.fill('#q', '');
 await page.selectOption('#group', 'box');
 assert.deepEqual(await page.locator('.group span:first-child').allTextContents(), ['Box 3', 'Box 7', 'Box 12', 'Not packed']);

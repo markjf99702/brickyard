@@ -150,6 +150,21 @@ eq(C.cleanSet({ name: 'x', box: 'Box 5' }).box, 'Box 5', 'the label is saved as 
   check(C.matches(sets[0], 'box 5'), 'Box 5 is found with no list of labels');
   check(C.matches(sets[1], '#5'), 'a label is still found as it was typed');
 }
+// "box" then a word that's neither a box label nor a number is an ordinary search: "creative brick box large"
+// finds the Large Creative Brick Box. "box 7" with nothing packed in box 7 still finds nothing.
+{
+  const sets = [C.cleanSet({ num: '10698', name: 'Large Creative Brick Box' }), C.cleanSet({ name: 'Typewriter', box: '3' }),
+    C.cleanSet({ name: 'Bonsai Tree', box: 'Kitchen 2' }), C.cleanSet({ name: 'Spice Rack', box: 'Kitchen' })];
+  const labels = sets.map(x => x.box).filter(Boolean);
+  const find = q => sets.filter(x => C.matches(x, q, labels)).map(x => x.name);
+  eq(find('creative brick box large'), ['Large Creative Brick Box'], 'box then a word that isn’t a box is an ordinary search');
+  eq(find('box large'), ['Large Creative Brick Box'], 'and so is box large');
+  eq(find('box 7'), [], 'box 7 with nothing in it finds nothing');
+  eq(find('box #7'), [], 'nor does box #7');
+  eq(find('box 7 typewriter'), [], 'box 7 is still a box with words after it');
+  eq(find('box kitchen'), ['Spice Rack'], 'a label is still a box');
+  eq(find('box kitchen 2 bonsai'), ['Bonsai Tree'], 'a label of two words, then a word');
+}
 eq(['10', '2', 'B', 'a'].sort(C.natural), ['2', '10', 'a', 'B'], 'boxes sort as people count');
 
 // Spreadsheet.
