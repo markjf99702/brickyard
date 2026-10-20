@@ -384,7 +384,7 @@
       (seenAt ? '<p class="flag"><span>You opened this link before. Sets you already have are unticked.</span></p>' : '') +
       '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
-      '<span class="note" style="margin:0">Leave these blank to keep what Claude put for each set.</span></div>' +
+      '<span class="note" style="margin:0">Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.</span></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · ');
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
@@ -412,7 +412,10 @@
         var y = Object.assign({}, r.x);
         if (room && room !== batch.room) { y.room = room; y.spot = spot; }
         else if (spot && spot !== batch.spot) y.spot = spot;
-        if (box !== batch.box) y.box = box;
+        // A box typed here goes on every set. Cleared, the batch's box comes off the sets that have it (they're
+        // unpacked), and a set Claude put in a box of its own keeps that one.
+        if (box && box !== batch.box) y.box = box;
+        else if (!box && batch.box && C.natural(C.boxName(y.box), C.boxName(batch.box)) === 0) delete y.box;
         y = C.cleanSet(Object.assign(y, { added: day }));
         if (!y) return;
         y.id = newId(); putSet(y); n++;

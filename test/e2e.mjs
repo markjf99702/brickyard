@@ -257,6 +257,31 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 
+// Adding sets from Claude: clearing Moving box takes the batch's box off the sets that have it, and a set Claude
+// put in a box of its own keeps it. A box typed in goes on every set.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const open = async b => {
+    await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: b })).toString('base64url'));
+    await p.waitForSelector('#rv-add');
+  };
+  const boxes = () => p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del).map(x => x.name + ': ' + (x.box || '')).sort());
+  await open({ name: 'Box 7', box: '7', sets: [{ num: '10497', name: 'Galaxy Explorer' }, { num: '21318', name: 'Tree House' }, { num: '10281', name: 'Bonsai Tree', box: 'Kitchen 2' }] });
+  assert.equal(await p.inputValue('#rv-box'), '7');
+  assert.equal(await p.textContent('.bulk .note'), 'Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.');
+  await p.fill('#rv-box', '');
+  await p.click('#rv-add');
+  assert.deepEqual(await boxes(), ['Bonsai Tree: Kitchen 2', 'Galaxy Explorer: ', 'Tree House: '], 'a cleared box comes off the batch’s sets, not off Bonsai’s own');
+  await open({ box: '7', sets: [{ num: '21327', name: 'Typewriter' }, { num: '10311', name: 'Orchid', box: 'Kitchen 2' }] });
+  await p.fill('#rv-box', '9');
+  await p.click('#rv-add');
+  assert.deepEqual((await boxes()).filter(b => /Typewriter|Orchid/.test(b)), ['Orchid: 9', 'Typewriter: 9'], 'a box typed in goes on every set');
+  await open({ box: '7', sets: [{ num: '75192', name: 'Millennium Falcon' }, { num: '10294', name: 'Titanic', box: 'Kitchen 2' }] });
+  await p.click('#rv-add');
+  assert.deepEqual((await boxes()).filter(b => /Falcon|Titanic/.test(b)), ['Millennium Falcon: 7', 'Titanic: Kitchen 2'], 'left as it was, each set keeps what Claude put');
+  await c.close();
+}
+
 // Edit: clear a check, then remove a set.
 await page.click('.item:has-text("Lamborghini")');
 await page.click('#e-ok');
