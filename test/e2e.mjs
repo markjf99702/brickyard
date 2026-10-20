@@ -256,6 +256,24 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   assert.equal(await p.evaluate(() => location.hash), '#build', 'the line goes to Build from your box');
   await c.close();
 }
+// With a filter on (Built, Partly built…) a search for a box is for sets of that kind, so its loose pieces stay out,
+// as they do grouped by box: no "Also in box 14" under no sets, and "Nothing matches" when none of them are in it.
+{
+  const { c, p } = await withSets({
+    sets: { t: { id: 't', t: 1, name: 'Typewriter', box: '14', state: 'partial' }, g: { id: 'g', t: 1, name: 'Galaxy Explorer', box: '3', state: 'built' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: 'Box 14', parts: [['3001', 4, 40]] }, bag: { id: 'bag', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] } } });
+  await p.goto(base + '#catalog');
+  const lines = () => p.locator('#list-wrap .note.lots').allTextContents();
+  await p.fill('#q', 'box 14');
+  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 40 loose pieces'], 'with All, a box’s loose pieces show');
+  await p.click('.chip[data-f="built"]');
+  assert.deepEqual([await lines(), await p.textContent('#list-wrap')], [[], 'Nothing matches. Try another word or filter.'], 'Built, with no built set in box 14: nothing matches');
+  await p.click('.chip[data-f="partial"]');
+  assert.deepEqual([await p.locator('#list-wrap .item .t').allTextContents(), await lines()], [['Typewriter'], []], 'Partly built: the set, and no loose pieces');
+  await p.fill('#q', 'box 20');
+  assert.deepEqual([await lines(), await p.textContent('#list-wrap')], [[], 'Nothing matches. Try another word or filter.'], 'a box of only loose pieces, with a filter on');
+  await c.close();
+}
 
 // Adding sets from Claude: clearing Moving box takes the batch's box off the sets that have it, and a set Claude
 // put in a box of its own keeps it. A box typed in goes on every set.

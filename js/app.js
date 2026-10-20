@@ -157,13 +157,13 @@
 
     // Loose pieces aren't sets, but they're packed in moving boxes too (lots, kept for Build from your box). Their
     // boxes are boxes the search knows, and looking at a box shows them: a line under the box's group, or after a
-    // search for the box.
+    // search for the box. Not with a filter on (Built, Missing pieces…): that's a look for sets of that kind.
     var lots = C.liveLots(DOC).filter(function (l) { return l.box; });
     var labels = Object.keys(all.concat(lots).reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
     var shown = all.filter(function (x) { return passes(x) && C.matches(x, q, labels); });
     var bs = C.boxSearch(q, labels), inBox = function (x) { return x.box && C.boxName(x.box).toLowerCase() === bs.label; };
-    var hunt = bs && bs.label && !bs.rest.trim() ? lots.filter(inBox) : [];
-    var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), all.some(inBox)) : '';
+    var hunt = bs && bs.label && !bs.rest.trim() && prefs.show === 'all' ? lots.filter(inBox) : [];
+    var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), shown.length > 0) : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
     if (!shown.length) { $('list-wrap').innerHTML = huntLine || '<div class="empty"><p>Nothing matches. Try another word or filter.</p></div>'; return; }
