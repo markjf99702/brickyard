@@ -392,7 +392,7 @@
     linkText: linkText, parseIncoming: parseIncoming,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
-    hash: hash, boxName: boxName, where: where, totals: totals, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);

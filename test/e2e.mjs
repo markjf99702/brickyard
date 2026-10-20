@@ -226,6 +226,37 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 
+// Loose pieces packed in a moving box show with that box: a line under its group (a box of only loose pieces gets a
+// group of its own), and after a search for the box. The line goes to Build from your box, where they live.
+{
+  const { c, p } = await withSets({
+    sets: { t: { id: 't', t: 1, name: 'Typewriter', box: '14' }, g: { id: 'g', t: 1, name: 'Galaxy Explorer', box: '3' }, o: { id: 'o', t: 1, name: 'Orchid' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: 'Box 14', parts: [['3001', 4, 40], ['3020', 15, 2]] },
+      bag: { id: 'bag', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] }, cup: { id: 'cup', t: 1, name: 'Cup', parts: [['3001', 4, 1]] } } });
+  await p.goto(base + '#catalog');
+  const lines = () => p.locator('#list-wrap .note.lots').allTextContents();
+  assert.deepEqual(await lines(), [], 'grouped by room, no lines');
+  await p.selectOption('#group', 'box');
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.children[0].textContent + ' ' + h.children[1].textContent));
+  assert.deepEqual(await heads(), ['Box 3 1', 'Box 14 1', 'Box 20 ', 'Not packed 1'], 'a box of only loose pieces has a group in its place');
+  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 42 loose pieces', 'In box 20: Red bag, 10 loose pieces'], 'each box’s loose pieces under its group');
+  assert.equal(await p.locator('.group:has-text("Box 14") + .list + .note.lots').count(), 1, 'the line is under its box’s sets');
+  await p.fill('#q', 'box 14');
+  assert.deepEqual(await p.locator('#list-wrap .item .t').allTextContents(), ['Typewriter']);
+  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 42 loose pieces'], 'a search for the box shows its loose pieces');
+  await p.fill('#q', 'box 20');
+  assert.deepEqual([await p.locator('#list-wrap .item').count(), await lines()], [0, ['In box 20: Red bag, 10 loose pieces']], 'a box of only loose pieces is found, not "Nothing matches"');
+  await p.fill('#q', 'box 14 typewriter');
+  assert.deepEqual(await lines(), [], 'looking for something in the box shows only that');
+  await p.fill('#q', 'box 99');
+  assert.match(await p.textContent('#list-wrap'), /Nothing matches/);
+  await p.fill('#q', 'box 20');
+  await p.click('.note.lots a');
+  await p.waitForSelector('li.lot');
+  assert.equal(await p.evaluate(() => location.hash), '#build', 'the line goes to Build from your box');
+  await c.close();
+}
+
 // Edit: clear a check, then remove a set.
 await page.click('.item:has-text("Lamborghini")');
 await page.click('#e-ok');

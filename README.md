@@ -18,7 +18,7 @@ Brickyard is one app with three parts, all reading from the same catalog: **My s
 
 - **A catalog of sets.** For each set it keeps the number, name, year, piece count and theme; where it is (a room and shelf, or a moving box); whether it's built, partly built, taken apart or sealed; missing pieces; whether you have the paper instructions; its built size, for the shelf planner; tags and notes.
 - **Add from photos.** Claude reads the set numbers off boxes and instruction books, or recognises built models, and makes a Brickyard link. Opening it shows the list first: sets you already own are unticked, anything Claude wasn't sure of is marked **Check**, and you can put the whole batch in one room, shelf or moving box before tapping **Add**.
-- **Find things.** Search covers every field, and "box 3" finds what's packed in box 3. Filter by state, missing pieces or to check, and group by room, moving box, theme or state.
+- **Find things.** Search covers every field, and "box 3" finds what's packed in box 3, loose pieces too. Filter by state, missing pieces or to check, and group by room, moving box, theme or state.
 - **Pictures** of each set come from [Rebrickable](https://rebrickable.com/) by set number. Turn them off in the menu and nothing leaves your browser.
 - **Backups.** Download the whole catalog as a file and open it on another device (it merges), or download a spreadsheet (CSV).
 - No account and no server. Your catalog stays in your browser unless you turn on Google Drive sync (below). It works offline and installs to a phone's home screen.

@@ -151,11 +151,18 @@
       return;
     }
 
-    var labels = Object.keys(all.reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
+    // Loose pieces aren't sets, but they're packed in moving boxes too (lots, kept for Build from your box). Their
+    // boxes are boxes the search knows, and looking at a box shows them: a line under the box's group, or after a
+    // search for the box.
+    var lots = C.liveLots(DOC).filter(function (l) { return l.box; });
+    var labels = Object.keys(all.concat(lots).reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
     var shown = all.filter(function (x) { return passes(x) && C.matches(x, q, labels); });
+    var bs = C.boxSearch(q, labels), inBox = function (x) { return x.box && C.boxName(x.box).toLowerCase() === bs.label; };
+    var hunt = bs && bs.label && !bs.rest.trim() ? lots.filter(inBox) : [];
+    var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), all.some(inBox)) : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
-    if (!shown.length) { $('list-wrap').innerHTML = '<div class="empty"><p>Nothing matches. Try another word or filter.</p></div>'; return; }
+    if (!shown.length) { $('list-wrap').innerHTML = huntLine || '<div class="empty"><p>Nothing matches. Try another word or filter.</p></div>'; return; }
 
     if (prefs.group === 'new') shown.sort(function (a, b) { return (b.added || '').localeCompare(a.added || '') || b.t - a.t; });
     else shown.sort(function (a, b) {
@@ -167,23 +174,46 @@
 
     // Groups are told apart the way they're sorted, so "Office" and "office" (or box "3" and "03") make one group,
     // headed by the first spelling.
-    var html = '', last = null;
+    var groups = [];
     shown.forEach(function (x) {
-      var g = groupOf(x);
-      if (last === null || C.natural(g, last) !== 0) {
-        if (last !== null) html += '</ul>';
-        var n = shown.filter(function (y) { return C.natural(groupOf(y), g) === 0; }).length;
-        html += (g ? '<h3 class="group"><span>' + esc(g) + '</span><span>' + n + '</span></h3>' : '') + '<ul class="list">';
-        last = g;
-      }
-      var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
-      html += '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
-        '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
-        (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
-        (x.missing || x.check ? '<div class="m warn">' + [x.missing ? 'Missing pieces' : '', x.check ? 'Check' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>' +
-        (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
+      var g = groupOf(x), last = groups[groups.length - 1];
+      if (!last || C.natural(g, last.name) !== 0) groups.push(last = { name: g, sets: [] });
+      last.sets.push(x);
     });
-    $('list-wrap').innerHTML = html + '</ul>';
+    // Every set by moving box: each box's loose pieces go under its group, and a box holding only loose pieces
+    // gets a group of its own, in its place among the others.
+    if (prefs.group === 'box' && !q && prefs.show === 'all' && lots.length) {
+      lots.forEach(function (l) {
+        var name = 'Box ' + C.boxName(l.box), g = groups.filter(function (y) { return C.natural(y.name, name) === 0; })[0];
+        if (!g) groups.push(g = { name: name, sets: [] });
+        (g.lots = g.lots || []).push(l);
+      });
+      groups.sort(function (a, b) {
+        var la = a.name === 'Not packed', lb = b.name === 'Not packed';
+        return la !== lb ? (la ? 1 : -1) : C.natural(a.name, b.name);
+      });
+    }
+    $('list-wrap').innerHTML = groups.map(function (g) {
+      return (g.name ? '<h3 class="group"><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h3>' : '') +
+        (g.sets.length ? '<ul class="list">' + g.sets.map(setItem).join('') + '</ul>' : '') +
+        (g.lots ? lotsLine(g.lots, g.name.replace(/^Box /, ''), g.sets.length > 0) : '');
+    }).join('') + huntLine;
+  }
+
+  function setItem(x) {
+    var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
+    return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
+      '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
+      (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
+      (x.missing || x.check ? '<div class="m warn">' + [x.missing ? 'Missing pieces' : '', x.check ? 'Check' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>' +
+      (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
+  }
+
+  // The loose pieces packed in a box, as one muted line that goes to Build from your box, where they live.
+  // "Also" when the box has sets in it too.
+  function lotsLine(lots, label, also) {
+    return '<p class="note lots"><a href="#build">' + (also ? 'Also in box ' : 'In box ') + esc(label) + ': ' +
+      lots.map(function (l) { return esc(l.name) + ', ' + plural(C.lotTotals(l).pieces, 'loose piece'); }).join('; ') + '</a></p>';
   }
 
   function fillLists(all) {
