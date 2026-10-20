@@ -146,7 +146,7 @@
   }
   // Same rules as js/core.js (setNum, measure), repeated so this file stands on its own.
   function setNumOf(v) {
-    var t = (typeof v === 'number' || typeof v === 'string' ? String(v) : '').replace(/\s+/g, ' ').trim().slice(0, 40).toLowerCase().replace(/^(set|no\.?|#)\s*/, '').replace(/\s+/g, '');
+    var t = (typeof v === 'number' || typeof v === 'string' ? String(v) : '').replace(/\s+/g, ' ').trim().slice(0, 40).toLowerCase().replace(/^(?:lego[®™]?\s*)?(?:(?:set|no\.?|#)\s*)*/, '').replace(/\s+/g, '');
     var m = /^([0-9]{3,7}|[a-z]{1,8}[0-9]{2,7}[a-z]?)(?:-([0-9]{1,2}))?$/.exec(t);
     return m ? m[1] + '-' + (m[2] ? String(parseInt(m[2], 10)) : '1') : '';
   }

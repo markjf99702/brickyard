@@ -32,9 +32,12 @@
     return Math.min(500, Math.round(x * 10) / 10);
   }
 
-  // "10698", "10698-1", "#10698", "set 10698 v2" → "10698-1". Rebrickable's numbering: number, dash, version.
+  // A set number the way Rebrickable writes it: number, dash, version. "10698", "#10698", "Set 10698" and
+  // "LEGO 10698" are all "10698-1" (a leading "LEGO" goes, then any run of "set", "no." and "#"), and "10698-2"
+  // keeps its version. Anything else is "" ("set 10698 v2", "hello"). shelf-core.js (setNumOf) and the
+  // cataloger's script (set_num) clean the same way.
   function setNum(v) {
-    var t = s(v, 40).toLowerCase().replace(/^(set|no\.?|#)\s*/, '').replace(/\s+/g, '');
+    var t = s(v, 40).toLowerCase().replace(/^(?:lego[®™]?\s*)?(?:(?:set|no\.?|#)\s*)*/, '').replace(/\s+/g, '');
     var m = /^([0-9]{3,7}|[a-z]{1,8}[0-9]{2,7}[a-z]?)(?:-([0-9]{1,2}))?$/.exec(t);
     if (!m) return '';
     return m[1] + '-' + (m[2] ? String(parseInt(m[2], 10)) : '1');

@@ -19,9 +19,10 @@ sets.json (every field is optional except a set number or a name):
   ]
 }
 
-Set numbers are normalised the way Rebrickable writes them ("10698" -> "10698-1"); a number that doesn't
-look like a set number is dropped and flagged. State words like "assembled" or "new in box" are mapped
-onto Brickyard's four. Likely doubles in the list are flagged. Exits 1 (printing why) if the input can't be used.
+Set numbers are normalised the way Rebrickable writes them ("10698", "#10698" or "LEGO 10698" -> "10698-1");
+a number that doesn't look like a set number is dropped and flagged. State words like "assembled" or "new in
+box" are mapped onto Brickyard's four. Likely doubles in the list are flagged. Exits 1 (printing why) if the
+input can't be used.
 
 Sizes for the shelf planner, for sets already in Brickyard, go in a file of their own and make a sizes link:
 
@@ -76,7 +77,8 @@ def measure(v):
 
 
 def set_num(v):
-    t = re.sub(r'\s+', '', re.sub(r'^(set|no\.?|#)\s*', '', s(v, 40).lower()))
+    """The same as setNum in js/core.js: a leading "LEGO" goes, then any run of "set", "no." and "#"."""
+    t = re.sub(r'\s+', '', re.sub(r'^(?:lego[®™]?\s*)?(?:(?:set|no\.?|#)\s*)*', '', s(v, 40).lower(), count=1))
     m = re.fullmatch(r'([0-9]{3,7}|[a-z]{1,8}[0-9]{2,7}[a-z]?)(?:-([0-9]{1,2}))?', t)
     if not m:
         return ''

@@ -31,6 +31,18 @@ eq(C.setNum('40220-01'), '40220-1', 'leading zero in version');
 eq(C.setNum('sw0001a'), 'sw0001a-1', 'letters-and-numbers ids');
 eq(C.setNum('hello'), '', 'a word is not a set number');
 eq(C.setNum('12'), '', 'too short');
+eq(C.setNum('LEGO 10698'), '10698-1', 'a leading LEGO goes');
+eq(C.setNum('LEGO® Set No. #10698-2'), '10698-2', 'LEGO, then any run of set, no. and #');
+eq(C.setNum('lego10698-1'), '10698-1', 'lego stuck to the number goes too');
+eq(C.setNum('set 10698 v2'), '', 'a version written as v2 is not a set number');
+eq(C.setNum('LEGO'), '', 'LEGO alone is not a set number');
+// A set saved before LEGO was dropped from numbers ("lego10698-1") loads as the plain number, so it gets its
+// picture, its parts list and the double warning.
+{
+  const old = C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 1, num: 'lego10698-1', name: 'Large Creative Brick Box' } } } });
+  eq(old.sets.a.num, '10698-1', 'a set saved as lego10698-1 loads as 10698-1');
+  eq((C.findDup(old, C.cleanSet({ num: '10698' })) || {}).id, 'a', 'and is the same set as 10698');
+}
 eq(C.shortNum('10698-1'), '10698', 'short form drops -1');
 eq(C.shortNum('10698-2'), '10698-2', 'short form keeps other versions');
 
@@ -195,6 +207,23 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     const o = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), odd, '--out', dir], { encoding: 'utf8' });
     check(/doesn’t look like a set number/.test(o), 'script flags a bad set number');
     check(/twice/.test(o), 'script flags doubles');
+    // Set numbers however they're written: the script's set_num and the page's setNum agree.
+    const spellings = ['10698', '10698-1', '#10698-2', 'Set 6020', 'set10698', 'No. 10698', 'LEGO 10698', 'Lego set 10698', 'lego10698-1',
+      'LEGO® Set No. #10698-2', 'LEGO™ 75192', 'set #no. 10698', 'sw0001a', 'set 10698 v2', 'LEGO', 'hello', '12', 'LEGO-10698'];
+    const ascii = t => t.replace(/[\u007f-￿]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+    const pyNums = JSON.parse(execFileSync('python3', ['-c', `
+import json, sys, importlib.util
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location('mb', sys.argv[1]); mb = importlib.util.module_from_spec(spec); spec.loader.exec_module(mb)
+print(json.dumps([mb.set_num(v) for v in json.loads(sys.stdin.read())]))`, path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py')], { input: ascii(JSON.stringify(spellings)), encoding: 'utf8' }));
+    eq(pyNums, spellings.map(C.setNum), 'script and page agree on set numbers');
+    // And through a whole batch: "LEGO 10497" arrives as 10497-1, so it's found as a double.
+    const lego = path.join(dir, 'lego.json');
+    fs.writeFileSync(lego, JSON.stringify({ sets: [{ num: 'LEGO 10497', name: 'Galaxy Explorer' }, { num: 'LEGO® Set No. 21318-2', name: 'Tree House' }] }));
+    const lo = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), lego, '--out', dir], { encoding: 'utf8' });
+    const legoBatch = (await C.parseIncoming(lo.trim().split('\n').find(l => l.startsWith('https://')))).batch;
+    eq(legoBatch.sets.map(x => x.num), ['10497-1', '21318-2'], 'the script drops LEGO from set numbers');
+    legoBatch.sets.forEach(x => eq(C.cleanSet(x), x, 'page agrees with script on ' + x.name));
   } else console.log('  (python3 not found; skipped the skill script)');
 
   // Lots of loose pieces: cleaned, added up, kept in the catalog, merged like sets, carried by links.

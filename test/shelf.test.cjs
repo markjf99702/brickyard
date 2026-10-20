@@ -72,10 +72,17 @@ eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 
 eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
 
 // Sizes from Claude, and the cataloger script makes the same.
-const list = [{ num: '10497', w: '51', d: 33.04, h: 14, note: '  LEGO   says ' }, { num: '10497', w: 1, d: 1, h: 1 }, { num: 'nope', w: 1, d: 1, h: 1 }, { num: 21318, w: 22, d: 22 }];
+const list = [{ num: '10497', w: '51', d: 33.04, h: 14, note: '  LEGO   says ' }, { num: '10497', w: 1, d: 1, h: 1 }, { num: 'nope', w: 1, d: 1, h: 1 },
+  { num: 21318, w: 22, d: 22 }, { num: 'LEGO® Set No. 10281', w: 20, d: 15, h: 18 }];
 const clean = S.cleanSizes({ sizes: list });
-eq(clean, [{ num: '10497-1', w: 51, d: 33, h: 14, note: 'LEGO says' }], 'sizes cleaned');
+eq(clean, [{ num: '10497-1', w: 51, d: 33, h: 14, note: 'LEGO says' }, { num: '10281-1', w: 20, d: 15, h: 18 }], 'sizes cleaned');
 eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
+// Sizes read set numbers the way My sets does (js/core.js setNum), "LEGO 10497" included.
+{
+  const spellings = ['10497', '#10497-2', 'Set 6020', 'LEGO 10497', 'lego10497-1', 'LEGO™ Set No. #75192', 'sw0001a', 'set 10497 v2', 'hello'];
+  const one = n => (S.cleanSizes({ sizes: [{ num: n, w: 1, d: 1, h: 1 }] }) || [{ num: '' }])[0].num;
+  eq(spellings.map(one), spellings.map(C.setNum), 'the planner and My sets agree on set numbers');
+}
 (async () => {
   const doc = JSON.stringify({ brickyard: 1, sizes: list });
   check(S.isSizesLink('https://brickyard.junkdrawer.works/#z1z' + zlib.deflateRawSync(doc).toString('base64url')), 'sizes link recognised');

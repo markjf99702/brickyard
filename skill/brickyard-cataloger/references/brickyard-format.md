@@ -20,7 +20,7 @@ Each set:
 
 | Field | Meaning |
 |---|---|
-| `num` | Set number. `10698`, `10698-1` and `#10698` all mean `10698-1` (Rebrickable's form: number, dash, version) |
+| `num` | Set number. `10698`, `10698-1`, `#10698` and `LEGO 10698` all mean `10698-1` (Rebrickable's form: number, dash, version) |
 | `name` | Up to 160 characters. A set needs a `num` or a `name` |
 | `year`, `pieces` | Whole numbers |
 | `theme` | Free text: "Icons", "Technic", "Creator 3in1" |
