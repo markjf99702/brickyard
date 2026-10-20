@@ -683,6 +683,36 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Small text reads at 4.5:1 or better, light and dark: the Built, Can build and Sealed badges, the ✓ note when you have
+// every piece, and the white on the red buttons (which sit on a deeper red in dark mode).
+{
+  const ratio = (p, sel, under) => p.evaluate(([sel, under]) => {
+    const parse = c => {
+      const m = /^(?:rgba?|color)\((?:srgb )?([^)]*)\)/.exec(c), v = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+      return c.startsWith('color(') ? [v[0], v[1], v[2], v[3] ?? 1] : [v[0] / 255, v[1] / 255, v[2] / 255, v[3] ?? 1];
+    };
+    const over = (a, b) => [0, 1, 2].map(i => a[i] * a[3] + b[i] * (1 - a[3])).concat(1);
+    const lum = c => [0.2126, 0.7152, 0.0722].reduce((n, k, i) => n + k * (c[i] <= 0.03928 ? c[i] / 12.92 : ((c[i] + 0.055) / 1.055) ** 2.4), 0);
+    const s = getComputedStyle(document.querySelector(sel)), bg = over(parse(s.backgroundColor), parse(getComputedStyle(document.querySelector(under)).backgroundColor));
+    const a = lum(over(parse(s.color), bg)), b = lum(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }, [sel, under]);
+  const sets = { b: { id: 'b', t: 1, num: '10698-1', name: 'Large Creative Brick Box', state: 'apart' }, s: { id: 's', t: 1, name: 'Castle', state: 'sealed' }, g: { id: 'g', t: 1, name: 'Galaxy', state: 'built' } };
+  for (const colorScheme of ['light', 'dark']) {
+    const { c, p } = await withSets({ sets }, { colorScheme });
+    await p.goto(base + '#catalog');
+    const got = { Built: await ratio(p, '.badge.built', '.item'), Sealed: await ratio(p, '.badge.sealed', '.item'), button: await ratio(p, '#add-btn', 'body') };
+    await p.goto(base + '#build');
+    await p.waitForSelector('a[href="#model-x-cottage"] .badge.built');
+    got['Can build'] = await ratio(p, 'a[href="#model-x-cottage"] .badge.built', 'a[href="#model-x-cottage"]');
+    await p.click('a[href="#model-x-cottage"]');
+    await p.waitForSelector('#model-check .note.ok');
+    got['every piece'] = await ratio(p, '#model-check .note.ok', 'body');
+    for (const [what, r] of Object.entries(got)) assert.ok(r >= 4.5, colorScheme + ': ' + what + ' is ' + r.toFixed(2) + ':1');
+    await c.close();
+  }
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);
