@@ -101,7 +101,7 @@
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
       (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
       (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
-      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="width:min(100%,' + Math.round(W * 7) + 'px,calc(72vh * ' + (W / H).toFixed(3) + '))" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + '</svg></section>';
+      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + '</svg></section>';
   }
 
   // A name in the set's rectangle if it fits, else its number, else nothing.

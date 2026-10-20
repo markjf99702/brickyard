@@ -579,6 +579,22 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// On a phone a tall bookcase is drawn the full width of the screen, so its shelf labels can be read (about 11 px,
+// where they were 6). The page scrolls instead.
+{
+  const { c, p } = await withSets({ sets: {}, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [32, 32, 32, 32, 32, 32].map(h => ({ h, sets: [] })) } } });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('svg.shelf');
+  const [w, room, px] = await p.evaluate(() => {
+    const s = document.querySelector('svg.shelf'), r = s.getBoundingClientRect();
+    return [r.width, s.parentNode.clientWidth - 24, parseFloat(getComputedStyle(s.querySelector('.sv-h')).fontSize) * r.width / s.viewBox.baseVal.width];
+  });
+  assert.ok(Math.abs(w - room) < 1, 'a Billy takes the card’s width on a phone (' + Math.round(w) + ' of ' + room + ' px)');
+  assert.ok(px >= 9, 'its shelf labels are at least 9 px (' + px.toFixed(1) + ')');
+  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'and nothing scrolls sideways');
+  await c.close();
+}
+
 // A long reason under a set that doesn't fit is shown whole on a phone, not cut off.
 {
   const { c, p } = await withSets({ sets: { l: { id: 'l', t: 1, name: 'Lamborghini Sián FKP 37', state: 'built', size: { w: 60, d: 26, h: 15 } } },
