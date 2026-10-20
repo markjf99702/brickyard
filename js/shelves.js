@@ -315,5 +315,7 @@
   document.addEventListener('brickyard:route', route);
   // The catalog changed under the planner (Drive sync, or another tab).
   document.addEventListener('brickyard:changed', function () { if (!$('shelves').hidden) render(); });
+  // For a sizes file opened from My sets' menu (js/app.js), which goes on to Add sizes here.
+  window.BrickyardShelves = { reviewSizes: reviewSizes };
   route();
 })();

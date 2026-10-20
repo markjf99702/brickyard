@@ -362,8 +362,26 @@
   }
 
   function takeIncoming(p) {
-    return p.then(function (r) { if (r.kind === 'catalog') catalogSheet(r.doc); else if (r.kind === 'loose') looseSheet(r.lot); else reviewSheet(r.batch); })
-      .catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like sets from Claude or a Brickyard file'); });
+    return p.then(function (r) {
+      if (r.kind === 'catalog') catalogSheet(r.doc);
+      else if (r.kind === 'loose') looseSheet(r.lot);
+      else if (r.kind === 'sizes') takeSizes(r.doc);
+      else if (r.kind === 'model') takeModel(r.doc);
+      else reviewSheet(r.batch);
+    }).catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like sets from Claude or a Brickyard file'); });
+  }
+  // Sizes and models from Claude belong to the other screens, so a file or text opened here goes on there: sizes to
+  // the shelf planner's Add sizes (js/shelves.js), a model into Build from your box (js/build.js), opened.
+  function takeSizes(doc) {
+    var z = window.ShelfCore.cleanSizes(doc);
+    if (!z || !window.BrickyardShelves) throw new Error('empty');
+    location.hash = '#shelves';
+    window.BrickyardShelves.reviewSizes(z);
+  }
+  function takeModel(doc) {
+    var m = window.BuildCore && window.BuildCore.cleanModel(doc);
+    if (!m || !window.BrickyardBuild) throw new Error('empty');
+    location.hash = '#model-' + window.BrickyardBuild.saveModel(m);
   }
   function checkLink() {
     var h = location.hash;
@@ -481,7 +499,7 @@
       (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
       (window.BrickyardSync && window.BrickyardSync.here ? '<li><button type="button" id="m-sync"><span>Sync with Google Drive<small>The same catalog on every device</small></span></button></li>' : '') +
       '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
-      '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets from Claude</small></span></button></li>' +
+      '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets, sizes or a model from Claude</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-csv"><span>Download a spreadsheet<small>CSV, for Excel, Numbers or Google Sheets</small></span></button></li>') +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'

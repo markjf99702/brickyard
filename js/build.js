@@ -62,6 +62,8 @@ function saveModel(m) {
   if (!all[id]) { all[id] = { model: m, added: Date.now() }; write(MODELS, all); }
   return id;
 }
+// For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
+window.BrickyardBuild = { saveModel };
 async function modelById(id) {
   if (id.startsWith('x-')) {
     const name = id.slice(2);

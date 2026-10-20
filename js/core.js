@@ -339,11 +339,12 @@
   }
 
   // brickyard/#b1z… carries a batch as deflated JSON in base64url (#b1j… uncompressed); #batch= is URL-encoded
-  // JSON for writing by hand. #l1z… / #l1j… carry a lot of loose pieces the same way. The part after # never
-  // reaches a server.
+  // JSON for writing by hand. #l1z… / #l1j… carry a lot of loose pieces the same way, and so do the other screens'
+  // links, read here when one is pasted: sizes (#z1z…, js/shelf-core.js) and models (#d1z…, js/build-core.js).
+  // The part after # never reaches a server.
   function linkText(h) {
     h = String(h || '');
-    var m = /#([bl]1[zj])([A-Za-z0-9_-]+)/.exec(h);
+    var m = /#([bldz]1[zj])([A-Za-z0-9_-]+)/.exec(h);
     if (!m) {
       var b = /#batch=(\S+)/.exec(h);
       if (!b) return Promise.resolve('');
@@ -369,11 +370,12 @@
 
   // Anything pasted or opened: a link, a batch, a lot of loose pieces, or a whole catalog. Copying a whole message
   // from Claude brings more than that along, so a link is found wherever it is in the text (in a sentence, with a
-  // full stop after it), and the JSON inside whatever surrounds it.
+  // full stop after it), and the JSON inside whatever surrounds it. Sizes for the shelf planner and a model for
+  // Build from your box come back as they are (kind 'sizes' or 'model', doc), for those screens to read.
   function parseIncoming(t) {
     t = String(t || '').trim();
     var c = t.charAt(0);
-    if (c !== '{' && /#([bl]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(parseIncoming);
+    if (c !== '{' && /#([bldz]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(parseIncoming);
     return Promise.resolve().then(function () {
       var o = JSON.parse(jsonPart(t));
       if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
@@ -382,6 +384,9 @@
         if (!lot || lot.del) throw new Error('empty');
         return { kind: 'loose', lot: lot };
       }
+      var sizes = o && (o.sizes || (o.batch && o.batch.sizes));
+      if (Array.isArray(sizes) && sizes.length) return { kind: 'sizes', doc: o };
+      if (o && o.model && typeof o.model === 'object' && Array.isArray(o.model.parts)) return { kind: 'model', doc: o };
       var b = cleanBatch(o);
       if (!b || !b.sets.length) throw new Error('empty');
       return { kind: 'batch', batch: b };

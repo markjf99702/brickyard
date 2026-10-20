@@ -291,6 +291,26 @@ print(json.dumps([mb.set_num(v) for v in json.loads(sys.stdin.read())]))`, path.
   check(threw, 'an empty lot is refused');
   eq((await C.parseIncoming(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10698' }] } }))).kind, 'batch', 'a batch of sets is still a batch');
 
+  // Sizes and models from Claude, opened or pasted in My sets, are recognised and handed on as they are, for the shelf
+  // planner and Build from your box to read: the files, and their links in a sentence.
+  const sizesDoc = { brickyard: 1, sizes: [{ num: '10497', w: 51, d: 25, h: 33 }] };
+  const modelDoc = JSON.parse(fs.readFileSync(path.join(root, 'models/cottage.json'), 'utf8'));
+  const deflated = o => zlib.deflateRawSync(Buffer.from(JSON.stringify(o))).toString('base64url');
+  for (const [t, kind, doc, what] of [
+    [JSON.stringify(sizesDoc, null, 1), 'sizes', sizesDoc, 'a sizes file'],
+    [JSON.stringify(modelDoc), 'model', modelDoc, 'a model file'],
+    ['Here are the sizes: https://brickyard.junkdrawer.works/#z1z' + deflated(sizesDoc) + '. Tap Add sizes.', 'sizes', sizesDoc, 'a sizes link'],
+    ['https://brickyard.junkdrawer.works/#z1j' + Buffer.from(JSON.stringify(sizesDoc)).toString('base64url'), 'sizes', sizesDoc, 'an uncompressed sizes link'],
+    ['Open it: https://brickyard.junkdrawer.works/#d1z' + deflated(modelDoc), 'model', modelDoc, 'a model link'],
+  ]) {
+    let r = null; try { r = await C.parseIncoming(t); } catch (e) { /* refused */ }
+    eq(r && [r.kind, r.doc], [kind, doc], what + ' is recognised');
+  }
+  for (const t of [JSON.stringify({ brickyard: 1, sizes: [] }), JSON.stringify({ brickyard: 1, model: { name: 'No parts' } })]) {
+    let refused = false; try { await C.parseIncoming(t); } catch (e) { refused = true; }
+    check(refused, 'still refused: ' + t);
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

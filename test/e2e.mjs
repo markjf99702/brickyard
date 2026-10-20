@@ -307,6 +307,38 @@ await page.keyboard.press('Escape');
 assert.equal(await page.evaluate(() => document.activeElement.id), 'menu-btn', 'focus goes back to the menu button');
 assert.equal(await page.evaluate(() => document.getElementById('catalog').inert), false, 'the page works again once the sheet is closed');
 
+// Open a file in My sets also takes the sizes and model files Claude hands over: sizes go on to the shelf planner's
+// Add sizes, a model into Build from your box, opened. A sizes link pasted into Add from photos goes on too.
+{
+  const { c, p } = await withSets({ sets: { g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } } });
+  const file = (name, o) => p.setInputFiles('#file', { name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(o, null, 1)) });
+  await p.goto(base + '#catalog');
+  await p.click('#menu-btn');
+  assert.equal(await p.textContent('#m-open small'), 'A backup, or sets, sizes or a model from Claude');
+  await p.click('[data-close]');
+  await file('sizes.brickyard.json', { brickyard: 1, sizes: [{ num: '10497', w: 51, d: 25, h: 33 }] });
+  await p.waitForSelector('#zr-go');
+  await p.waitForFunction(() => !document.getElementById('shelves').hidden);
+  assert.equal(await p.evaluate(() => location.hash), '#shelves', 'a sizes file goes on to the shelf planner');
+  await p.click('#zr-go');
+  assert.deepEqual(await p.evaluate(() => window.brickyard.doc().sets.g.size), { w: 51, d: 25, h: 33 }, 'and its sizes are added');
+  await p.goto(base + '#catalog');
+  const model = JSON.parse(await readFile(join(root, 'models/cottage.json'), 'utf8'));
+  model.model.name = 'Filed cottage';
+  await file('filed-cottage.brickyard-model.json', model);
+  await p.waitForFunction(() => location.hash.startsWith('#model-m'));
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await p.textContent('#build-title'), 'Filed cottage', 'a model file opens in Build from your box');
+  assert.equal(await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem('brickyard.models'))).filter(m => m.model.name === 'Filed cottage').length), 1, 'and is kept with the models');
+  await p.goto(base + '#catalog');
+  await p.click('#claude-btn');
+  await p.fill('#paste', 'Sizes: ' + base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: [{ num: '10497', w: 52, d: 25, h: 33 }] })).toString('base64url') + '.');
+  await p.click('#p-go');
+  await p.waitForSelector('#zr-go');
+  assert.equal(await p.evaluate(() => location.hash), '#shelves', 'a pasted sizes link goes on to the shelf planner');
+  await c.close();
+}
+
 // Back with a sheet open goes back and closes the sheet, instead of leaving it over the screen before with the page
 // under it locked.
 {
