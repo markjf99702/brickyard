@@ -384,8 +384,8 @@
         if (!lot || lot.del) throw new Error('empty');
         return { kind: 'loose', lot: lot };
       }
-      var sizes = o && (o.sizes || (o.batch && o.batch.sizes));
-      if (Array.isArray(sizes) && sizes.length) return { kind: 'sizes', doc: o };
+      var sizes = o && (o.sizes || (o.batch && o.batch.sizes)), sets = o && (o.sets || (o.batch && o.batch.sets));
+      if (Array.isArray(sizes) && sizes.length && !sets) return { kind: 'sizes', doc: o };
       if (o && o.model && typeof o.model === 'object' && Array.isArray(o.model.parts)) return { kind: 'model', doc: o };
       var b = cleanBatch(o);
       if (!b || !b.sets.length) throw new Error('empty');

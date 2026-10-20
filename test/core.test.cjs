@@ -306,6 +306,7 @@ print(json.dumps([mb.set_num(v) for v in json.loads(sys.stdin.read())]))`, path.
     let r = null; try { r = await C.parseIncoming(t); } catch (e) { /* refused */ }
     eq(r && [r.kind, r.doc], [kind, doc], what + ' is recognised');
   }
+  eq((await C.parseIncoming(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10497' }], sizes: sizesDoc.sizes } }))).kind, 'batch', 'a batch with sizes in it is still a batch of sets');
   for (const t of [JSON.stringify({ brickyard: 1, sizes: [] }), JSON.stringify({ brickyard: 1, model: { name: 'No parts' } })]) {
     let refused = false; try { await C.parseIncoming(t); } catch (e) { refused = true; }
     check(refused, 'still refused: ' + t);
