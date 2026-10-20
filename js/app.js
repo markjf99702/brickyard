@@ -80,6 +80,10 @@
   // #catalog is My sets; #build, #model-… and model links (#d1z…) belong to Build from your box (js/build.js);
   // #shelves and sizes links (#z1z…) to the shelf planner (js/shelves.js).
   function route() {
+    // Going to another screen (Back, or a link) closes an open sheet, so it isn't left over the screen before with
+    // the page under it locked. A sheet opened for the address being shown stays: the preview opens its example
+    // just after moving to My sets, before the browser says it moved.
+    if (openScrim && openScrim._at !== location.hash) closeSheet();
     var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h), onShelves = /^#(shelves|z1[zj])/.test(h);
     $('home').hidden = onCat || onBuild || onShelves; $('catalog').hidden = !onCat; $('build').hidden = !onBuild; $('shelves').hidden = !onShelves;
     if (onCat) renderCatalog(); else if (!onBuild && !onShelves) renderHome();
@@ -252,6 +256,7 @@
     scrim.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
     scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
     scrim._onClose = onClose;
+    scrim._at = location.hash; // the screen it belongs to (route)
     document.body.appendChild(scrim);
     document.body.style.overflow = 'hidden';
     behind(true);

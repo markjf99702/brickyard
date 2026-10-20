@@ -307,6 +307,42 @@ await page.keyboard.press('Escape');
 assert.equal(await page.evaluate(() => document.activeElement.id), 'menu-btn', 'focus goes back to the menu button');
 assert.equal(await page.evaluate(() => document.getElementById('catalog').inert), false, 'the page works again once the sheet is closed');
 
+// Back with a sheet open goes back and closes the sheet, instead of leaving it over the screen before with the page
+// under it locked.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree' } } });
+  const state = () => p.evaluate(() => [document.querySelectorAll('.scrim').length, document.body.style.overflow, document.getElementById('home').hidden, document.getElementById('home').inert]);
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await p.waitForSelector('.sheet');
+  await p.goBack();
+  await p.waitForFunction(() => !document.getElementById('home').hidden);
+  assert.deepEqual(await state(), [0, '', false, false], 'Back from a set’s sheet: home, no sheet, and the page scrolls and works');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.click('#model-menu');
+  await p.waitForSelector('.sheet');
+  await p.goBack();
+  await p.waitForFunction(() => !document.getElementById('home').hidden);
+  assert.deepEqual(await state(), [0, '', false, false], 'Back from a model’s menu too');
+  await c.close();
+}
+// The preview copy (in a frame, with no sets) moves to My sets and opens its example batch, which stays open.
+{
+  const c = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  await c.route('https://cdn.rebrickable.com/**', r => r.fulfill({ status: 404 }));
+  const example = { brickyard: 1, batch: JSON.parse(await readFile(join(root, 'test/fixtures/sample.json'), 'utf8')) };
+  await c.addInitScript(b => { if (window.top !== window) window.BRICKYARD_EXAMPLE = b; }, example);
+  const p = await c.newPage();
+  p.on('pageerror', e => problems.push(e.message));
+  await p.setContent(`<iframe src="${base}" style="width:390px;height:800px"></iframe>`);
+  const f = await (await p.waitForSelector('iframe')).contentFrame();
+  await f.waitForSelector('#rv-add');
+  await f.waitForTimeout(600);
+  assert.deepEqual([await f.evaluate(() => location.hash), await f.locator('#rv-add').count()], ['#catalog', 1], 'the example’s sheet stays open on My sets');
+  await c.close();
+}
+
 // Pictures can be turned off.
 await page.click('#menu-btn');
 await page.click('#m-pics');
