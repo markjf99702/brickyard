@@ -468,13 +468,26 @@
     }
     // Inside the promise, so a link cut short (which atob refuses) is turned down like any bad link instead of
     // throwing while the page starts.
-    return Promise.resolve().then(function () {
-      var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
-      if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.');
-      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    return lessEnd(m[2], function (body) {
+      return Promise.resolve().then(function () {
+        var bin = atob(body.replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
+        if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.');
+        return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      });
     }).catch(function (e) { throw e && /browser/.test(e.message) ? e : fault('cut'); });
+  }
+  // A whole link can arrive with a dash or an underscore stuck to its end, which are characters a link is made of:
+  // markdown's _link_, or "link- open it". About one time in three what was captured then doesn't unpack, and the
+  // link was turned down as cut short when all of it had arrived. So when it doesn't unpack and ends in one of
+  // those, it's tried again without the last one, then two, then three. A link that really was cut still fails.
+  function lessEnd(body, unpack, n) {
+    var text = n ? body.slice(0, -n) : body;
+    return unpack(text).catch(function (e) {
+      if ((n || 0) >= 3 || !/[-_]$/.test(text) || (e && /browser/.test(e.message))) throw e;
+      return lessEnd(body, unpack, (n || 0) + 1);
+    });
   }
 
   // The JSON in what was pasted: from the first { to the last }, so ```json fences or a line above it don't matter.

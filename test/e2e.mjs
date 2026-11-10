@@ -3990,6 +3990,35 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A whole link from Claude with a dash or an underscore stuck to its end opens: markdown's _link_, or "link- open
+// it". They're characters a link is made of, so they were taken as part of it, and about one time in three the
+// browser then couldn't unpack it and Brickyard said the link was cut short when all of it had arrived. A link that
+// really is cut still says so.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const links = Array.from({ length: 40 }, (_, i) => {
+    const doc = { brickyard: 1, batch: { sets: Array.from({ length: 1 + i % 4 }, (_, k) => ({ num: String(21300 + i * 7 + k), name: 'Set ' + 'n'.repeat(i) + k, room: 'Office' })) } };
+    return [base + '#b1z' + deflateRawSync(JSON.stringify(doc)).toString('base64url'), doc.batch.sets.length];
+  });
+  const got = await p.evaluate(async list => {
+    const open = t => window.BrickCore.parseIncoming(t).then(r => r.batch.sets.length, e => e.why || 'refused');
+    const out = { whole: 0, ended: 0, cut: 0 };
+    for (const [link, n] of list) {
+      if (await open(link) === n) out.whole++;
+      if (await open('_' + link + '_') === n && await open(link + '- open it') === n && await open('**' + link + '__**') === n) out.ended++;
+      if (await open(link.slice(0, link.length - 9) + '_') === 'cut' && await open(link.slice(0, 70) + '-') === 'cut') out.cut++;
+    }
+    return out;
+  }, links);
+  assert.deepEqual(got, { whole: 40, ended: 40, cut: 40 }, 'links with - or _ stuck to their ends open in the browser, and cut ones are still cut');
+  // And opened from the address bar, as a tap on such a link would.
+  await p.goto('about:blank');
+  await p.goto(links[5][0] + '_');
+  await p.waitForSelector('.rv li');
+  assert.equal(await p.locator('.rv li').count(), links[5][1], 'a link with an underscore after it opens its review');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

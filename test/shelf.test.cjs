@@ -199,6 +199,21 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
     let z = null; try { z = await S.parseSizes(t); } catch (e) { /* refused */ }
     eq(z, clean, what + ' opens');
   }
+  // A sizes link with a dash or an underscore stuck to its end (markdown's _link_) still opens: they're characters a
+  // link is made of, and with one more on the end it didn't always unpack.
+  {
+    let opened = 0, tried = 0;
+    for (let i = 0; i < 24; i++) {
+      const some = { brickyard: 1, sizes: Array.from({ length: 1 + i % 4 }, (_, k) => ({ num: String(10000 + i * 37 + k), w: 10 + i, d: 8 + k, h: 5 + i % 7, note: 'n'.repeat(i) })) };
+      const link = 'https://brickyard.junkdrawer.works/#z1z' + zlib.deflateRawSync(JSON.stringify(some)).toString('base64url');
+      for (const t of ['_' + link + '_', link + '-', link + '__ ']) {
+        tried++;
+        const z = await S.parseSizes(t).catch(() => null);
+        if (JSON.stringify(z) === JSON.stringify(S.cleanSizes(some))) opened++;
+      }
+    }
+    eq(opened, tried, 'a sizes link with - or _ stuck to its end opens');
+  }
   for (const h of ['#z1zA', '#z1jAAAAA']) {
     let threw = null, refused = false;
     try { await S.parseSizes('https://brickyard.junkdrawer.works/' + h).catch(() => { refused = true; }); } catch (e) { threw = e; }

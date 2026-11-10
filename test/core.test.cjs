@@ -412,6 +412,32 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     eq(await why(site + '#batch=%7B%22sets%22%3A%5B%7B%22num%E0%A4%A'), 'cut', 'a hand-written link cut inside a %-escape');
     let lt = null; try { await C.linkText(z.slice(0, z.length - 4)); } catch (e) { lt = e; }
     eq(lt && lt.why, 'cut', 'linkText says cut too');
+    // A whole link with a dash or an underscore stuck to its end opens: markdown's _link_, "link- open it". Those
+    // are characters a link is made of, so they were taken as part of it, and about one time in three it then didn't
+    // unpack and was turned down as cut short. A link that really is cut is still cut, with them after it or not.
+    {
+      const rnd = rng(5);
+      let opened = 0, tried = 0, stillCut = 0, cuts = 0, ownEnd = 0;
+      for (let i = 0; i < 60; i++) {
+        const doc = { brickyard: 1, batch: { sets: Array.from({ length: 1 + i % 5 }, (_, k) => ({ num: String(10000 + Math.floor(rnd() * 80000)), name: 'Set ' + Math.floor(rnd() * 1e9).toString(36), room: 'Room ' + (k + i) })) } };
+        const want = JSON.stringify((await C.parseIncoming(JSON.stringify(doc))).batch);
+        for (const link of [site + '#b1z' + pack(doc), site + '#b1j' + Buffer.from(JSON.stringify(doc)).toString('base64url')]) {
+          if (/[-_]$/.test(link)) ownEnd++;
+          for (const t of ['_' + link + '_', link + '_', link + '- open it', link + '-', 'Here it is: __' + link + '__', '**' + link + '-_-**']) {
+            tried++;
+            const r = await C.parseIncoming(t).catch(() => null);
+            if (r && JSON.stringify(r.batch) === want) opened++;
+          }
+          for (const t of [link.slice(0, link.length - 7) + '_', '_' + link.slice(0, link.length - 11) + '_', link.slice(0, 60) + '--', link.slice(0, link.length - 9) + '-_-']) {
+            cuts++;
+            if (await why(t) === 'cut') stillCut++;
+          }
+        }
+      }
+      eq([opened, stillCut], [tried, cuts], 'a whole link with - or _ stuck to its end opens, and a cut one is still cut');
+      check(ownEnd > 0, 'some of those links end in - or _ themselves (' + ownEnd + ')');
+      for (const p in kinds) eq([await why('_' + site + p + pack(kinds[p]) + '_'), await why(site + p + pack(kinds[p]) + '-')], ['opened', 'opened'], 'the same for a ' + p + ' link');
+    }
     // A later format: # then a letter, a number above 1, and z or j, with a link's worth of data after it.
     for (const t of [site + '#b2z' + z.slice(4), '#q7j' + j.slice(4), 'Open this: ' + site + '#d3z' + pack(kinds['#d1z']) + '.']) {
       eq([await why(t), C.newerLink(t)], ['newer', true], 'a link of a newer format: ' + t.slice(0, 50));

@@ -251,12 +251,23 @@
     var m = /#(z1[zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
     if (!m) return Promise.resolve('');
     // Inside the promise, so a link cut short (which atob refuses) is turned down instead of throwing.
-    return Promise.resolve().then(function () {
-      var bin = atob(m[2].replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      if (m[1] === 'z1j') return new TextDecoder().decode(bytes);
-      if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links.');
-      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    return lessEnd(m[2], function (body) {
+      return Promise.resolve().then(function () {
+        var bin = atob(body.replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (m[1] === 'z1j') return new TextDecoder().decode(bytes);
+        if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links.');
+        return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      });
+    });
+  }
+  // A link with a dash or an underscore stuck to its end (markdown's _link_) is tried again without it, as in
+  // js/core.js (lessEnd).
+  function lessEnd(body, unpack, n) {
+    var text = n ? body.slice(0, -n) : body;
+    return unpack(text).catch(function (e) {
+      if ((n || 0) >= 3 || !/[-_]$/.test(text) || (e && /browser/.test(e.message))) throw e;
+      return lessEnd(body, unpack, (n || 0) + 1);
     });
   }
   // Pasted text can carry more than the link or the file (a sentence around the link, ```json fences around the

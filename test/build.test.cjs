@@ -177,6 +177,21 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
   check(B.isModelLink(link), 'model link recognised');
   eq((await B.parseModel(link)).parts, cottage.parts, 'd1z link opens');
   eq((await B.parseModel('#d1j' + Buffer.from(doc).toString('base64url'))).name, 'Cottage', 'd1j link opens');
+  // A model link with a dash or an underscore stuck to its end (markdown's _link_) still opens: they're characters
+  // a link is made of, and with one more on the end it didn't always unpack.
+  {
+    let opened = 0, tried = 0;
+    for (let i = 0; i < 24; i++) {
+      const some = { brickyard: 1, model: { name: 'Wall' + 'x'.repeat(i), parts: Array.from({ length: 1 + i % 5 }, (_, k) => ['3001', 4, 0, k * 3, 0, 0, k + 1]) } };
+      const l = 'https://brickyard.junkdrawer.works/#d1z' + zlib.deflateRawSync(JSON.stringify(some)).toString('base64url');
+      for (const t of ['_' + l + '_', l + '-', l + '__ ']) {
+        tried++;
+        const m = await B.parseModel(t).catch(() => null);
+        if (m && m.name === some.model.name && m.parts.length === some.model.parts.length) opened++;
+      }
+    }
+    eq(opened, tried, 'a model link with - or _ stuck to its end opens');
+  }
   // A whole message from Claude, copied: the link with a full stop after it or in a sentence, or the file in fences.
   for (const [t, what] of [[link + '.', 'a model link with a full stop after it'], ['Your cottage: ' + link + ' Open it in Brickyard.', 'a model link in a sentence'],
     ['```json\n' + doc + '\n```', 'a model file in ```json fences']]) {
