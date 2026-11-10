@@ -229,9 +229,15 @@
       case 'box': return x.box ? 'Box ' + C.boxName(x.box) : 'Not packed';
       case 'theme': return x.theme || 'No theme';
       case 'state': return C.STATE_NAMES[x.state] || 'State not set';
-      case 'new': return '';
+      case 'new': return dayName(x.added);
       default: return x.room ? x.room + (x.spot ? ' › ' + x.spot : '') : 'No room yet';
     }
+  }
+
+  // The day a set was added, as Newest first heads each day's sets: "20 Oct 2026".
+  function dayName(added) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(added || '');
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'No date';
   }
 
   // The keyboard's place survives the list being drawn again (Save, Remove, Undo, a filter chip, a catalog arriving
@@ -322,9 +328,10 @@
 
     // Groups are told apart the way they're sorted, so "Office" and "office" (or box "3" and "03") make one group,
     // headed by the first spelling.
-    var groups = [];
+    // Newest first has a heading for each day ("20 Oct 2026"), unless no set has a day to go by: then it's one list.
+    var groups = [], plain = prefs.group === 'new' && !shown.some(function (x) { return x.added; });
     shown.forEach(function (x) {
-      var g = groupOf(x), last = groups[groups.length - 1];
+      var g = plain ? '' : groupOf(x), last = groups[groups.length - 1];
       if (!last || C.natural(g, last.name) !== 0) groups.push(last = { name: g, sets: [] });
       last.sets.push(x);
     });
@@ -344,18 +351,43 @@
     $('list-wrap').innerHTML = groups.map(function (g) {
       // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
       return (g.name ? '<h2 class="group"' + (g.sets.length ? ' aria-label="' + esc(g.name) + ', ' + plural(g.sets.length, 'set') + '"' : '') + '><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h2>' : '') +
-        (g.sets.length ? '<ul class="list">' + g.sets.map(setItem).join('') + '</ul>' : '') +
+        (g.sets.length ? '<ul class="list">' + g.sets.map(function (x) { return setItem(x, q, labels); }).join('') + '</ul>' : '') +
         (g.lots ? lotsLine(g.lots, g.name.replace(/^Box /, ''), g.sets.length > 0) : '');
     }).join('') + huntLine;
   }
 
-  function setItem(x) {
+  // A row says what is missing and what to check, not only that something is ("Missing pieces" and "To check" sent
+  // you into every set in turn to find out): each on a line of its own, two lines of it at most. A screen reader
+  // still hears "To check", the chip's words.
+  function setItem(x, q, labels) {
     var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
+    var why = q ? foundBy(x, q, labels) : {}, note = firstLine(x.notes);
     return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
       '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
       (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
-      (x.missing || x.check ? '<div class="m warn">' + [x.missing ? 'Missing pieces' : '', x.check ? 'To check' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>' +
+      (x.missing ? '<div class="m warn">Missing: ' + esc(oneLine(x.missing)) + '</div>' : '') +
+      (x.check ? '<div class="m warn"><span aria-hidden="true">Check: </span><span class="vh">To check: </span>' + esc(x.check) + '</div>' : '') +
+      (why.tags ? '<div class="m">Tags: ' + esc(x.tags.join(', ')) + '</div>' : '') +
+      // The notes a search found the set by; on paper, the first line of every set's notes.
+      (why.notes ? '<div class="m">Notes: ' + esc(why.notes) + '</div>' : note ? '<div class="m print-only">' + esc(note) + '</div>' : '') + '</div>' +
       (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
+  }
+  function firstLine(t) { return String(t || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean)[0] || ''; }
+  // Several lines (Missing pieces is a box of them) as one: "the dial, one foot".
+  function oneLine(t) { return String(t || '').split('\n').map(function (l) { return l.trim().replace(/[,;]$/, ''); }).filter(Boolean).join(', '); }
+  // A set a search found only through its tags or its notes says so on its row: "display" brought up two sets
+  // with nothing on them saying why. { tags: true } when the search needed the tags, { notes: the line of the
+  // notes it found } when it needed the notes.
+  function foundBy(x, q, labels) {
+    var without = function (keys) { var y = Object.assign({}, x); keys.forEach(function (k) { delete y[k]; }); return C.matches(y, q, labels); };
+    if ((!x.tags && !x.notes) || without(['tags', 'notes'])) return {};
+    var box = C.boxSearch(q, labels), out = {}, words = C.fold(box ? box.rest : q).split(/\s+/).filter(Boolean);
+    if (x.tags && (!without(['tags']) || without(['notes']))) out.tags = true;
+    if (x.notes && !without(['notes'])) {
+      var lines = x.notes.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+      out.notes = lines.filter(function (l) { var f = C.fold(l); return words.some(function (w) { return f.indexOf(w) >= 0; }); })[0] || lines[0];
+    }
+    return out;
   }
 
   // The loose pieces packed in a box, as one muted line that goes to Build from your box, where they live.

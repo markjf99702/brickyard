@@ -849,7 +849,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   const named = (role, name, more) => p.getByRole(role, { name, exact: true, ...more }).count();
   assert.deepEqual([await named('button', 'All, 3 sets'), await named('button', 'Built, 2 sets'), await named('button', 'To check, 1 set'), await p.textContent('.chip[data-f="built"]')], [1, 1, 1, 'Built2'], 'a chip’s name has its count in words; it looks as it did');
   assert.deepEqual([await named('heading', 'Hall, 2 sets', { level: 2 }), await named('heading', 'Office, 1 set', { level: 2 }), await p.locator('#list-wrap h3').count()], [1, 1, 0], 'a group’s heading, straight under the screen’s');
-  assert.equal(await p.textContent('.item[data-id="b"] .warn'), 'To check', 'the row says To check, as the chip does');
+  assert.equal(await named('button', /Orchid.*To check: or is it 10311\?/, { exact: false }), 1, 'the row says To check, as the chip does, and what to check');
   assert.equal(await p.getAttribute('#sum', 'aria-live'), 'polite', 'the count is read out when it changes');
   await p.click('.item[data-id="a"]');
   assert.deepEqual([await named('group', 'State'), await p.getByRole('group', { name: 'State' }).getByRole('button').count()], [1, 4], 'the State buttons are a group called State');
@@ -1947,6 +1947,47 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.click('#add-btn');
   await p.fill('#e-num', '10698');
   assert.equal(await p.isHidden('#e-still'), true);
+  await c.close();
+}
+
+// A row says what is missing and what to check, in the words typed (it said only "Missing pieces" and "To check",
+// and each set had to be opened to find out), on a line each of two lines at most; a screen reader still hears
+// "To check". A set a search found only by its tags or notes shows them. Newest first heads each day's sets with
+// the day. On paper each row has the first line of its notes.
+{
+  const long = 'the number on the box was half under a price sticker and the last digit could be a 3 or an 8, and the photo of the back was out of focus so the name could not be read either';
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', state: 'built', room: 'Hall', missing: 'two shields\none grey 1x2 plate,', added: '2026-10-20' },
+    b: { id: 'b', t: 2, num: '10334-1', name: 'Retro Radio', state: 'built', room: 'Hall', check: 'number read from a blurry corner', missing: 'the dial', added: '2026-10-20' },
+    d: { id: 'd', t: 3, num: '10294-1', name: 'Titanic', state: 'apart', room: 'Office', notes: 'Second-hand, from Sam\nBags 1-12 in box 7, 13-25 in box 8', tags: ['display'], added: '2026-10-21' },
+    e: { id: 'e', t: 4, num: '10497-1', name: 'Galaxy Explorer', state: 'built', room: 'Office', tags: ['display', 'space'], check: long },
+    f: { id: 'f', t: 5, num: '21327-1', name: 'Typewriter', state: 'built', room: 'Office', notes: 'A display piece' } } });
+  await p.goto(base + '#catalog');
+  const lines = id => p.$$eval(`.item[data-id="${id}"] .m`, els => els.filter(e => getComputedStyle(e).display !== 'none').map(e => [...e.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('')));
+  assert.deepEqual(await lines('a'), ['10305', 'Missing: two shields, one grey 1x2 plate']);
+  assert.deepEqual(await lines('b'), ['10334', 'Missing: the dial', 'Check: number read from a blurry corner']);
+  assert.equal(await p.getByRole('button', { name: /Retro Radio.*Missing: the dial.*To check: number read from a blurry corner/ }).count(), 1, 'a screen reader hears To check, the chip’s words');
+  assert.deepEqual(await lines('d'), ['10294'], 'notes and tags stay off a row');
+  // A long reason is two lines, cut with an ellipsis; the row is no wider than the list.
+  const box = await p.$eval('.item[data-id="e"] .warn', e => ({ h: e.getBoundingClientRect().height, line: parseFloat(getComputedStyle(e).lineHeight), cut: e.scrollHeight > e.clientHeight + 1, right: e.getBoundingClientRect().right }));
+  assert.ok(box.cut && Math.abs(box.h - 2 * box.line) < 2 && box.right <= 390, 'a long reason takes two lines: ' + JSON.stringify(box));
+  // Found by a tag, by notes, by both.
+  await p.fill('#q', 'display');
+  assert.deepEqual([await lines('d'), await lines('e'), await lines('f')], [['10294', 'Tags: display'], ['10497', 'Check: ' + long, 'Tags: display, space'], ['21327', 'Notes: A display piece']]);
+  await p.fill('#q', 'bags');
+  assert.deepEqual(await lines('d'), ['10294', 'Notes: Bags 1-12 in box 7, 13-25 in box 8'], 'the line of the notes that was found');
+  await p.fill('#q', 'titanic');
+  assert.deepEqual(await lines('d'), ['10294'], 'found by its name, a row is as it was');
+  await p.fill('#q', '');
+  // Newest first: a heading for each day, newest at the top; sets with no date come last.
+  await p.selectOption('#group', 'new');
+  const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.children].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
+  assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
+  // On paper: the first line of a set's notes, and all of a long reason.
+  await p.emulateMedia({ media: 'print' });
+  assert.deepEqual(await lines('d'), ['10294', 'Office', 'Second-hand, from Sam']);
+  assert.equal(await p.$eval('.item[data-id="e"] .warn', e => e.scrollHeight > e.clientHeight + 1), false, 'the whole reason is printed');
   await c.close();
 }
 
