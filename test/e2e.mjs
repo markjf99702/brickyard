@@ -2085,6 +2085,36 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await e.c.close();
 }
 
+// The row the keyboard is on is clear of the bar stuck to the top and the two buttons stuck to the bottom of My
+// sets, going down the list and coming back up (WCAG 2.2, 2.4.11 Focus Not Obscured: a third of the rows stopped
+// partly under one or the other, some with only the edge of the focus ring showing). And a set shown from the
+// shelf planner still lands in the middle of what's left.
+{
+  const sets = {};
+  for (let i = 0; i < 40; i++) sets['s' + i] = { id: 's' + i, t: 1, num: (10200 + i) + '-1', name: 'Set number ' + (i + 1), state: ['built', 'apart', 'partial', 'sealed'][i % 4], room: ['Office', 'Hall', 'Garage'][i % 3] };
+  for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+    const { c, p } = await withSets({ sets }, { viewport: size, hasTouch: false, deviceScaleFactor: 1 });
+    await p.goto(base + '#catalog');
+    const hidden = () => p.evaluate(() => {
+      const a = document.activeElement, r = a.getBoundingClientRect(), top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top;
+      return a.classList.contains('item') ? Math.round(Math.max(0, top - r.top, r.bottom - bottom)) : -1;
+    });
+    await p.focus('#group');
+    let rows = 0, worst = 0;
+    for (let i = 0; i < 40; i++) { await p.keyboard.press('Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
+    assert.deepEqual([rows, worst], [40, 0], `going down the list at ${size.width} px: rows reached, and the most of one that was covered`);
+    rows = 0;
+    for (let i = 0; i < 39; i++) { await p.keyboard.press('Shift+Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
+    assert.deepEqual([rows, worst], [39, 0], `and coming back up at ${size.width} px`);
+    // Shown from elsewhere (the planner's See in My sets): in the middle of the room between the bars.
+    await p.evaluate(() => { scrollTo(0, 0); window.brickyard.showSet('s20'); });
+    await p.waitForSelector('#e-form');
+    const mid = await p.evaluate(() => { const r = document.querySelector('.item[data-id="s20"]').getBoundingClientRect(), top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top; return Math.abs((r.top + r.bottom) / 2 - (top + bottom) / 2); });
+    assert.ok(mid < 40, 'a set shown from the planner is in the middle, between the bars: off by ' + mid);
+    await c.close();
+  }
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

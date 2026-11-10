@@ -44,6 +44,10 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* What the keyboard moves to (a row, a set on a shelf) is brought clear of the bar stuck to the top, and in My sets
+   clear of the two buttons stuck to the bottom: it used to stop under them, down to a sliver of its focus ring. */
+html { scroll-padding-top: calc(env(safe-area-inset-top) + 76px); }
+html:has(#catalog:not([hidden])) { scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 400 16px/1.45 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -355,6 +359,7 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
   .item .m { white-space: normal; }
   .sumline { flex-wrap: wrap; }
   .fab-row { position: static; flex-wrap: wrap; } /* at the end of the list: stuck to the bottom they covered a third of it */
+  html:has(#catalog:not([hidden])) { scroll-padding-bottom: 0; }
   .fab-row .btn { padding: 7px 12px; font-size: 14px; }
   .stepbar .btn { min-width: 0; }
   ul.need { grid-template-columns: 1fr; }
