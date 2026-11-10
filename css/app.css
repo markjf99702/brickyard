@@ -276,10 +276,15 @@ ul.need li.short small::after { content: ' · short'; color: var(--red-text); fo
 svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); height: auto; margin: 0 auto; }
 @media (max-width: 600px) { svg.shelf { width: min(100%, var(--w)); } }
 .sv-frame, .sv-board { fill: #a8865f; }
+.sv-board.bad { fill: var(--red); }
 .sv-back { fill: color-mix(in srgb, #a8865f 16%, var(--card)); }
 .sv-set { cursor: pointer; }
 .sv-box { stroke: rgba(0, 0, 0, .25); stroke-width: .25; }
-.sv-set:hover .sv-box, .sv-set:focus-visible .sv-box { stroke: var(--ink); stroke-width: .5; }
+.sv-set:hover .sv-box { stroke: var(--ink); stroke-width: .5; }
+/* The keyboard's focus on a set: a dark line round it and a light one outside that (it was one thin line, 2.6 px). */
+.sv-ring { fill: none; stroke: none; pointer-events: none; }
+.sv-set:focus-visible .sv-box { stroke: var(--ink); stroke-width: .8; }
+.sv-set:focus-visible .sv-ring { stroke: var(--card); stroke-width: .7; }
 .sv-hit { fill: transparent; }
 /* A set that's been taken apart or sealed since it was put on its shelf: pale and hatched, its name in ink. */
 .sv-set.off .sv-box { fill-opacity: .3; }
@@ -290,6 +295,9 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
 .sv-h { fill: var(--muted); font-size: 2.6px; pointer-events: none; }
 .sv-tag { fill: color-mix(in srgb, var(--card) 88%, transparent); pointer-events: none; }
+/* A shelf with something wrong on it: its label is red with a "!" in front, white on the red the buttons use. */
+.sv-tag.bad { fill: var(--red-btn); }
+.sv-h.bad { fill: var(--red-ink); font-weight: 700; }
 /* A bookcase's shelves in its sheet: the shelf's number, its height, how many sets stand on it, Remove. */
 .levels { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .levels li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }

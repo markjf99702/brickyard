@@ -1798,6 +1798,68 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// What's wrong on a bookcase is said in words, with which shelf, which set and by how much, and the shelf's label has
+// a "!" (it was a red board and "A shelf is overfull, marked in red"). For a screen reader the drawing is a group:
+// each set is a button that says its shelf, whether it's side-on and what's wrong; each shelf's label says its height
+// and what's on it, an empty one too; Edit says which bookcase, and a heading how many sets. A set's name is white on
+// a colour dark enough for 4.5:1. The keyboard's place survives the redraw after Save and Fit.
+{
+  const set = (id, name, w, d, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d, h }, ...more });
+  const { c, p } = await withSets({ sets: { ge: set('ge', 'Galaxy Explorer', 52, 25, 13), lb: set('lb', 'London Bus', 34, 9, 18), th: set('th', 'Tree House', 27, 24, 37), bq: set('bq', 'Flower Bouquet', 26, 13, 31),
+    w1: set('w1', 'Bonsai Tree', 20, 15, 18), w2: set('w2', 'Eiffel Tower', 58, 58, 149), ns: { id: 'ns', t: 1, name: 'Orchid', state: 'built' } },
+    cases: { k: { id: 'k', t: 1, name: 'Office Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'ge' }, { id: 'lb' }] }, { h: 32, sets: [{ id: 'th' }, { id: 'bq', turn: true }] }, { h: 40, sets: [] }] } } }, { viewport: { width: 1280, height: 800 }, hasTouch: false });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await p.locator('.case .flag.bad').allTextContents(), ['Shelf 1 is overfull: 87 cm of sets on a 76 cm shelf. Move a set off, or turn one side-on.', 'Tree House (37 cm) is too tall for shelf 2 (32 cm). Move it to a taller shelf.'], 'the flags say which shelf, which set and by how much');
+  const said = await p.evaluate(() => { const svg = document.querySelector('svg.shelf'); return {
+    svg: [svg.getAttribute('role'), svg.getAttribute('aria-label')], sets: [...svg.querySelectorAll('.sv-set')].map(g => g.getAttribute('aria-label')),
+    shelves: [...svg.querySelectorAll('g[role="img"]')].map(g => g.getAttribute('aria-label') + ' = ' + g.textContent), boards: [...svg.querySelectorAll('.sv-board')].map(b => b.classList.contains('bad')),
+    edit: document.querySelector('[data-case]').getAttribute('aria-label'), heads: [...document.querySelectorAll('#shelves-body h2.group')].map(h => h.getAttribute('aria-label')) }; });
+  assert.deepEqual(said, { svg: ['group', 'Office Billy from the front'],
+    sets: ['Galaxy Explorer, Office Billy, shelf 1', 'London Bus, Office Billy, shelf 1', 'Tree House, Office Billy, shelf 2, too tall for this shelf', 'Flower Bouquet, Office Billy, shelf 2, side-on'],
+    shelves: ['Shelf 1, 32 cm, 2 sets, overfull = ! 1 · 32 cm', 'Shelf 2, 32 cm, 2 sets, a set too tall = ! 2 · 32 cm', 'Shelf 3, 40 cm, empty = 3 · 40 cm'], boards: [true, true, false],
+    edit: 'Edit Office Billy', heads: ['Not on a shelf yet, 2 sets', 'Needs a size, 1 set'] }, 'everything in the drawing has a name that says what it is');
+  // White on each colour a set can be drawn in.
+  const ratios = await p.evaluate(() => {
+    const lum = c => [0.2126, 0.7152, 0.0722].reduce((n, k, i) => { const v = c[i] / 255; return n + k * (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); }, 0), seen = {};
+    for (let i = 0; i < 400 && Object.keys(seen).length < 8; i++) {
+      const d = window.brickyard.doc(); window.brickyard.putSet(Object.assign({}, d.sets.ge, { theme: 'Theme ' + i })); window.brickyard.refresh();
+      const fill = document.querySelector('.sv-set[data-set="ge"] .sv-box').getAttribute('fill');
+      seen[fill] = +(1.05 / (lum([1, 3, 5].map(k => parseInt(fill.slice(k, k + 2), 16))) + 0.05)).toFixed(2);
+    }
+    return seen;
+  });
+  assert.equal(Object.keys(ratios).length, 8, 'every colour was drawn');
+  assert.deepEqual(Object.entries(ratios).filter(r => r[1] < 4.5), [], 'white measures at least 4.5:1 on every colour of set');
+  // The keyboard's place.
+  await p.focus('.sv-set[data-set="lb"]');
+  const ring = await p.evaluate(() => { const g = document.activeElement, cs = e => getComputedStyle(g.querySelector(e)); return [cs('.sv-box').stroke !== cs('.sv-ring').stroke, parseFloat(cs('.sv-box').strokeWidth) >= 0.8, cs('.sv-ring').stroke !== 'none']; });
+  assert.deepEqual(ring, [true, true, true], 'a set with the focus has a dark line round it and a light one outside');
+  await p.keyboard.press('Enter');
+  await p.fill('#z-h', '17');
+  await p.click('#z-save');
+  await p.waitForTimeout(300); // Back over the sheet's place in history can move the focus a moment later
+  assert.deepEqual(await p.evaluate(() => [document.activeElement.dataset.set, document.activeElement.classList.contains('sv-set'), window.brickyard.doc().sets.lb.size.h]), ['lb', true, 17], 'after Save the focus is back on the set');
+  await p.focus('[data-act="fill"]');
+  await p.keyboard.press('Enter');
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.act), 'add-case', 'after Fit, with nothing left to fit, it is on the next button and not lost');
+  await p.focus('[data-case="k"]');
+  await p.keyboard.press('Enter');
+  await p.fill('#k-name', 'Hall Billy');
+  await p.click('#k-save');
+  await p.waitForTimeout(300);
+  assert.deepEqual(await p.evaluate(() => [document.activeElement.dataset.case, document.activeElement.getAttribute('aria-label')]), ['k', 'Edit Hall Billy'], 'and after saving a bookcase, on its Edit button');
+  await c.close();
+}
+// Sizes from Claude: each tick says whose size it adds.
+{
+  const { c, p } = await withSets({ sets: { g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } } });
+  await p.goto(base + '#z1j' + Buffer.from(JSON.stringify({ brickyard: 1, sizes: [{ num: '10497', w: 52, d: 32, h: 13 }] })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  assert.equal(await p.getAttribute('#zr input', 'aria-label'), 'Add size for Galaxy Explorer');
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },
@@ -1809,7 +1871,7 @@ await page.click('[data-close]');
   await p.fill('#z-h', '60');
   await p.click('#z-save');
   assert.equal(await p.locator('.case .flag.bad').count(), 1, 'a set taller than its shelf is marked');
-  assert.match(await p.textContent('.case .flag.bad'), /A set is too tall for its shelf, marked in red/);
+  assert.equal(await p.textContent('.case .flag.bad'), 'Typewriter (60 cm) is too tall for shelf 2 (33 cm). Move it to a taller shelf.', 'by name, with both heights');
   await c.close();
 }
 
@@ -2058,7 +2120,7 @@ await page.click('[data-close]');
       return { id: g.dataset.set, says: [...t.querySelectorAll('tspan')].map(s => s.textContent).join(' / ') || t.textContent, px: Math.min(tb[2] - tb[0], tb[3] - tb[1]) > 0 ? parseFloat(getComputedStyle(t).fontSize) * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width : 0,
         inside: inside(tb, box(g.querySelector('.sv-box'))), clear: tags.every(k => apart(tb, k)), hit: [Math.round(hit.width), Math.round(hit.height)] };
     });
-    return { sets, tagsLast: kids.findIndex(k => k.classList.contains('sv-tag')) > kids.map(k => k.classList.contains('sv-set')).lastIndexOf(true), labels: [...svg.querySelectorAll('.sv-h')].map(t => t.textContent) };
+    return { sets, tagsLast: kids.findIndex(k => !!k.querySelector('.sv-tag')) > kids.map(k => k.classList.contains('sv-set')).lastIndexOf(true), labels: [...svg.querySelectorAll('.sv-h')].map(t => t.textContent) };
   });
   assert.deepEqual(drawn.sets.map(s => [s.id, s.says]), [['a', 'Motorised / Lighthouse'], ['b', 'Orchid'], ['w', 'Wildflower Bouquet'], ['n', 'A set with q…'], ['g', '20915']], 'what each set is called in the drawing');
   for (const s of drawn.sets) assert.deepEqual([s.id, s.px >= 9, s.inside, s.clear, s.hit[0] >= 43 && s.hit[1] >= 43], [s.id, true, true, true, true], 'a name of ' + s.px.toFixed(1) + ' px, inside its set, clear of the shelf’s label, with ' + s.hit.join(' × ') + ' px to tap');

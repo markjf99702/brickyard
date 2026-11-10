@@ -1005,6 +1005,9 @@
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
     newId: newId, takeDoc: takeDoc, showSet: showSet,
+    // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
+    // gives this the new copy of the thing that opened it.
+    lastFocus: function (el) { if (el !== undefined) lastFocus = el; return lastFocus; },
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).

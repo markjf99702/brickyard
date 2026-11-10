@@ -11,7 +11,9 @@
     { k: 'kallax', label: 'Kallax column', name: 'Kallax', w: 33, d: 37, levels: [33, 33, 33, 33] },
     { k: 'custom', label: 'My own', name: '', w: '', d: '', levels: [] },
   ];
-  var COLOURS = ['#c8322b', '#1f5ba6', '#2f8a4e', '#e08a1e', '#6d4fa0', '#20817a', '#8a5a3c', '#5b6770'];
+  // A set's colour in the drawing, by its theme. Its name is written on it in white, so each is dark enough for
+  // white to measure 4.5:1 on it (the orange was #e08a1e, 2.7:1, and the green #2f8a4e, 4.3:1).
+  var COLOURS = ['#c8322b', '#1f5ba6', '#2c8249', '#b85a00', '#6d4fa0', '#20817a', '#8a5a3c', '#5b6770'];
   function $(id) { return document.getElementById(id); }
 
   // The bookcases, each set standing in one place (S.dedupe: two devices can each have saved it on a different
@@ -79,11 +81,11 @@
       var rows = sorted.waiting.map(function (x, i) { var r = all.length ? S.reason(all, x, ids) : { why: '', kind: '' }; return { x: x, why: r.why, kind: r.kind, i: i }; });
       var rank = function (r) { return r.kind === '' ? 0 : r.kind === 'room' ? 1 : 2; };
       rows.sort(function (a, b) { return rank(a) - rank(b) || a.i - b.i; });
-      html += '<h2 class="group"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
+      html += '<h2 class="group" aria-label="Not on a shelf yet, ' + plural(sorted.waiting.length, 'set') + '"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
         '<ul class="list">' + rows.map(function (r) { return setRow(r.x, r.why); }).join('') + '</ul>';
     }
     if (sorted.noSize.length) {
-      html += '<h2 class="group"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
+      html += '<h2 class="group" aria-label="Needs a size, ' + plural(sorted.noSize.length, 'set') + '"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
         '<p class="note">Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.</p>' +
         '<div class="acts-row"><button class="btn quiet" type="button" data-act="ask-sizes">Copy these for Claude</button><button class="btn quiet" type="button" data-act="open-sizes">Open sizes from Claude</button></div>' +
         '<ul class="list">' + sorted.noSize.map(function (x) {
@@ -94,7 +96,24 @@
     if (!sorted.placed.length && !sorted.waiting.length && !sorted.noSize.length) {
       html += '<p class="note" style="margin-top:16px">The planner places sets marked <b>Built</b> or <b>Partly built</b> in My sets. You don’t have any yet. <a href="#catalog">Add or mark them in My sets.</a></p>';
     }
+    // The keyboard's place survives the redraw: the set, bookcase or button that had the focus is found again by
+    // what it's for (it was thrown back to the top of the page after every Save, Fit and Undo), and so is the one
+    // an open sheet will give the focus back to when it closes.
+    var had = keyOf(document.activeElement), from = keyOf(app.lastFocus());
     $('shelves-body').innerHTML = html;
+    if (from) app.lastFocus(again(from));
+    if (had) again(had).focus({ preventScroll: true });
+  }
+  function keyOf(el) {
+    var t = el && el.closest && $('shelves-body').contains(el) ? el.closest('[data-set],[data-case],[data-act]') : null;
+    return t && { set: t.dataset.set, kase: t.dataset.case, act: t.dataset.act, k: t.dataset.k, drawn: t.classList.contains('sv-set') };
+  }
+  function again(key) {
+    var all = [].slice.call($('shelves-body').querySelectorAll('[data-set],[data-case],[data-act]')), pick = function (ok) { return all.filter(ok)[0]; };
+    return (key.set && (pick(function (e) { return e.dataset.set === key.set && e.classList.contains('sv-set') === key.drawn; }) || pick(function (e) { return e.dataset.set === key.set; }))) ||
+      (key.kase && pick(function (e) { return e.dataset.case === key.kase; })) ||
+      (key.act && (pick(function (e) { return e.dataset.act === key.act && e.dataset.k === key.k; }) || pick(function (e) { return e.dataset.act === key.act; }))) ||
+      pick(function (e) { return !!e.dataset.act; }) || document.querySelector('#shelves h1');
   }
 
   // `where` is for a set that needs a size but is on a shelf already (its size was cleared): it isn't in the drawing.
@@ -128,36 +147,43 @@
   }
 
   // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
-  // above it (its size or the shelf's height changed after it was placed), is marked in red. A set that has been
-  // taken apart or sealed since it was placed is drawn pale and hatched, with a line above the drawing that takes
-  // it off: it still holds its room until then. `n` is the bookcase's place on the page, for the hatching's name.
+  // above it or deeper than the bookcase (a size changed after it was placed), has a red board and a "!" on its
+  // label, so it isn't told by colour alone, and a line above the drawing says which shelf, which set and by how
+  // much. A set that has been taken apart or sealed since it was placed is drawn pale and hatched, with a line that
+  // takes it off: it still holds its room until then. `n` is the bookcase's place on the page, for the hatching's
+  // name.
+  //
+  // For a screen reader the drawing is a group (as an image, the sets in it weren't there at all): each set is a
+  // button that says its shelf, whether it's side-on and what's wrong with it, and each shelf's label says its
+  // height and how many sets it holds, empty ones too.
   var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
   function caseHtml(c, ids, n) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0, drawn = 0, gone = [], deep = [];
+    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [];
     c.levels.forEach(function (l) { H += l.h + T; });
     parts.push('<defs><pattern id="svh' + n + '" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.9" height="2.4" class="sv-stripe"/></pattern></defs>');
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
-      var x0 = T, full = S.overfull(c, l, ids), tall = 0, row = [];
-      if (full) over++;
-      // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
-      // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
-      var text = (li + 1) + ' · ' + cm(l.h) + ' cm', tw = text.length * 1.28 + 1.6;
-      var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 };
-      tags.push('<rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + tag.h + '" rx="1.85" class="sv-tag"/>' +
-        '<text x="' + (T + c.w - 1.2) + '" y="' + (y + 3.1) + '" class="sv-h" text-anchor="end">' + text + '</text>');
+      var x0 = T, full = S.overfull(c, l, ids), tall = 0, out = 0, row = [];
+      if (full) over.push('Shelf ' + (li + 1) + ' is overfull: ' + cm(S.used(l, ids)) + ' cm of sets on a ' + cm(c.w) + ' cm shelf.');
       l.sets.forEach(function (p) {
         var x = ids[p.id]; if (!x) return;
         if (!onShelf(x)) gone.push(x);
         if (!S.hasSize(x)) return;
         drawn++;
-        if (x.size.h > l.h) tall++;
-        var f = S.footprint(x, p.turn);
-        if (f.deep > c.d) deep.push({ x: x, f: f, turn: !!p.turn });
-        row.push({ x: x, p: p, f: f, x0: x0 });
+        var f = S.footprint(x, p.turn), r = { x: x, p: p, f: f, x0: x0, tall: x.size.h > l.h, deep: f.deep > c.d };
+        if (r.tall) { tall++; high.push({ x: x, li: li, h: l.h }); }
+        if (r.deep) { out++; deep.push({ x: x, f: f, turn: !!p.turn }); }
+        row.push(r);
         x0 += f.along + S.GAP;
       });
+      // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
+      // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
+      var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + cm(l.h) + ' cm', tw = text.length * 1.28 + 1.6;
+      var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 };
+      var says = ['Shelf ' + (li + 1), cm(l.h) + ' cm', row.length ? plural(row.length, 'set') : 'empty', full ? 'overfull' : '', tall ? (tall === 1 ? 'a set too tall' : tall + ' sets too tall') : '', out ? (out === 1 ? 'a set too deep' : out + ' sets too deep') : ''].filter(Boolean).join(', ');
+      tags.push('<g role="img" aria-label="' + esc(says) + '"><rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + tag.h + '" rx="1.85" class="sv-tag' + (bad ? ' bad' : '') + '"/>' +
+        '<text x="' + (T + c.w - 1.2) + '" y="' + (y + 3.1) + '" class="sv-h' + (bad ? ' bad' : '') + '" text-anchor="end">' + text + '</text></g>');
       row.forEach(function (r, i) {
         var x = r.x, f = r.f, top = y + l.h - f.h, next = row[i + 1];
         // A small set is hard to hit with a thumb, so each takes taps on a clear rectangle at least HIT wide and
@@ -165,28 +191,36 @@
         var left = i ? r.x0 - S.GAP / 2 : T, right = next ? next.x0 - S.GAP / 2 : Math.max(T + c.w, r.x0 + f.along);
         var hw = Math.max(f.along, Math.min(HIT, right - left)), hx = Math.min(Math.max(left, r.x0 - (hw - f.along) / 2), right - hw);
         var hh = Math.max(f.h, Math.min(HIT, l.h)), hy = y + l.h - hh;
-        var off = !onShelf(x), box = 'x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8"';
-        parts.push('<g class="sv-set' + (off ? ' off' : '') + '" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
+        var off = !onShelf(x), bw = Math.max(0.5, f.along - 0.3), box = 'x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + bw + '" height="' + f.h + '" rx="0.8"';
+        var name = [x.name || C.shortNum(x.num), shelfName(c, li), r.p.turn ? 'side-on' : '', r.tall ? 'too tall for this shelf' : '', r.deep ? 'too deep for this bookcase' : '',
+          !off ? '' : x.state === 'apart' ? 'taken apart' : x.state === 'sealed' ? 'sealed' : 'not built'].filter(Boolean).join(', ');
+        parts.push('<g class="sv-set' + (off ? ' off' : '') + '" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc(name) + '">' +
           '<rect x="' + hx.toFixed(2) + '" y="' + hy + '" width="' + hw.toFixed(2) + '" height="' + hh + '" class="sv-hit"/>' +
+          // Shown when the set has the keyboard's focus: a light line outside the dark one round the set, so one of
+          // them shows against whatever is beside it.
+          '<rect x="' + (r.x0 - 0.45).toFixed(2) + '" y="' + (top - 0.6) + '" width="' + (bw + 1.2).toFixed(2) + '" height="' + (f.h + 1.2) + '" rx="1.3" class="sv-ring"/>' +
           '<rect ' + box + ' fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
           (off ? '<rect ' + box + ' fill="url(#svh' + n + ')" class="sv-hatch"/>' : '') +
           label(x, r.x0, top, f, tag) + '</g>');
       });
-      y += l.h; high += tall;
-      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (full || tall ? ' style="fill:var(--red)"' : '') + '/>');
+      y += l.h;
+      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board' + (bad ? ' bad' : '') + '"/>');
       y += T;
     });
     var names = gone.slice(0, 3).map(nameOf), more = gone.length - names.length;
     var goneSays = !gone.length ? '' : gone.length === 1 ? names[0] + (gone[0].state === 'apart' ? ' is taken apart now.' : gone[0].state === 'sealed' ? ' is sealed now.' : ' isn’t built now.')
       : gone.length.toLocaleString() + ' sets here aren’t built now: ' + (more ? names.join(', ') + ' and ' + more.toLocaleString() + ' more.' : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + '.');
+    // Up to three sets too tall are named with their heights; more than that are counted (their shelves have the "!").
+    var highSays = !high.length ? '' : high.length > 3 ? high.length.toLocaleString() + ' sets are too tall for their shelves. Move them to taller shelves.'
+      : high.map(function (o) { return nameOf(o.x) + ' (' + cm(o.x.size.h) + ' cm) is too tall for shelf ' + (o.li + 1) + ' (' + cm(o.h) + ' cm).'; }).join(' ') + (high.length === 1 ? ' Move it to a taller shelf.' : ' Move them to taller shelves.');
     return '<section class="case">' +
       '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(drawn, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
-      '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
-      (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
-      (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
+      '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '" aria-label="Edit ' + esc(c.name) + '">Edit</button></div>' +
+      (over.length ? '<p class="flag bad"><span>' + esc(over.join(' ')) + ' Move a set off, or turn one side-on.</span></p>' : '') +
+      (high.length ? '<p class="flag bad"><span>' + esc(highSays) + '</span></p>' : '') +
       (deep.length ? '<p class="flag bad"><span>' + esc(deepSays(c, deep)) + '</span></p>' : '') +
       (gone.length ? '<p class="flag bad"><span>' + esc(goneSays) + '</span><button class="btn sm quiet" type="button" data-act="take-off" data-k="' + esc(c.id) + '">' + (gone.length === 1 ? 'Take it off the shelf' : 'Take them off') + '</button></p>' : '') +
-      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
+      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="group" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
   }
 
   // A set that sticks out past the front of its bookcase: the bookcase's depth was edited, or the set's size was,
@@ -571,7 +605,7 @@
       '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
-        return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add this size">' +
+        return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add size for ' + esc(nameOf(r.x)) + '">' +
           '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div>' +
           '<div class="m">' + sizeText(r.z) + (r.x.size ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
