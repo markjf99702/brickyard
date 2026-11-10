@@ -657,7 +657,14 @@
     // Enter in one of the sheet's one-line boxes saves (the boxes are in a form, so the browser still lets Enter
     // choose a suggestion from a box's list first); on a phone the keyboard's key says Done.
     var box = function (id, val, extra) { return input(id, val, ' enterkeyhint="done"' + (extra || '')); };
-    var now = function () { return fieldsOf(['e-num', 'e-year', 'e-name', 'e-pieces', 'e-theme', 'e-room', 'e-spot', 'e-box', 'e-missing', 'e-instr', 'e-w', 'e-d', 'e-h', 'e-tags', 'e-notes'], [st || '']); };
+    // Each box, with the part of the set it's for (the three sizes are one part, `size`).
+    var BOXES = { 'e-num': 'num', 'e-year': 'year', 'e-name': 'name', 'e-pieces': 'pieces', 'e-theme': 'theme', 'e-room': 'room', 'e-spot': 'spot', 'e-box': 'box', 'e-missing': 'missing',
+      'e-instr': 'instr', 'e-w': 'size', 'e-d': 'size', 'e-h': 'size', 'e-tags': 'tags', 'e-notes': 'notes' };
+    var now = function () { return fieldsOf(Object.keys(BOXES), [st || '']); };
+    // What a box holds, and whether that's something other than it held when the sheet opened (`held`).
+    var val = function (id) { var el = $(id); return el.type === 'checkbox' ? el.checked : el.value.trim(); };
+    var held = {}, stWas = st || '';
+    var touched = function (id) { return val(id) !== held[id]; };
     var panel = openSheet(
       '<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a set' : esc(x.name || 'Set ' + C.shortNum(x.num))) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
       '<form class="bd" id="e-form" novalidate>' +
@@ -683,6 +690,7 @@
       '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="submit" form="e-form" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
       function () { return now() !== was; });
     was = now();
+    Object.keys(BOXES).forEach(function (id) { held[id] = val(id); });
     var lent = {}; // boxes filled from a first copy of the same set: { box id: what was put in it }
     if (panel.querySelector('.head-pic')) panel.querySelector('.head-pic').dataset.num = numWas;
 
@@ -745,20 +753,47 @@
       // The sizes are cm unless they say inches; '14 1/8"' used to be saved as 14 cm.
       var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
       if (!z) return;
+      // Save changes the parts of the set this sheet changed, and leaves the rest as the set is kept now. The sheet
+      // shows the set as it was when it opened, and it used to write all of that back: a sheet left open on the
+      // laptop while the phone packed the set into box 7 (or another tab did) took it out of the box again on
+      // Save, without a word, and brought back a set that had been removed. Each box that holds what it held when
+      // the sheet opened stands for "as it is now", whatever that has become. The three sizes are one part: change
+      // one and the size is the three the sheet shows.
+      var kept = isNew ? null : DOC.sets[x.id], gone = !isNew && (!kept || !!kept.del);
+      var from = isNew || gone ? x : kept, name = from.name || 'Set ' + C.shortNum(from.num);
+      // The set was removed while the sheet was open (on another device, in another tab, or by Undo here). With
+      // nothing changed in the sheet it stays removed. With changes, the first Save asks, and the next puts the
+      // set back as the sheet has it.
+      if (gone) {
+        if (now() === was) { closeSheet(); renderCatalog(); toast(name + ' was removed while this was open. Nothing was saved.'); return; }
+        if (!secondTap(btn, 'gone')) {
+          btn.textContent = 'Bring it back';
+          toast('This set was removed while its sheet was open. Tap again to bring it back.');
+          return;
+        }
+      }
+      var form = {
+        num: num, name: $('e-name').value, year: $('e-year').value, pieces: $('e-pieces').value, theme: $('e-theme').value,
+        room: $('e-room').value, spot: $('e-spot').value, box: $('e-box').value, missing: $('e-missing').value,
+        // A tick taken off isn't "no": it's back to not saying. (A set that says it has none keeps saying so while
+        // the box is left alone.)
+        instr: $('e-instr').checked ? true : null, tags: $('e-tags').value, notes: $('e-notes').value,
+        size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] },
+      };
+      var y = JSON.parse(JSON.stringify(from));
+      Object.keys(BOXES).forEach(function (id) { if (touched(id)) y[BOXES[id]] = form[BOXES[id]]; });
+      if ((st || '') !== stWas) y.state = st;
       // A set marked Check whose number is changed has been put right: it stops being To check with this Save.
       // (It stayed To check until the sheet was opened again for "It's right", words that don't fit a set that was
       // wrong.) Any other change keeps the mark.
-      var righted = !isNew && !!x.check && num !== numWas;
-      var y = C.cleanSet({
-        num: num, name: $('e-name').value, year: $('e-year').value, pieces: $('e-pieces').value, theme: $('e-theme').value, state: st,
-        room: $('e-room').value, spot: $('e-spot').value, box: $('e-box').value, missing: $('e-missing').value,
-        instr: $('e-instr').checked ? true : (x.instr === false ? false : null), tags: $('e-tags').value, notes: $('e-notes').value,
-        size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] }, check: righted ? '' : x.check, added: x.added || today(),
-      });
+      var renumbered = touched('e-num') && num !== numWas, righted = !isNew && !!y.check && renumbered;
+      if (righted) y.check = '';
+      y.added = y.added || today();
+      y = C.cleanSet(y);
       if (!y) { wrong([$('e-num'), $('e-name')], 'Give it a set number or a name.'); return; }
       // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
       // (which used to save without a word).
-      var dup = isNew ? C.findDup(DOC, y) : y.num && y.num !== numWas ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
+      var dup = isNew ? C.findDup(DOC, y) : y.num && renumbered ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
       if (dup && !secondTap(btn, 'again')) {
         btn.textContent = isNew ? 'Add another copy' : 'Save anyway';
         // A second copy added by its number alone takes the first copy's name, year, pieces and theme, into the
@@ -771,9 +806,20 @@
         toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.'));
         return;
       }
-      y.id = x.id; putSet(y); save(); closeSheet(); renderCatalog();
-      toast((isNew ? 'Added' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
+      y.id = x.id;
+      // Nothing to write when the set comes out as it's kept: writing it would mark it as changed now, and on the
+      // next sync that beats a change made to it on another device a moment ago.
+      var same = !isNew && !gone && sameSet(y, kept);
+      if (gone) putBack('sets', y); else if (!same) putSet(y);
+      if (!same) save();
+      closeSheet(); renderCatalog();
+      toast((isNew ? 'Added' : gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
     };
+  }
+  // Whether two copies of a set say the same, whatever order their parts are in and whenever each was changed.
+  function sameSet(a, b) {
+    var flat = function (o) { return JSON.stringify(Object.keys(o).filter(function (k) { return k !== 't'; }).sort().map(function (k) { return [k, o[k]]; })); };
+    return flat(a) === flat(b);
   }
 
   // One set, shown in My sets from another screen (the shelf planner's See in My sets): its row in view and its

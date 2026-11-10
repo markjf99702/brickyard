@@ -449,6 +449,9 @@
     // Its size and place as the sheet has them, to tell whether closing would lose a change.
     function now() { return app.fieldsOf(['z-w', 'z-d', 'z-h', 'z-where', 'z-turn']); }
     var was = now();
+    // Each part of it as it was when the sheet opened, to tell which of them this sheet changed (save).
+    function sizeNow() { return app.fieldsOf(['z-w', 'z-d', 'z-h']); }
+    var held = { size: sizeNow(), where: $('z-where') ? $('z-where').value : '', turn: $('z-turn') ? $('z-turn').checked : false };
     // My sets opens on this set (app.showSet), once this sheet has closed.
     $('z-cat').onclick = function (e) { e.preventDefault(); app.showSet(id); };
     // What can't be done is said in the sheet, which stays open with nothing saved. (A tick that couldn't be
@@ -464,30 +467,52 @@
     }
     // Save, and Move left or right (by -1 or 1), which save whatever else the sheet holds first: a size typed
     // before Move was thrown away.
+    //
+    // It changes what this sheet changed (the size, the shelf, the tick), on the set and the bookcases as they're
+    // kept now, and works the set's place out afresh. The sheet shows them as they were when it opened, and used
+    // to write that back: a size given to the set on another device, or in another tab, while the sheet was open
+    // went again on Save.
     function save(by) {
       refuse('');
       // cm unless they say inches; what can't be read is turned down by app.lengths, which says which box.
       var z = app.lengths([['z-w', 'Width'], ['z-d', 'Depth'], ['z-h', 'Height']]);
       if (!z) return;
       var w = z.v['z-w'], d = z.v['z-d'], h = z.v['z-h'];
-      var y = copy(x);
-      if (w && d && h) y.size = { w: w, d: d, h: h };
-      else if (!w && !d && !h) delete y.size;
+      var live = byId()[id], back = false;
+      // The set was removed while the sheet was open: with nothing changed here (or a press on Move) it stays
+      // removed; with changes, Save asks first, as it does in My sets.
+      if (!live) {
+        if (by || now() === was) { app.closeSheet(); render(); toast(nameOf(x) + ' was removed while this was open. Nothing was saved.'); return; }
+        if (!app.secondTap($('z-save'), 'gone')) {
+          $('z-save').textContent = 'Bring it back';
+          toast('This set was removed while its sheet was open. Tap again to bring it back.');
+          return;
+        }
+        live = x; back = true;
+      }
+      var y = copy(live), sized = sizeNow() !== held.size;
+      if (w && d && h) { if (sized) y.size = { w: w, d: d, h: h }; }
+      else if (!w && !d && !h) { if (sized) delete y.size; }
       else { app.wrong(['z-w', 'z-d', 'z-h'].map($).filter(function (b) { return !z.v[b.id]; }), 'Give all three sizes, or none.'); return; }
-      var want = $('z-where') ? $('z-where').value : '', turn = $('z-turn') ? $('z-turn').checked : false;
-      var from = at ? at.c + ':' + at.l : '', ids2 = byId(), list = cases(), next = list.map(copy);
+      var ids2 = byId(), list = cases(), next = list.map(copy), cur = S.placements(list)[id] || null;
+      var from = cur ? cur.c + ':' + cur.l : '', ticked = !!$('z-turn') && $('z-turn').checked !== held.turn;
+      // A box left as it was stands for where the set is now.
+      var want = $('z-where') && $('z-where').value !== held.where ? $('z-where').value : from, turn = ticked ? $('z-turn').checked : !!(cur && cur.turn);
+      var spot = cur ? list.filter(function (k) { return k.id === cur.c; })[0].levels[cur.l].sets.findIndex(function (p) { return p.id === id; }) : -1;
       ids2[id] = y;
-      if (want !== from || (at && turn !== at.turn)) {
+      if (want !== from || (cur && turn !== cur.turn)) {
         // Off every bookcase first, so it can only ever stand in the one place chosen here.
         S.takeOff(next, id);
         if (want) {
           var bits = want.split(':'), c1 = next.filter(function (k) { return k.id === bits[0]; })[0], li = +bits[1];
+          // The shelf chosen went while the sheet was open (its bookcase removed, or made shorter).
+          if (!c1 || !c1.levels[li]) { refuse('That shelf isn’t there any more. Close this and open the set again.', $('z-where')); return; }
           var f = S.fits(c1, li, y, ids2, $('z-turn') ? turn : false);
           if (f.why) { refuse(f.why + '.', want === from && $('z-turn') ? $('z-turn') : $('z-where')); return; }
           // The tick was changed and this shelf only takes the set the other way round.
-          if (at && turn !== at.turn && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn), $('z-turn')); return; }
+          if (ticked && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn), $('z-turn')); return; }
           var p = { id: id }; if (f.turn) p.turn = true;
-          if (at && at.c === c1.id && at.l === li) c1.levels[li].sets.splice(pos, 0, p); else c1.levels[li].sets.push(p);
+          if (cur && cur.c === c1.id && cur.l === li) c1.levels[li].sets.splice(spot, 0, p); else c1.levels[li].sets.push(p);
         }
       }
       var here = by ? S.placements(next)[id] : null;
@@ -495,10 +520,11 @@
         var l = next.filter(function (k) { return k.id === here.c; })[0].levels[here.l], i = l.sets.findIndex(function (q) { return q.id === id; });
         var q = l.sets.splice(i, 1)[0]; l.sets.splice(Math.max(0, Math.min(l.sets.length, i + by)), 0, q);
       }
-      if (JSON.stringify(y.size || null) !== JSON.stringify(x.size || null)) app.putSet(y);
+      if (back) app.putBack('sets', y);
+      else if (JSON.stringify(y.size || null) !== JSON.stringify(live.size || null)) app.putSet(y);
       next.forEach(function (k, n) { if (JSON.stringify(k.levels) !== JSON.stringify(list[n].levels)) put(k); });
       app.closeSheet(); render();
-      if (z.note) toast(z.note);
+      if (back) toast(nameOf(y) + ' is back' + (z.note ? '. ' + z.note : '')); else if (z.note) toast(z.note);
     }
     if ($('z-left')) { $('z-left').onclick = function () { save(-1); }; $('z-right').onclick = function () { save(1); }; }
     $('z-save').onclick = function () { save(0); };
@@ -529,7 +555,16 @@
       '<p class="note">The height is the clear space above each shelf, up to the one above it. <span id="k-note">' + esc(isNew ? preset.note : MEASURE) + '</span></p>' +
       (onIt ? '<div><button class="btn sm quiet" type="button" id="k-clear">Take every set off</button></div>' : '') +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
-      function () { return now() !== was || $('k-room').value.trim() !== v.room; });
+      function () { return dirty(); });
+    function dirty() { return now() !== was || $('k-room').value.trim() !== v.room; }
+    // The bookcase as it's kept now. The sheet has it as it was when it opened, and a set stood on it since (from
+    // another device or another tab), or taken off it, isn't in that copy. Null if it has been removed meanwhile:
+    // then the sheet closes and says so.
+    function kept() {
+      var k = caseOf(c.id);
+      if (!k) { app.closeSheet(); render(); toast(c.name + ' was removed while this was open. Nothing was saved.'); }
+      return k;
+    }
     // The rows as the sheet has them. What's typed lives in the boxes, so it's read back before the rows change.
     function read() { rows.forEach(function (r, i) { if ($('k-h' + i)) r.v = $('k-h' + i).value; }); }
     function draw() {
@@ -572,16 +607,18 @@
     // take each set off in its own sheet. It takes a second tap, and the message has Undo.
     if ($('k-clear')) $('k-clear').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to take ' + (onIt === 1 ? 'it' : 'all ' + onIt.toLocaleString()) + ' off'; return; }
-      var kept = copy(c), next = copy(c);
+      var k = kept(); if (!k) return;
+      var before = copy(k), next = copy(k), all = byId(), n = Object.keys(S.placements([k])).filter(function (id) { return all[id]; }).length;
       next.levels.forEach(function (l) { l.sets = []; });
       put(next); app.closeSheet(); render();
-      toast((onIt === 1 ? '1 set is' : onIt.toLocaleString() + ' sets are') + ' off ' + c.name, false, { label: 'Undo', run: function () {
-        putCasesBack([kept]); toast(onIt === 1 ? 'That set is back on its shelf' : 'Those ' + onIt.toLocaleString() + ' sets are back on their shelves');
+      toast((n === 1 ? '1 set is' : n.toLocaleString() + ' sets are') + ' off ' + k.name, false, { label: 'Undo', run: function () {
+        putCasesBack([before]); toast(n === 1 ? 'That set is back on its shelf' : 'Those ' + n.toLocaleString() + ' sets are back on their shelves');
       } });
     };
     if ($('k-del')) $('k-del').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
-      var kept = copy(c), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
+      var c = kept(); if (!c) return; // as it's kept now, so Undo puts back the sets that stand on it now
+      var before = copy(c), ids = byId(), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
       // Sets that My sets says are on this bookcase, in the words Put these places in My sets writes ("Hall Billy,
       // shelf 2"), stop saying so: the bookcase is gone. Not when another bookcase has the same name.
       var twin = cases().some(function (k) { return k.id !== c.id && k.name === c.name; }), said = [];
@@ -598,10 +635,21 @@
           var x = app.doc().sets[w.id];
           if (x && !x.del && !x.spot) { var y = copy(x); y.spot = w.spot; app.putSet(y); }
         });
-        putCasesBack([kept]); toast(kept.name + ' is back');
+        putCasesBack([before]); toast(before.name + ' is back');
       } });
     };
     $('k-save').onclick = function () {
+      // Removed while the sheet was open: with nothing changed here it stays removed; with changes, the first Save
+      // asks, and the next puts the bookcase back as the sheet has it.
+      var live = c ? caseOf(c.id) : null, gone = !!c && !live;
+      if (gone) {
+        if (!dirty()) { kept(); return; }
+        if (!app.secondTap(this, 'gone')) {
+          this.textContent = 'Bring it back';
+          toast('This bookcase was removed while its sheet was open. Tap again to bring it back.');
+          return;
+        }
+      }
       read();
       // Every size is cm unless it says inches, and one that can't be read keeps the sheet open (app.lengths).
       var boxes = [['k-w', 'Width'], ['k-d', 'Depth']].concat(rows.map(function (r, i) { return ['k-h' + i, 'Shelf ' + (i + 1)]; }));
@@ -612,15 +660,21 @@
         else app.wrong($(blank[0]), 'Give ' + blank[1].toLowerCase() + ' a height, or remove it.');
         return;
       }
+      // Each row keeps the sets of the shelf it started as, as that shelf holds them now (it took them from the
+      // copy made when the sheet opened: a set stood on the bookcase from another tab meanwhile came off again on
+      // Save, and one moved to another bookcase stood on both). A bookcase being brought back takes the sets it had,
+      // less any that stand somewhere else by now.
+      var src = live || c, taken = gone ? S.placements(cases()) : {};
       var y = C.cleanCase({ id: c ? c.id : 'k' + app.newId().slice(1), name: $('k-name').value || 'Bookcase', room: $('k-room').value, w: z.v['k-w'], d: z.v['k-d'],
-        levels: rows.map(function (r, i) { return { h: z.v['k-h' + i], sets: r.from >= 0 ? c.levels[r.from].sets : [] }; }) });
+        levels: rows.map(function (r, i) { return { h: z.v['k-h' + i], sets: r.from >= 0 && src.levels[r.from] ? src.levels[r.from].sets.filter(function (p) { return !taken[p.id]; }) : [] }; }) });
       if (!y) { app.wrong([$('k-w'), $('k-d')], 'Give the width, depth and at least one shelf height.'); return; }
       // Sets on a shelf that was removed go back to the list, and the message says how many.
-      var still = S.placements([y]), kept = c ? copy(c) : null;
-      var off = c ? Object.keys(S.placements([c])).filter(function (id) { return ids[id] && !still[id]; }).length : 0;
-      put(y); app.closeSheet(); render();
-      var said = [off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ');
-      if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([kept]); toast(kept.name + ' is as it was'); } });
+      var still = S.placements([y]), before = live ? copy(live) : null, all = byId();
+      var off = live ? Object.keys(S.placements([live])).filter(function (id) { return all[id] && !still[id]; }).length : 0;
+      if (gone) { tidy(y.id); app.putBack('cases', y); } else put(y);
+      app.closeSheet(); render();
+      var said = [gone ? y.name + ' is back' : '', off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ');
+      if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([before]); toast(before.name + ' is as it was'); } });
       else if (said) toast(said);
     };
   }

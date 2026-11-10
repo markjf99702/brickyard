@@ -1525,6 +1525,217 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Save in a sheet changes what the sheet changed, and leaves the rest as it's kept now. A sheet shows the set as it
+// was when it opened, and Save used to write all of that back: with a set's sheet open in one tab, another tab (or
+// a Drive sync, which hands the catalog to takeDoc) packed the set in box 7, and Save in the first tab took it out
+// again without a word; a set removed elsewhere came back. Two tabs of one browser here, then takeDoc.
+{
+  const sets = {
+    b: { id: 'b', t: 1, num: '10281-1', name: 'Bonsai Tree', year: 2021, state: 'built', room: 'Living room', spot: 'Bookcase', instr: false, added: '2026-01-05', tags: ['plants'] },
+    t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built', room: 'Office', instr: true, added: '2026-01-06', check: 'could be 21338' },
+    o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built', added: '2026-01-07' },
+    g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built', added: '2026-01-08' },
+  };
+  const { c, p } = await withSets({ sets });
+  const q = await c.newPage(); // the other tab
+  q.on('pageerror', e => problems.push(e.message));
+  await p.goto(base + '#catalog');
+  await q.goto(base + '#catalog');
+  const kept = (pg, id) => pg.evaluate(id => { const x = Object.assign({}, window.brickyard.doc().sets[id]); delete x.t; return x; }, id);
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
+  const closed = pg => pg.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+  const open = async (pg, name) => { await pg.click(`.item:has-text("${name}")`); await pg.waitForSelector('#e-save'); };
+  // In the other tab: open the set, do something to its sheet, save.
+  const elsewhere = async (name, change) => { await open(q, name); await change(); await q.click('#e-save'); await closed(q); };
+  const seen = (id, ok) => p.waitForFunction(([id, ok]) => new Function('x', 'return ' + ok)(window.brickyard.doc().sets[id]), [id, ok]);
+
+  // The other tab packs it in box 7 and takes it out of its room; this tab adds a note.
+  await open(p, 'Bonsai Tree');
+  await elsewhere('Bonsai Tree', async () => { await q.fill('#e-box', '7'); await q.fill('#e-room', ''); await q.fill('#e-year', '2022'); });
+  await seen('b', 'x.box === "7"');
+  assert.match(await p.textContent('.item:has-text("Bonsai Tree")'), /Box 7/, 'the row behind the open sheet shows the other tab’s box');
+  assert.equal(await p.inputValue('#e-box'), '', 'while the sheet still shows the set as it was');
+  await p.fill('#e-notes', 'gift from Sam');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual(await kept(p, 'b'), { num: '10281-1', name: 'Bonsai Tree', year: 2022, state: 'built', spot: 'Bookcase', box: '7', instr: false, tags: ['plants'], notes: 'gift from Sam', added: '2026-01-05', id: 'b' },
+    'Save adds the note and keeps the other tab’s box, year and cleared room; the day it was added and "no instructions" are kept too');
+  assert.equal(await says(), 'Saved');
+  // Both changed the same box: this sheet's Save is the later change. A box cleared here comes out cleared.
+  await open(p, 'Tree House');
+  await elsewhere('Tree House', async () => { await q.fill('#e-notes', 'from the other tab'); await q.fill('#e-box', '3'); await q.fill('#e-spot', 'Desk'); });
+  await seen('t', 'x.box === "3"');
+  await p.fill('#e-notes', 'from this tab');
+  await p.fill('#e-room', '');
+  await p.uncheck('#e-instr');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual(await kept(p, 't'), { num: '21318-1', name: 'Tree House', state: 'built', spot: 'Desk', box: '3', notes: 'from this tab', check: 'could be 21338', added: '2026-01-06', id: 't' },
+    'a box changed in both keeps this sheet’s; Room cleared here is cleared, the tick taken off is off, and To check stays');
+  // A size given elsewhere stays when the sheet leaves the sizes alone; change one and the size is the sheet's three.
+  await open(p, 'Orchid');
+  await elsewhere('Orchid', async () => { await q.fill('#e-w', '20'); await q.fill('#e-d', '18'); await q.fill('#e-h', '39'); });
+  await seen('o', '!!x.size');
+  await p.click('#e-state [data-v="partial"]');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual([(await kept(p, 'o')).size, (await kept(p, 'o')).state], [{ w: 20, d: 18, h: 39 }, 'partial'], 'the size from the other tab is kept, with the state changed here');
+  await open(p, 'Orchid');
+  await elsewhere('Orchid', async () => { await q.fill('#e-w', '25'); });
+  await seen('o', 'x.size.w === 25');
+  await p.fill('#e-h', '40');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual((await kept(p, 'o')).size, { w: 20, d: 18, h: 40 }, 'a size changed in the sheet is saved as the sheet shows it, all three');
+  // Save with nothing changed, here or elsewhere, writes nothing: the set isn't marked as changed now.
+  const when = await p.evaluate(() => window.brickyard.doc().sets.o.t);
+  await open(p, 'Orchid');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.o.t), await says()], [when, 'Saved'], 'an untouched Save leaves the set’s time of change alone');
+
+  // Removed in the other tab while its sheet is open here. Save with nothing changed: it stays removed.
+  const remove = async name => { await open(q, name); await q.click('#e-del'); await q.waitForTimeout(650); await q.click('#e-del'); await closed(q); };
+  await open(p, 'Orchid');
+  await remove('Orchid');
+  await seen('o', '!!x.del');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual([await p.locator('#list-wrap .item').count(), await p.evaluate(() => !!window.brickyard.doc().sets.o.del), await says()], [3, true, 'Orchid was removed while this was open. Nothing was saved.'],
+    'a set removed elsewhere stays removed after a Save that changed nothing, and the message says why');
+  // With something changed, the first Save asks; the next brings the set back as the sheet has it.
+  await open(p, 'Galaxy Explorer');
+  await remove('Galaxy Explorer');
+  await seen('g', '!!x.del');
+  await p.fill('#e-notes', 'the 2022 one');
+  await p.click('#e-save');
+  assert.deepEqual([await p.locator('.scrim').count(), await p.textContent('#e-save'), await says(), await p.evaluate(() => !!window.brickyard.doc().sets.g.del)],
+    [1, 'Bring it back', 'This set was removed while its sheet was open. Tap again to bring it back.', true], 'a changed Save asks before bringing a removed set back');
+  await p.waitForTimeout(650);
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual([await kept(p, 'g'), await says()], [{ num: '10497-1', name: 'Galaxy Explorer', state: 'built', notes: 'the 2022 one', added: '2026-01-08', id: 'g' }, 'Saved, and Galaxy Explorer is back']);
+  await q.waitForFunction(() => { const x = window.brickyard.doc().sets.g; return !x.del && x.notes === 'the 2022 one'; });
+  assert.equal(await q.locator('#list-wrap .item').count(), 3, 'and it is back in the other tab too');
+  await q.close();
+
+  // The same when the change arrives as a whole catalog (Drive sync hands it to takeDoc).
+  const sync = change => p.evaluate(change => {
+    const d = JSON.parse(JSON.stringify(window.brickyard.doc()));
+    new Function('sets', 't', change)(d.sets, Date.now());
+    window.brickyard.takeDoc(d);
+  }, change);
+  await open(p, 'Bonsai Tree');
+  await sync('sets.b.box = "9"; delete sets.b.spot; sets.b.room = "Hall"; sets.b.t = t;');
+  await p.fill('#e-name', 'Bonsai Tree (the green one)');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual(await kept(p, 'b'), { num: '10281-1', name: 'Bonsai Tree (the green one)', year: 2022, state: 'built', room: 'Hall', box: '9', instr: false, tags: ['plants'], notes: 'gift from Sam', added: '2026-01-05', id: 'b' },
+    'a sync under an open sheet: Save changes the name and keeps the sync’s box and room');
+  await open(p, 'Tree House');
+  await sync('sets.t = { id: "t", t: t, del: 1 };');
+  await p.click('#e-save');
+  await closed(p);
+  assert.deepEqual([await p.evaluate(() => !!window.brickyard.doc().sets.t.del), await says()], [true, 'Tree House was removed while this was open. Nothing was saved.'], 'and a set the sync removed stays removed');
+  // Undo that takes away the set whose sheet is open with changes in it leaves the sheet, and its Save asks.
+  await p.goto(base + '#b1j' + Buffer.from(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '21327', name: 'Typewriter' }] } })).toString('base64url'));
+  await p.click('#rv-add');
+  await closed(p);
+  await open(p, 'Typewriter');
+  await p.fill('#e-notes', 'on loan');
+  await p.click('.toast button');
+  await p.waitForFunction(() => /out again/.test(document.querySelector('.toast').textContent));
+  await p.click('#e-save');
+  assert.deepEqual([await p.locator('.scrim').count(), await p.textContent('#e-save'), await p.locator('#list-wrap .item').count()], [1, 'Bring it back', 2], 'Save after Undo took the set away asks first');
+  await discard(p);
+  await c.close();
+}
+
+// The Shelf planner's sheets work the same way: on the set and the bookcase as they're kept now.
+{
+  const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
+  const sets = { a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), n: { id: 'n', t: 1, name: 'No size yet', state: 'built' } };
+  const cases = { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }, { h: 32, sets: [] }] }, m: { id: 'm', t: 1, name: 'Kallax', w: 33, d: 39, levels: [{ h: 33, sets: [] }] } };
+  const { c, p } = await withSets({ sets, cases });
+  const q = await c.newPage();
+  q.on('pageerror', e => problems.push(e.message));
+  await p.goto(base + '#shelves');
+  await q.goto(base + '#shelves');
+  const on = pg => pg.evaluate(() => { const d = window.brickyard.doc().cases; return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
+  const closed = pg => pg.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+  const sameHere = async () => { const there = await on(q); await p.waitForFunction(there => { const d = window.brickyard.doc().cases; return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; ') === there; }, there); };
+  // A bookcase's Edit sheet is open here; the other tab stands a set on that bookcase. Save keeps it there.
+  await p.click('[data-case="k"]');
+  await p.waitForSelector('#k-save');
+  await q.click('[data-act="fill"]');
+  assert.equal(await on(q), 'Billy: a+b / ; Kallax: ');
+  await sameHere();
+  await p.fill('#k-name', 'Hall Billy');
+  await p.click('#k-save');
+  await closed(p);
+  assert.equal(await on(p), 'Hall Billy: a+b / ; Kallax: ', 'a set stood on the bookcase from the other tab while its Edit sheet was open is still there after Save');
+  // A set's sheet is open here; the other tab moves the set to another shelf. A tick here turns it where it is now.
+  await p.locator('.sv-set[data-set="b"]').click();
+  await p.waitForSelector('#z-turn');
+  await q.locator('.sv-set[data-set="b"]').click();
+  await q.selectOption('#z-where', 'k:1');
+  await q.click('#z-save');
+  await closed(q);
+  await sameHere();
+  await p.check('#z-turn');
+  await p.fill('#z-w', '21');
+  await p.click('#z-save');
+  await closed(p);
+  assert.deepEqual([await on(p), await p.evaluate(() => window.brickyard.doc().sets.b.size)], ['Hall Billy: a / b(side-on); Kallax: ', { w: 21, d: 20, h: 20 }],
+    'side-on ticked in a sheet opened before the set was moved: it turns on the shelf it stands on now, and the size typed is saved');
+  // What My sets changed on the set meanwhile is kept when the planner's sheet saves a size.
+  await p.locator('.sv-set[data-set="a"]').click();
+  await p.waitForSelector('#z-save');
+  await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); d.sets.a.notes = 'dusted'; d.sets.a.t = Date.now(); window.brickyard.takeDoc(d); });
+  await p.fill('#z-h', '22');
+  await p.click('#z-save');
+  await closed(p);
+  assert.deepEqual(await p.evaluate(() => [window.brickyard.doc().sets.a.notes, window.brickyard.doc().sets.a.size]), ['dusted', { w: 20, d: 20, h: 22 }], 'a note added elsewhere is kept when the sheet saves a height');
+  // A set removed elsewhere: an untouched Save leaves it removed; a changed one asks.
+  await p.click('.item[data-set="n"]');
+  await p.waitForSelector('#z-save');
+  await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); d.sets.n = { id: 'n', t: Date.now(), del: 1 }; window.brickyard.takeDoc(d); });
+  await p.fill('#z-w', '10'); await p.fill('#z-d', '10'); await p.fill('#z-h', '10');
+  await p.click('#z-save');
+  assert.deepEqual([await p.locator('.scrim').count(), await p.textContent('#z-save'), await says()], [1, 'Bring it back', 'This set was removed while its sheet was open. Tap again to bring it back.']);
+  await p.waitForTimeout(650);
+  await p.click('#z-save');
+  await closed(p);
+  assert.deepEqual(await p.evaluate(() => { const x = window.brickyard.doc().sets.n; return [!!x.del, x.name, x.size]; }), [false, 'No size yet', { w: 10, d: 10, h: 10 }], 'the second Save brings it back with its size');
+  // A bookcase removed elsewhere while its Edit sheet is open: untouched, it stays removed.
+  await p.click('[data-case="m"]');
+  await p.waitForSelector('#k-save');
+  await q.click('[data-case="m"]');
+  await q.click('#k-del'); await q.waitForTimeout(650); await q.click('#k-del');
+  await closed(q);
+  await sameHere();
+  await p.click('#k-save');
+  await closed(p);
+  assert.deepEqual([await on(p), await says()], ['Hall Billy: a / b(side-on); m removed', 'Kallax was removed while this was open. Nothing was saved.'], 'Save on a bookcase removed elsewhere, with nothing changed, leaves it removed');
+  // And one whose sheet was changed asks, then comes back, without a set that stands somewhere else by now.
+  await p.click('[data-case="k"]');
+  await p.waitForSelector('#k-save');
+  await q.click('[data-case="k"]');
+  await q.click('#k-del'); await q.waitForTimeout(650); await q.click('#k-del');
+  await closed(q);
+  await sameHere();
+  await p.fill('#k-room', 'Hall');
+  await p.click('#k-save');
+  assert.deepEqual([await p.locator('.scrim').count(), await p.textContent('#k-save'), await says()], [1, 'Bring it back', 'This bookcase was removed while its sheet was open. Tap again to bring it back.']);
+  await p.waitForTimeout(650);
+  await p.click('#k-save');
+  await closed(p);
+  assert.equal(await on(p), 'Hall Billy: a / b(side-on); m removed', 'the second Save brings the bookcase back with its sets');
+  await q.close();
+  await c.close();
+}
+
 // Messages can be read and acted on by everyone. The place they're shown in is on the page from the start (a screen
 // reader tends to miss one that arrives with its first words in it). A message stays longer the more there is to
 // read, 10 seconds with a button, and waits while the mouse is on it or its button has the keyboard's focus. Ctrl+Z
