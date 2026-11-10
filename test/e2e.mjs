@@ -1132,7 +1132,7 @@ assert.match(await page.textContent('li.lot'), /Blue tub \(garage\).*Loose · 72
 assert.equal(await page.isChecked('[data-pool="sf-test"]'), true, 'loose pieces count unless unticked');
 let stored = (await doc()).loose['sf-test'];
 assert.deepEqual([stored.name, stored.box, stored.parts.length], ['Blue tub (garage)', '14', 3]);
-assert.match(await page.textContent('.pieces .group'), /876/, 'the pool is the box (804) plus the tub (72)');
+assert.match(await page.textContent('.pieces .group'), /862/, 'the pool is the box (790, as My sets has it) plus the tub (72)');
 await page.goto(base + '#');
 await page.waitForFunction(() => /72 loose pieces/.test(document.getElementById('home-build-stat').textContent));
 // A model that needs more red 2x4s than the box has is short without the tub and fine with it.
@@ -1155,7 +1155,7 @@ assert.match(await page.textContent('#model-check'), /every piece for this, from
 await page.goto(base + '#build');
 await page.waitForSelector('li.lot');
 await page.check('.menu.pool li:not(.lot) [data-pool]');
-await page.waitForFunction(() => /876/.test(document.querySelector('.pieces .group').textContent));
+await page.waitForFunction(() => /862/.test(document.querySelector('.pieces .group').textContent));
 // The same lot again, recounted: it replaces, never doubles.
 lot.loose.parts[0][2] = 45;
 await page.goto(lotLink(lot));
@@ -1352,6 +1352,44 @@ await page.click('[data-close]');
     for (const [what, r] of Object.entries(got)) assert.ok(r >= 4.5, colorScheme + ': ' + what + ' is ' + r.toFixed(2) + ':1');
     await c.close();
   }
+}
+
+// Build from your box says only what's so. A set with no parts list is named only when it's taken apart (its pieces
+// are the ones not counted; it used to count every built and sealed set too, and promise Claude could add their
+// pieces). With no set it can build from, it says which set it has a list for without presuming you own one. A set
+// that's off says why by its state; its piece count is the one My sets shows; and "Tick a set" speaks of loose pieces
+// only when there are some.
+{
+  const box = (id, state) => ({ id, t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state });
+  const other = (id, name, state) => ({ id, t: 1, num: '2131' + id.charCodeAt(0) % 10 + '-1', name, state });
+  const says = p => p.evaluate(() => [...document.querySelectorAll('.pieces .how p, .pieces .flag, .pieces .note')].map(e => e.textContent));
+  const first = await withSets({ sets: { a: other('a', 'Tree House', 'apart'), b: other('b', 'Galaxy Explorer', 'built'), c: other('c', 'Medieval Castle', 'sealed') } });
+  await first.p.goto(base + '#build');
+  await first.p.waitForSelector('#add-box');
+  assert.deepEqual(await says(first.p), ['Brickyard builds from sets that are taken apart and that it has a parts list for. So far that is the Large Creative Brick Box (10698). Have one? Add it.',
+    'Tree House is taken apart, but Brickyard has no parts list for it yet, so its pieces aren’t counted.']);
+  await first.c.close();
+  const many = await withSets({ sets: { a: other('a', 'Tree House', 'apart'), b: other('b', 'Galaxy Explorer', 'apart'), c: other('c', 'Medieval Castle', 'apart'), d: other('d', 'Typewriter', 'apart'),
+    e: { id: 'e', t: 1, name: 'Bonsai Tree', state: 'apart' }, x: box('x', 'built'), y: box('y', 'partial'), z: box('z', 'sealed') },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', parts: [['3001', 4, 40]] } } });
+  const p = many.p;
+  await p.goto(base + '#build');
+  await p.waitForSelector('[data-pool]');
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('.menu.pool li:not(.lot) small')].map(e => e.textContent));
+  assert.deepEqual(await rows(), ['10698 · 790 pieces · built, so off unless you take it apart', '10698 · 790 pieces · partly built, so off', '10698 · 790 pieces · sealed, so off'], 'each set that’s off says why, with My sets’ piece count');
+  assert.deepEqual(await says(p), ['Bonsai Tree, Galaxy Explorer, Medieval Castle and 2 more are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.'], 'up to three are named');
+  await p.uncheck('[data-pool="tub"]');
+  await p.waitForFunction(() => document.querySelector('.pieces .flag'));
+  assert.equal(await p.textContent('.pieces .flag'), 'Tick a set or some loose pieces to build from them.');
+  await p.check('[data-pool="x"]');
+  await p.waitForFunction(() => !document.querySelector('.pieces .flag'));
+  assert.deepEqual([(await rows())[0], await p.textContent('.pieces .group span:last-child')], ['10698 · 790 pieces', '790'], 'ticked, it’s on and says no more');
+  await many.c.close();
+  const two = await withSets({ sets: { a: other('a', 'Tree House', 'apart'), b: other('b', 'Typewriter', 'apart'), x: box('x', 'built') } });
+  await two.p.goto(base + '#build');
+  await two.p.waitForSelector('[data-pool]');
+  assert.deepEqual(await says(two.p), ['Tick a set to build from its pieces.', 'Tree House and Typewriter are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.'], 'no word of loose pieces when there are none');
+  await two.c.close();
 }
 
 // A full shelf can be read and tapped on a phone. The shelf's label sits on a tag drawn over the sets (a tall set at

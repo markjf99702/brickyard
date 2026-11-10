@@ -33,15 +33,23 @@ const ready = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), g
   .then(([s, c, i]) => { shapes = s; colors = c; index = i; });
 
 // Sets in My sets that Brickyard has a parts list for. Taken-apart sets count by default; the toggles override.
+// `pieces` is the count My sets shows for the set, so the two screens agree (the parts list for 10698 adds up to
+// 804, the box says 790); with none there, it's the parts list's.
 function poolSets() {
   const prefs = read(POOL, {});
   return Object.values(app.doc().sets).filter(x => !x.del && x.num && index[x.num])
-    .map(x => ({ id: x.id, num: x.num, name: x.name || 'Set ' + x.num.replace(/-1$/, ''), pieces: index[x.num], state: x.state,
+    .map(x => ({ id: x.id, num: x.num, name: x.name || 'Set ' + x.num.replace(/-1$/, ''), pieces: x.pieces || index[x.num], state: x.state,
       on: x.id in prefs ? prefs[x.id] : x.state === 'apart' }));
 }
+// Taken-apart sets Brickyard has no parts list for, by name: their pieces can't be counted yet. Built and sealed
+// sets aren't pieces to build from, so a missing list for one of those is nothing to mention.
 function missingLists() {
-  return Object.values(app.doc().sets).filter(x => !x.del && x.num && !index[x.num]).length;
+  return Object.values(app.doc().sets).filter(x => !x.del && x.state === 'apart' && !(x.num && index[x.num]))
+    .map(x => x.name || 'Set ' + String(x.num || '').replace(/-1$/, ''))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
+// Why an unticked set is off, when it's the set's state that says so.
+const OFF = { built: 'built, so off unless you take it apart', partial: 'partly built, so off', sealed: 'sealed, so off' };
 // Lots of loose pieces (from a scanner, or a list from Claude). They count unless unticked.
 function poolLots() {
   const prefs = read(POOL, {});
@@ -120,18 +128,22 @@ async function renderList() {
 
   let html = '<section class="pieces"><h2 class="group"><span>Your pieces</span><span>' + (pieces ? pieces.toLocaleString() : '') + '</span></h2>';
   if (!sets.length && !lots.length) {
-    html += '<div class="how"><p style="margin:0 0 10px">Brickyard builds from the sets in My sets that are taken apart. Your Large Creative Brick Box isn’t in My sets yet.</p>' +
+    html += '<div class="how"><p style="margin:0 0 10px">Brickyard builds from sets that are taken apart and that it has a parts list for. So far that is the Large Creative Brick Box (10698). Have one? Add it.</p>' +
       '<button class="btn" type="button" id="add-box">Add the Large Creative Brick Box</button></div>';
   } else {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
-      '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (s.state === 'apart' ? '' : s.state === 'built' ? ' · built, so off unless you take it apart' : '') + '</small></span></label></li>').join('') +
+      '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (!s.on && OFF[s.state] ? ' · ' + OFF[s.state] : '') + '</small></span></label></li>').join('') +
       lots.map(l => '<li class="lot"><label><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + '>' +
         '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · box ' + esc(window.BrickCore.boxName(l.box)) : '') +
         (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></label>' +
         '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
-    if (!any) html += '<p class="flag"><span>Tick a set or a lot to build from its pieces.</span></p>';
+    if (!any) html += '<p class="flag"><span>' + (!lots.length ? 'Tick a set to build from its pieces.' : sets.length ? 'Tick a set or some loose pieces to build from them.' : 'Tick your loose pieces to build from them.') + '</span></p>';
   }
-  if (none) html += '<p class="note">' + (none === 1 ? 'One of your sets doesn’t' : none + ' of your sets don’t') + ' have a parts list here yet. Tell Claude which ones you’ve taken apart and it can add their pieces.</p>';
+  if (none.length) {
+    const names = none.slice(0, 3).concat(none.length > 3 ? [(none.length - 3) + ' more'] : []), one = none.length === 1;
+    html += '<p class="note">' + esc(names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]) + (one ? ' is' : ' are') + ' taken apart, but Brickyard has no parts list for ' +
+      (one ? 'it' : 'them') + ' yet, so ' + (one ? 'its' : 'their') + ' pieces aren’t counted.</p>';
+  }
   html += '<div class="acts-row"><button class="btn quiet" type="button" id="copy-pool"' + (any ? '' : ' disabled') + '>Copy my pieces for Claude</button><button class="btn quiet" type="button" id="open-model">Open a model</button></div></section>';
 
   // A saved entry with no model in it (a damaged save) is skipped rather than stopping the whole list.
