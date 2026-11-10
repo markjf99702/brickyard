@@ -2180,6 +2180,54 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// A phone at 200% zoom lays the page out 195 px wide. No screen or sheet is wider than that (the home screen, Build
+// from your box and the Shelf planner ran off the side, and in the planner a sheet's Save ended past the edge
+// where it couldn't be scrolled to), every sheet's buttons are inside the screen, and the button in a message is
+// 44 px tall at any width.
+{
+  const cat = { sets: { a: { id: 'a', t: 1, num: '42115-1', name: 'Lamborghini Sián FKP 37', year: 2020, pieces: 3696, theme: 'Technic', state: 'built', room: 'Garage', check: 'could be 42143', size: { w: 60, d: 25, h: 13 } },
+    b: { id: 'b', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Living room', spot: 'Bookcase' } },
+    cases: { k: { id: 'k', t: 1, name: 'Office Billy', room: 'Office', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }, { h: 32, sets: [] }] } } };
+  const { c, p } = await withSets(cat, { viewport: { width: 195, height: 422 }, isMobile: true });
+  // The page's width, and whatever in an open sheet ends outside the screen.
+  const wide = () => p.evaluate(() => [document.documentElement.scrollWidth, [...document.querySelectorAll('.sheet, .sheet .btn, .sheet input, .sheet select, .sheet .seg button, .toast, .toast button')]
+    .filter(e => { const r = e.getBoundingClientRect(); return r.width && (r.left < 0 || r.right > innerWidth + 0.5); }).map(e => e.id || e.textContent.slice(0, 20))]);
+  const shut = async () => { await p.click('[data-close]'); await p.waitForTimeout(650); if (await p.locator('.sheet').count()) await p.click('[data-close]'); await p.waitForFunction(() => !document.querySelector('.sheet')); };
+  assert.deepEqual(await wide(), [195, []], 'the home screen');
+  await p.goto(base + '#catalog');
+  await p.click('.item[data-id="a"]');
+  assert.deepEqual(await wide(), [195, []], 'a set’s sheet');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  assert.deepEqual(await wide(), [195, []], 'a message with Undo');
+  await p.click('.toast button');
+  await p.click('#claude-btn');
+  assert.deepEqual(await wide(), [195, []], 'Add from photos');
+  await shut();
+  await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { name: 'Hall closet', room: 'Hall', sets: [{ num: '31058', name: 'Mighty Dinosaurs', year: 2017, pieces: 174, state: 'built' }, { num: '10281', name: 'Bonsai Tree' }] } })).toString('base64url'));
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([await wide(), await p.$$eval('.rv li', ls => ls.every(l => l.getBoundingClientRect().right <= innerWidth && l.querySelector('.t').scrollWidth <= l.querySelector('.t').clientWidth))], [[195, []], true], 'Add sets from Claude, each row whole');
+  await shut();
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list .item');
+  assert.deepEqual(await wide(), [195, []], 'Build from your box');
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await wide(), [195, []], 'the Shelf planner');
+  await p.click('.sv-set[data-set="a"]');
+  assert.deepEqual([await wide(), await p.$eval('#z-save', b => b.getBoundingClientRect().right <= innerWidth)], [[195, []], true], 'a set’s sheet in the planner, Save inside the screen');
+  await shut();
+  await p.click('[data-case="k"]');
+  assert.deepEqual([await wide(), await p.$eval('#k-save', b => b.getBoundingClientRect().right <= innerWidth)], [[195, []], true], 'a bookcase’s sheet');
+  await c.close();
+  // At an ordinary width the button in a message is 44 px tall (it was 41.75).
+  const n = await withSets(cat);
+  await n.p.goto(base + '#catalog');
+  await n.p.click('.item[data-id="b"]');
+  await n.p.click('#e-del'); await n.p.waitForTimeout(650); await n.p.click('#e-del');
+  assert.ok(await n.p.$eval('.toast button', b => b.getBoundingClientRect().height) >= 44);
+  await n.c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

@@ -342,7 +342,7 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 }
 /* With a button in it (Undo): the words, then the button. */
 .toast.act { display: flex; align-items: center; gap: 10px; text-align: left; padding-right: 6px; }
-.toast button { flex: none; border: 0; border-radius: 8px; padding: 10px 14px; margin: -6px 0; background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; font-weight: 700; cursor: pointer; }
+.toast button { flex: none; border: 0; border-radius: 8px; padding: 10px 14px; margin: -6px 0; min-height: 44px; background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; font-weight: 700; cursor: pointer; }
 .toast button:focus-visible { outline-color: var(--bg); }
 
 .jd-foot { text-align: center; font-size: 13px; color: var(--muted); padding: 4px 16px calc(env(safe-area-inset-bottom) + 4px); }
@@ -352,7 +352,9 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 /* A phone at 200% zoom lays the page out about 195 px wide. A row kept its 64 px picture and its badge beside the
    words, which left the set's name a 13 px column ("L. K."), or none. There the picture is smaller and the badge
    goes under the words; the two buttons at the bottom come after the list; a model's Next button and its name give
-   way too. */
+   way too. The home screen, Build from your box, the Shelf planner and the sheets ran off the side there (and in
+   the planner a sheet's Save couldn't be reached): a button's words wrap, the home screen's pictures are smaller,
+   boxes that sat side by side stack, State is two rows of two, and a row of buttons wraps. */
 @media (max-width: 300px) {
   .item { grid-template-columns: 44px 1fr; gap: 8px; }
   .item .pic { width: 44px; height: 36px; }
@@ -367,6 +369,22 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
   .stepbar .btn { min-width: 0; }
   ul.need { grid-template-columns: 1fr; }
   .bar h1 { font-size: 19px; overflow-wrap: anywhere; }
+  .btn { white-space: normal; text-align: center; }
+  .room { grid-template-columns: 56px minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .art { width: 56px; height: 46px; }
+  .room h2 { font-size: 17px; overflow-wrap: anywhere; }
+  .sheet .hd { padding: 10px 16px 8px; }
+  .sheet .hd h2 { font-size: 17px; overflow-wrap: anywhere; }
+  .sheet .ft { padding-top: 8px; padding-bottom: calc(env(safe-area-inset-bottom) + 8px); gap: 6px; }
+  .sheet .ft, .acts-row, .case-hd { flex-wrap: wrap; }
+  .seg { grid-template-columns: 1fr 1fr; }
+  .two, .three { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+  .field .two, .field .three, .bulk .two { row-gap: 8px; } /* boxes with no space of their own under them */
+  .rv li { grid-template-columns: 24px minmax(0, 1fr); }
+  .rv li .pic { display: none; }
+  .rv .t, .rv .m, .rv .w, .menu span, .note, .lede, .flag span { overflow-wrap: anywhere; }
+  .flag { flex-wrap: wrap; }
+  .toast.act { flex-wrap: wrap; justify-content: flex-end; }
 }
 
 /* On paper: the list, under a line that says what it's a list of (js/app.js fills it in). Not the search, the
