@@ -1354,6 +1354,21 @@ await page.click('[data-close]');
   }
 }
 
+// Every size box says what it is, above the box, where it stays once the box holds a number: a bookcase opened on
+// a bare "76" and "26", and a set's size was a bare "50 8 16" (the words were only placeholders).
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Typewriter', state: 'built', size: { w: 50, d: 8, h: 16 } } } });
+  const labels = ids => p.evaluate(ids => ids.map(id => { const l = document.getElementById(id).labels[0], r = l && l.firstElementChild.getBoundingClientRect(); return l && r.width > 0 && r.height > 0 ? l.firstElementChild.textContent : ''; }), ids);
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Typewriter")');
+  assert.deepEqual([await labels(['e-w', 'e-d', 'e-h']), await p.inputValue('#e-w')], [['Width, cm', 'Depth, cm', 'Height, cm'], '50'], 'a set’s size boxes are labelled');
+  await p.click('[data-close]');
+  await p.goto(base + '#shelves');
+  await p.click('[data-act="add-case"]');
+  assert.deepEqual([await labels(['k-w', 'k-d']), await p.inputValue('#k-w'), await p.inputValue('#k-d')], [['Width inside, cm', 'Depth inside, cm'], '76', '26'], 'a bookcase’s size boxes are labelled');
+  await c.close();
+}
+
 // See in My sets, in the shelf planner, shows that set: its sheet open and its row in view behind it, down a long
 // list. A search or a filter left on from before that would hide the set is taken off (it used to land at the top of
 // My sets with the old search still in the box, and the set nowhere on the screen); one that shows it is left alone.

@@ -223,7 +223,8 @@
       }).join('') + '</div></div>' : '') +
       '<div class="two"><label class="field"><span>Name</span><input id="k-name" value="' + esc(v.name) + '" placeholder="e.g. Office Billy"></label>' +
       '<label class="field"><span>Room</span><input id="k-room" list="k-rooms" value="' + esc(v.room) + '" placeholder="e.g. Office"><datalist id="k-rooms">' + Object.keys(rooms).sort(C.natural).map(function (r) { return '<option value="' + esc(r) + '">'; }).join('') + '</datalist></label></div>' +
-      '<div class="field"><span class="lbl">Inside, in cm</span><div class="two"><input id="k-w" inputmode="decimal" aria-label="Width inside in cm" placeholder="Width" value="' + esc(v.w) + '"><input id="k-d" inputmode="decimal" aria-label="Depth inside in cm" placeholder="Depth" value="' + esc(v.d) + '"></div></div>' +
+      '<div class="two"><label class="field"><span>Width inside, cm</span><input id="k-w" inputmode="decimal" value="' + esc(v.w) + '"></label>' +
+      '<label class="field"><span>Depth inside, cm</span><input id="k-d" inputmode="decimal" value="' + esc(v.d) + '"></label></div>' +
       '<label class="field"><span>Height of each shelf, top shelf first (cm)</span><input id="k-levels" inputmode="decimal" value="' + esc(v.levels.join(', ')) + '" placeholder="e.g. 32, 32, 40, 40"></label>' +
       '<p class="note">The height is the clear space above each shelf, up to the one above it. The presets are rough: measure yours for a close fit.</p>' +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',

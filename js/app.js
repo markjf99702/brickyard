@@ -424,8 +424,9 @@
       field('Moving box', input('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
       field('Missing pieces', '<textarea id="e-missing" placeholder="e.g. one red 2×4 brick, the minifigure’s hat">' + esc(x.missing) + '</textarea>') +
       '<label class="check"><input type="checkbox" id="e-instr"' + (x.instr ? ' checked' : '') + '> I have the paper instructions</label>' +
-      '<div class="field"><span class="lbl">Size when built, in cm (for the shelf planner)</span><div class="three">' +
-      input('e-w', z.w || '', ' inputmode="decimal" placeholder="Width" aria-label="Width in cm"') + input('e-d', z.d || '', ' inputmode="decimal" placeholder="Depth" aria-label="Depth in cm"') + input('e-h', z.h || '', ' inputmode="decimal" placeholder="Height" aria-label="Height in cm"') + '</div></div>' +
+      // Each box has its own label: a placeholder is gone once the box holds a number, leaving a bare "50 8 16".
+      '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
+      field('Width, cm', input('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', input('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', input('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
       field('Tags', input('e-tags', (x.tags || []).join(', '), ' placeholder="Comma between tags"')) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
       '</div>' +
