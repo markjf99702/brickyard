@@ -383,25 +383,42 @@
     } });
   }
 
+  // Why a set can't stand the way that was asked for on a shelf where it does fit the other way round.
+  function wayWhy(c, li, x, ids, turn) {
+    var f = S.footprint(x, turn), l = c.levels[li], way = turn ? 'Side-on' : 'Facing out';
+    if (f.deep > c.d) return way + ' it’s ' + cm(f.deep) + ' cm deep; the shelf is ' + cm(c.d) + '.';
+    if (f.along > c.w) return way + ' it’s ' + cm(f.along) + ' cm wide; the shelf is ' + cm(c.w) + '.';
+    var others = l.sets.filter(function (p) { return p.id !== x.id && ids[p.id] && S.hasSize(ids[p.id]); }).length;
+    var left = Math.max(0, Math.round((c.w - S.used(l, ids, x.id) - (others ? S.GAP : 0)) * 10) / 10);
+    return way + ' it needs ' + cm(f.along) + ' cm; ' + cm(left) + (left === 1 ? ' is left.' : ' are left.');
+  }
+
   // One set: its size, where it stands, and moving it.
   function setSheet(id) {
     var x = byId()[id]; if (!x) return;
     var all = cases(), at = S.placements(all)[id], ids = byId(), z = x.size || {};
+    // Each shelf is named with its bookcase: closed, the box showed "Shelf 2 (32 cm)" with three bookcases on the page.
     var opts = '<option value="">Not on a shelf</option>' + all.map(function (c) {
       return '<optgroup label="' + esc(c.name) + '">' + c.levels.map(function (l, li) {
         var here = at && at.c === c.id && at.l === li, f = S.fits(c, li, x, ids, here && at.turn);
-        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here ? ' disabled' : '') + '>Shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (f.why && !here ? ' · ' + esc(f.why.replace(/ \(.*\)/, '').toLowerCase()) : '') + '</option>';
+        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here ? ' disabled' : '') + '>' + esc(c.name) + ' · shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (f.why && !here ? ' · ' + esc(f.why.replace(/ \(.*\)/, '').toLowerCase()) : '') + '</option>';
       }).join('') + '</optgroup>';
     }).join('');
     var level = at ? caseOf(at.c).levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
-    app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    // Which set this is, under its name: two copies of one set, or two sets of one colour, looked the same here.
+    var which = [C.shortNum(x.num), x.theme].filter(Boolean).join(' · ');
+    // For a set that fits nowhere, the reason its row in the list gives; then whatever Save couldn't do.
+    var stuck = !at && all.length && S.hasSize(x) ? S.whyNot(all, x, ids) : '';
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(nameOf(x)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      (which ? '<p class="note" id="z-which" style="margin-top:0">' + esc(which) + '</p>' : '') +
       '<div class="three">' +
       '<label class="field"><span>Width, cm</span><input id="z-w" inputmode="decimal" value="' + esc(z.w || '') + '"></label>' +
       '<label class="field"><span>Depth, cm</span><input id="z-d" inputmode="decimal" value="' + esc(z.d || '') + '"></label>' +
       '<label class="field"><span>Height, cm</span><input id="z-h" inputmode="decimal" value="' + esc(z.h || '') + '"></label></div>' +
       (all.length ? '<label class="field"><span>Where it stands</span><select id="z-where">' + opts + '</select></label>' : '') +
-      (at ? '<label class="check"><input type="checkbox" id="z-turn"' + (at.turn ? ' checked' : '') + '> Stand it side-on (takes its depth along the shelf)</label>' +
-        '<div class="acts-row"><button class="btn quiet sm" type="button" id="z-left"' + (pos <= 0 ? ' disabled' : '') + '>Move left</button><button class="btn quiet sm" type="button" id="z-right"' + (pos >= level.sets.length - 1 ? ' disabled' : '') + '>Move right</button></div>' : '') +
+      (at ? '<label class="check"><input type="checkbox" id="z-turn"' + (at.turn ? ' checked' : '') + '> Stand it side-on (takes its depth along the shelf)</label>' : '') +
+      '<p class="note warn" id="z-msg" role="status">' + esc(stuck) + '</p>' +
+      (at ? '<div class="acts-row"><button class="btn quiet sm" type="button" id="z-left"' + (pos <= 0 ? ' disabled' : '') + '>Move left</button><button class="btn quiet sm" type="button" id="z-right"' + (pos >= level.sets.length - 1 ? ' disabled' : '') + '>Move right</button></div>' : '') +
       '</div><div class="ft"><a class="btn quiet" href="#catalog" id="z-cat">See in My sets</a><button class="btn" type="button" id="z-save">Save</button></div>',
       function () { return now() !== was; });
     // Its size and place as the sheet has them, to tell whether closing would lose a change.
@@ -409,39 +426,49 @@
     var was = now();
     // My sets opens on this set (app.showSet), once this sheet has closed.
     $('z-cat').onclick = function (e) { e.preventDefault(); app.showSet(id); };
-    function shift(by) {
-      var c = copy(caseOf(at.c)), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
-      var p = l.sets.splice(i, 1)[0]; l.sets.splice(i + by, 0, p); put(c); app.closeSheet(); render();
-    }
-    if ($('z-left')) { $('z-left').onclick = function () { shift(-1); }; $('z-right').onclick = function () { shift(1); }; }
-    $('z-save').onclick = function () {
+    // What can't be done is said in the sheet, which stays open with nothing saved. (A tick that couldn't be
+    // honoured used to close the sheet with the set as it was, and no word.)
+    function refuse(why) { $('z-msg').textContent = why; }
+    // Save, and Move left or right (by -1 or 1), which save whatever else the sheet holds first: a size typed
+    // before Move was thrown away.
+    function save(by) {
+      refuse('');
       // cm unless they say inches; what can't be read is turned down by app.lengths, which says which box.
       var z = app.lengths([['z-w', 'Width'], ['z-d', 'Depth'], ['z-h', 'Height']]);
       if (!z) return;
       var w = z.v['z-w'], d = z.v['z-d'], h = z.v['z-h'];
-      var y = JSON.parse(JSON.stringify(x));
+      var y = copy(x);
       if (w && d && h) y.size = { w: w, d: d, h: h };
       else if (!w && !d && !h) delete y.size;
       else { toast('Give all three sizes, or none'); return; }
-      if (JSON.stringify(y.size || null) !== JSON.stringify(x.size || null)) app.putSet(y);
       var want = $('z-where') ? $('z-where').value : '', turn = $('z-turn') ? $('z-turn').checked : false;
-      var now = at ? at.c + ':' + at.l : '';
-      if (want !== now || (at && turn !== at.turn)) {
+      var from = at ? at.c + ':' + at.l : '', ids2 = byId(), list = cases(), next = list.map(copy);
+      ids2[id] = y;
+      if (want !== from || (at && turn !== at.turn)) {
         // Off every bookcase first, so it can only ever stand in the one place chosen here.
-        var ids2 = byId(), list = cases(), next = list.map(copy);
         S.takeOff(next, id);
         if (want) {
           var bits = want.split(':'), c1 = next.filter(function (k) { return k.id === bits[0]; })[0], li = +bits[1];
-          var f = S.fits(c1, li, ids2[id], ids2, $('z-turn') ? turn : false);
-          if (f.why) { toast(f.why); return; }
+          var f = S.fits(c1, li, y, ids2, $('z-turn') ? turn : false);
+          if (f.why) { refuse(f.why + '.'); return; }
+          // The tick was changed and this shelf only takes the set the other way round.
+          if (at && turn !== at.turn && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn)); return; }
           var p = { id: id }; if (f.turn) p.turn = true;
           if (at && at.c === c1.id && at.l === li) c1.levels[li].sets.splice(pos, 0, p); else c1.levels[li].sets.push(p);
         }
-        next.forEach(function (k, i) { if (JSON.stringify(k.levels) !== JSON.stringify(list[i].levels)) put(k); });
       }
+      var here = by ? S.placements(next)[id] : null;
+      if (here) {
+        var l = next.filter(function (k) { return k.id === here.c; })[0].levels[here.l], i = l.sets.findIndex(function (q) { return q.id === id; });
+        var q = l.sets.splice(i, 1)[0]; l.sets.splice(Math.max(0, Math.min(l.sets.length, i + by)), 0, q);
+      }
+      if (JSON.stringify(y.size || null) !== JSON.stringify(x.size || null)) app.putSet(y);
+      next.forEach(function (k, n) { if (JSON.stringify(k.levels) !== JSON.stringify(list[n].levels)) put(k); });
       app.closeSheet(); render();
       if (z.note) toast(z.note);
-    };
+    }
+    if ($('z-left')) { $('z-left').onclick = function () { save(-1); }; $('z-right').onclick = function () { save(1); }; }
+    $('z-save').onclick = function () { save(0); };
   }
 
   // Add or change a bookcase. Each shelf has a box of its own for its height, top shelf first, with Remove, and Add

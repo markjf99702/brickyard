@@ -1860,6 +1860,44 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A set's sheet in the planner. A tick that can't be honoured keeps the sheet open and says why (it closed as if it
+// had worked). Move left and Move right save what else the sheet holds first (a height typed before Move was thrown
+// away). Each shelf in the list is named with its bookcase, the set's number and theme are under its name, and a
+// set that fits nowhere says why here too.
+{
+  const set = (id, name, w, d, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d, h }, ...more });
+  const { c, p } = await withSets({ sets: { lm: set('lm', 'Lamborghini Sián', 60, 25, 13, { num: '42115-1', theme: 'Technic' }), bs: set('bs', 'Medieval Blacksmith', 27, 21, 27), lb: set('lb', 'London Bus', 34, 9, 18),
+    bq: set('bq', 'Flower Bouquet', 26, 13, 20), ge: set('ge', 'Galaxy Explorer', 52, 32, 13) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'lm' }] }, { h: 32, sets: [{ id: 'bs' }, { id: 'lb' }, { id: 'bq', turn: true }] }] } } });
+  const row = () => p.evaluate(() => window.brickyard.doc().cases.k.levels[1].sets.map(q => q.id + (q.turn ? '*' : '')).join(' '));
+  await p.goto(base + '#shelves');
+  await p.click('.sv-set[data-set="lm"]');
+  assert.deepEqual([await p.textContent('#z-which'), await p.textContent('#z-where option:checked'), await p.textContent('#z-msg')], ['42115 · Technic', 'Billy · shelf 1 (32 cm)', ''], 'the sheet says which set it is, and which bookcase its shelf is on');
+  await p.check('#z-turn');
+  await p.click('#z-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await p.textContent('#z-msg'), await p.evaluate(() => !!window.brickyard.doc().cases.k.levels[0].sets[0].turn)], [1, 'Side-on it’s 60 cm deep; the shelf is 26.', false], 'a tick that can’t be honoured keeps the sheet open and says why');
+  await discard(p);
+  // Facing out needs more room than the shelf has left.
+  await p.click('.sv-set[data-set="bq"]');
+  await p.uncheck('#z-turn');
+  await p.click('#z-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await p.textContent('#z-msg')], [1, 'Facing out it needs 26 cm; 13 are left.']);
+  await discard(p);
+  // Move saves the size typed first.
+  await p.click('.sv-set[data-set="bs"]');
+  await p.fill('#z-h', '30');
+  await p.click('#z-right');
+  assert.deepEqual([await p.locator('.sheet').count(), await row(), await p.evaluate(() => window.brickyard.doc().sets.bs.size.h)], [0, 'lb bs bq*', 30], 'Move right moves the set and keeps the height typed');
+  await p.click('.sv-set[data-set="bs"]');
+  await p.fill('#z-h', 'tall');
+  await p.click('#z-left');
+  assert.deepEqual([await p.locator('.sheet').count(), await row()], [1, 'lb bs bq*'], 'and a size that can’t be read stops the move');
+  await discard(p);
+  await p.click('#shelves-body .list .item:has-text("Galaxy Explorer")');
+  assert.equal(await p.textContent('#z-msg'), '32 cm deep; your bookcase is 26 cm deep', 'a set that fits nowhere says why in its sheet');
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },
