@@ -101,6 +101,52 @@ await syncNow(A.page);
 assert.deepEqual(await names(A.page), ['Bonsai Tree', 'Typewriter'], 'a set removed on one device is gone on the other');
 assert.deepEqual(inDrive(), ['Bonsai Tree', 'Typewriter'], 'and in Drive');
 
+// Drive answering with an error: the button says Sync failed and a message says why, once. A tap on the button opens
+// the sheet, which gives the reason and has Sync now (the reason was only in the button's tooltip, and a tap tried
+// again without a word). With no answer at all it says the changes are kept here.
+{
+  const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS' };
+  const broken = r => r.request().method() === 'OPTIONS' ? r.fulfill({ status: 204, headers: CORS })
+    : r.fulfill({ status: 500, headers: { ...CORS, 'Content-Type': 'application/json' }, body: JSON.stringify({ error: { code: 500, message: 'Backend Error' } }) });
+  const btn = () => A.page.evaluate(() => { const b = document.querySelector('#home .sync-btn'); return [b.dataset.s, b.textContent, b.title]; });
+  const toast = () => A.page.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? '' : t.querySelector('span').textContent; });
+  const failed = () => A.page.waitForFunction(() => document.querySelector('#home .sync-btn').dataset.s === 'err', null, { timeout: 15000 });
+  assert.deepEqual(await btn(), ['ok', 'Synced', 'Synced with Google Drive']);
+  await A.ctx.route('https://www.googleapis.com/**', broken);
+  await A.page.evaluate(() => window.brickyard.putSet(Object.assign({}, window.brickyard.doc().sets.a2, { room: 'Loft' })));
+  assert.deepEqual(await btn(), ['ok', 'Saving', 'Saving to Google Drive'], 'while a change waits to go, the button’s description says Saving too');
+  await failed();
+  assert.deepEqual(await btn(), ['err', 'Sync failed', 'Drive said: Backend Error']);
+  await A.page.waitForFunction(() => !document.querySelector('.toast').hidden);
+  assert.equal(await toast(), 'Sync didn’t work. Drive said: Backend Error', 'a message says why');
+  await A.page.click('.toast');
+  await A.page.click('#home .sync-btn');
+  assert.deepEqual([await A.page.textContent('#sheetTitle'), await A.page.textContent('#drive-sheet .flag'), await A.page.locator('#dv-sync').count()],
+    ['Sync with Google Drive', 'Drive said: Backend Error', 1], 'a tap on Sync failed opens the sheet with the reason and Sync now');
+  await A.page.click('#dv-sync');
+  await A.page.waitForFunction(() => /Syncing now/.test(document.getElementById('drive-sheet').textContent) === false && document.querySelector('#home .sync-btn').dataset.s === 'err');
+  await A.page.waitForTimeout(600);
+  assert.deepEqual([await toast(), await A.page.textContent('#drive-sheet .flag')], ['', 'Drive said: Backend Error'], 'the same failure again isn’t said twice; the sheet still shows it');
+  await A.page.click('[data-close]');
+  // No answer at all.
+  await A.ctx.unroute('https://www.googleapis.com/**', broken);
+  const dead = r => r.abort();
+  await A.ctx.route('https://www.googleapis.com/**', dead);
+  await A.page.evaluate(() => window.BrickyardSync.sheet());
+  await A.page.click('#dv-sync');
+  await A.page.click('[data-close]');
+  await A.page.waitForFunction(() => !document.querySelector('.toast').hidden);
+  assert.equal(await toast(), 'Couldn’t reach Google Drive. Your changes are kept here, and sync when it answers.');
+  await A.page.click('.toast');
+  // Drive back: Sync now from the sheet puts it right.
+  await A.ctx.unroute('https://www.googleapis.com/**', dead);
+  await A.page.click('#home .sync-btn');
+  await A.page.click('#dv-sync');
+  await A.page.click('[data-close]');
+  await synced(A.page);
+  assert.equal(JSON.parse(g.files().find(x => x.appProperties && x.appProperties.brickyard === 'catalog' && !x.trashed).body).catalog.sets.a2.room, 'Loft', 'and the change reaches Drive');
+}
+
 // An hour later Google wants a tap: the button says so, and one tap signs in again and syncs.
 await A.page.evaluate(() => {
   const d = JSON.parse(localStorage.getItem('brickyard.drive')); d.exp = 1; localStorage.setItem('brickyard.drive', JSON.stringify(d));
@@ -109,6 +155,8 @@ await A.page.evaluate(() => {
 await A.page.reload();
 await A.page.waitForFunction(() => document.querySelector('#home .sync-btn').dataset.s === 'tap');
 await A.page.waitForFunction(() => window.__cfg); // Google's script is loaded, so the tap opens it at once
+assert.deepEqual(await A.page.evaluate(() => [document.querySelector('.toast').hidden, document.querySelector('.toast span').textContent, document.querySelector('#home .sync-btn').title]),
+  [false, 'Google signs Brickyard out after an hour. Tap Sync to sync again.', 'Google signs Brickyard out after an hour. Tap to sync again.'], 'and a message says why, where a phone can read it');
 await A.page.click('#home .sync-btn');
 await synced(A.page);
 assert.equal((await A.page.evaluate(() => window.__prompts)).slice(-1)[0].login_hint, 'mark@gmail.com', 'signing in again skips the account chooser');

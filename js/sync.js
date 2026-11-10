@@ -141,7 +141,7 @@
     });
   }
 
-  var syncing = false, again = false, timer = null, edits = 0;
+  var syncing = false, again = false, timer = null, edits = 0, told = '';
   function sync() {
     if (!here || !D.on) return Promise.resolve();
     if (syncing) { again = true; return Promise.resolve(); }
@@ -165,15 +165,20 @@
     }
     return round(0).then(function () {
       if (edits === seq) D.pending = false;
-      D.last = Date.now(); D.err = ''; saveD(); syncing = false; render();
+      D.last = Date.now(); D.err = ''; told = ''; saveD(); syncing = false; render();
       if (again || D.pending) { again = false; soon(); }
       // Drive can't refuse a write that crosses another device's, so look again shortly after writing: if the
       // file moved on, the next round merges this device's changes back in.
       else if (wrote) { clearTimeout(timer); timer = setTimeout(sync, 5000); }
     }, function (e) {
       syncing = false; again = false;
-      if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; } else D.err = e.message || 'Sync didn’t work';
+      if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; }
+      // A request that never got an answer (no signal) is a TypeError with the browser's own words for it.
+      else D.err = e instanceof TypeError ? 'Couldn’t reach Google Drive. Your changes are kept here, and sync when it answers.' : e.message || 'Sync didn’t work';
       saveD(); render();
+      // Said once, where it can be read: the button's "Sync failed" gave the reason only to a mouse held over it.
+      // Not again while the same thing keeps going wrong (a sync is tried every minute), and after any Undo.
+      if (!e.auth && D.err !== told) { told = D.err; app.toastAfter(/^Couldn’t reach/.test(D.err) ? D.err : 'Sync didn’t work. ' + D.err, 'long'); }
     });
   }
   function soon() { if (!D.on || !hasToken()) { render(); return; } clearTimeout(timer); timer = setTimeout(sync, 2000); }
@@ -187,13 +192,19 @@
     return 'ok';
   }
   var WORDS = { busy: 'Syncing', tap: 'Sync', err: 'Sync failed', ok: 'Synced' };
+  var TITLES = { busy: 'Syncing with Google Drive', tap: 'Google signs Brickyard out after an hour. Tap to sync again.', ok: 'Synced with Google Drive' };
+  var toldTap = false;
   function render() {
-    var s = state();
+    var s = state(), seen = false;
     document.querySelectorAll('.sync-btn').forEach(function (b) {
       b.hidden = !here || s === 'off'; b.dataset.s = s;
       b.querySelector('span').textContent = s === 'ok' && D.pending ? 'Saving' : WORDS[s] || '';
-      b.title = s === 'tap' ? 'Google signs Brickyard out after an hour. Tap to sync again.' : s === 'err' ? D.err : 'Synced with Google Drive';
+      b.title = s === 'err' ? D.err : s === 'ok' && D.pending ? 'Saving to Google Drive' : TITLES[s] || '';
+      if (!b.hidden && b.offsetParent) seen = true;
     });
+    // Why the button says "Sync" with a red dot, said once a visit, the first time it does on a screen that shows
+    // the button (it was only in the button's tooltip). It waits for any message that's showing.
+    if (s === 'tap' && seen && !toldTap) { toldTap = true; app.toastAfter('Google signs Brickyard out after an hour. Tap Sync to sync again.'); }
     if ($('sync-offer')) $('sync-offer').hidden = !here || D.on;
     if ($('drive-sheet')) sheetBody();
   }
@@ -232,8 +243,9 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('.sync-btn, #sync-offer');
     if (!b) return;
+    // Signing in again has to start inside the tap (Google's window is a pop-up). After a failed sync the tap
+    // opens the sheet, which says what went wrong and has Sync now; it used to try again without a word.
     if (b.classList.contains('sync-btn') && state() === 'tap') askToken();
-    else if (b.classList.contains('sync-btn') && state() === 'err') { D.err = ''; sync(); }
     else sheet();
   });
   document.addEventListener('brickyard:saved', function () { edits++; if (D.on) { D.pending = true; saveD(); soon(); render(); } });
@@ -241,6 +253,7 @@
     if (e.key === LSG) render();
     if (e.key === LSD) { try { D = Object.assign(fresh(), JSON.parse(e.newValue || '{}')); } catch (x) { /* keep ours */ } render(); }
   });
+  document.addEventListener('brickyard:route', render); // the button is on some screens only
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && D.on && hasToken()) sync(); render(); });
   setInterval(function () { if (document.visibilityState === 'visible' && D.on && hasToken() && !syncing) sync(); else render(); }, 60000);
 
