@@ -47,8 +47,26 @@ const set = (id, name, t) => ({ id, name, t: t || 1, state: 'built' });
 const A = await device({ a1: set('a1', 'Bonsai Tree'), a2: set('a2', 'Typewriter') });
 assert.equal(await A.page.isVisible('#sync-offer'), true, 'the Drive offer shows');
 await A.page.click('#sync-offer');
-await A.page.click('#dv-go');
-await A.page.click('[data-close]');
+// By keyboard: the sheet is drawn again as the state changes, and the focus used to be thrown away each time (Enter
+// on Connect, then on Sync now, left it on the page behind). It stays on the button, or goes to the one that took
+// its place; what the sheet says is a status region, so the change is read out; and when the sheet closes, the
+// offer that opened it has gone, so the sync button that replaced it takes the focus.
+const at = () => A.page.evaluate(() => { const a = document.activeElement; return a.id || (a.closest('section') ? a.closest('section').id + ' ' : '') + (a.className || a.tagName); });
+await A.page.waitForFunction(() => window.__cfg); // Google's script is loaded, so Connect opens it at once
+await A.page.focus('#dv-go');
+await A.page.keyboard.press('Enter');
+await A.page.waitForSelector('#dv-sync');
+assert.equal(await at(), 'dv-sync', 'after Connect, the focus is on Sync now');
+await A.page.waitForFunction(() => document.querySelector('#dv-says').textContent === 'Last synced just now.');
+assert.deepEqual(await A.page.evaluate(() => [document.querySelector('#dv-says').getAttribute('role'), document.querySelector('#dv-ago').getAttribute('aria-live')]), ['status', 'off'], 'what it says is read out; the minutes counting up are not');
+await A.page.evaluate(() => { window.__said = []; new MutationObserver(() => window.__said.push(document.querySelector('#dv-says').textContent)).observe(document.querySelector('#dv-says'), { childList: true, subtree: true, characterData: true }); });
+await A.page.keyboard.press('Enter');
+await A.page.waitForFunction(() => window.__said.length >= 2 && document.querySelector('#dv-says').textContent === 'Last synced just now.');
+assert.deepEqual([await at(), (await A.page.evaluate(() => window.__said))[0]], ['dv-sync', 'Syncing now…'], 'Sync now keeps the focus while the sheet says what is happening');
+await A.page.keyboard.press('Escape');
+await A.page.waitForFunction(() => !(history.state && history.state.sheet));
+await A.page.waitForTimeout(100);
+assert.equal(await at(), 'home sync-btn', 'closed, the focus is on the sync button');
 await synced(A.page);
 assert.deepEqual(inDrive(), ['Bonsai Tree', 'Typewriter'], 'the catalog is in Drive');
 assert.ok(g.files().some(f => f.mimeType === 'application/vnd.google-apps.folder' && f.name === 'Brickyard' && f.appProperties.brickyard === 'folder'), 'in a Brickyard folder');

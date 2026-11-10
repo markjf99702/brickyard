@@ -217,20 +217,33 @@
     app.openSheet('<div class="hd"><h2 id="sheetTitle">Sync with Google Drive</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd" id="drive-sheet"></div>');
     sheetBody();
   }
+  // The sheet is drawn again on every change of state and once a minute. What it says (the line at the top, and the
+  // reason a sync failed) is a region that stays on the page, so a screen reader reads the change ("Syncing now…"
+  // turning into "Last synced just now." was silent); only the minutes counting up aren't read. The buttons are
+  // replaced only when they change, and then the one that had the focus has it again, or the one that took its
+  // place (Connect becomes Sync now): the whole sheet used to be rebuilt each time, which threw the keyboard's
+  // place away.
   function sheetBody() {
-    var el = $('drive-sheet'), html;
+    var el = $('drive-sheet'), says, rest, key;
+    if (!$('dv-says')) el.innerHTML = '<div id="dv-says" role="status"></div><div id="dv-rest"></div>';
+    var err = D.err ? '<p class="flag bad"><span>' + app.esc(D.err) + '</span></p>' : '';
     if (!D.on) {
-      html = '<p class="lede">Keep your catalog and bookcases in your own Google Drive, the same on every device where you turn this on.</p>' +
-        '<p class="note">Brickyard can only see files it makes itself: one folder, <b>Brickyard</b>, with your catalog in it. Your models from Claude stay on each device. <a href="https://junkdrawer.works/privacy.html">Privacy</a></p>' +
-        (D.err ? '<p class="flag bad"><span>' + app.esc(D.err) + '</span></p>' : '') +
+      says = '<p class="lede">Keep your catalog and bookcases in your own Google Drive, the same on every device where you turn this on.</p>' + err;
+      rest = '<p class="note">Brickyard can only see files it makes itself: one folder, <b>Brickyard</b>, with your catalog in it. Your models from Claude stay on each device. <a href="https://junkdrawer.works/privacy.html">Privacy</a></p>' +
         '<button class="btn" type="button" id="dv-go">Connect Google Drive</button>';
     } else {
-      html = '<p class="lede">' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Brickyard out after an hour. Tap <b>Sync now</b> to sign in again; your changes are safe here meanwhile.' : D.last ? 'Last synced ' + ago(D.last) + '.' : 'Connected.') + '</p>' +
-        (D.err ? '<p class="flag bad"><span>' + app.esc(D.err) + '</span></p>' : '') +
-        '<p class="note">Your catalog is in <b>My Drive › Brickyard › Brickyard catalog.json</b>. Drive keeps earlier versions of it for 30 days. To take back Brickyard’s access, remove junkdrawer.works under Third-party apps &amp; services in your Google Account.</p>' +
+      says = '<p class="lede">' + (syncing ? 'Syncing now…' : !hasToken() ? 'Google signs Brickyard out after an hour. Tap <b>Sync now</b> to sign in again; your changes are safe here meanwhile.' : D.last ? 'Last synced <span id="dv-ago" aria-live="off"></span>.' : 'Connected.') + '</p>' + err;
+      rest = '<p class="note">Your catalog is in <b>My Drive › Brickyard › Brickyard catalog.json</b>. Drive keeps earlier versions of it for 30 days. To take back Brickyard’s access, remove junkdrawer.works under Third-party apps &amp; services in your Google Account.</p>' +
         '<div class="acts-row"><button class="btn" type="button" id="dv-sync">Sync now</button><button class="btn quiet" type="button" id="dv-off">Stop syncing on this device</button></div>';
     }
-    el.innerHTML = html;
+    if (el._says !== says) {
+      el._says = says; $('dv-says').innerHTML = says;
+      if ($('dv-ago')) $('dv-ago').textContent = ago(D.last);
+    } else if ($('dv-ago') && $('dv-ago').textContent !== ago(D.last)) $('dv-ago').textContent = ago(D.last);
+    if (el._rest === rest) return;
+    var a = document.activeElement, had = a && $('dv-rest').contains(a) ? a.id : '';
+    el._rest = rest; $('dv-rest').innerHTML = rest;
+    if (had) { var to = $(had) || $('dv-sync') || $('dv-go'); if (to) to.focus(); }
     if ($('dv-go')) $('dv-go').onclick = askToken;
     if ($('dv-sync')) $('dv-sync').onclick = function () { if (hasToken()) { D.err = ''; sync(); } else askToken(); };
     if ($('dv-off')) $('dv-off').onclick = function () {

@@ -532,7 +532,14 @@
     if (!openScrim) return;
     var s = openScrim; openScrim = null;
     s.remove(); document.body.style.overflow = ''; behind(false);
-    if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus();
+    var back = lastFocus && lastFocus.focus && document.contains(lastFocus) ? lastFocus : null;
+    // What opened the sheet has gone from the screen (the Drive offer, once sync is on): the focus goes to the sync
+    // button that took its place, or to the screen's heading, not nowhere.
+    if (back && back !== document.body && !back.getClientRects().length) {
+      back = (s.querySelector('#drive-sheet') && [].filter.call(document.querySelectorAll('.sync-btn'), function (b) { return b.getClientRects().length; })[0]) ||
+        document.querySelector('body > section:not([hidden]) h1');
+      if (back) back.focus({ preventScroll: true });
+    } else if (back) back.focus();
   }
   // Closes the sheet and goes back over its place in history. `then` runs once that's done (at once when there was
   // nothing to go back over): anything that moves to another screen has to wait for it.
@@ -871,14 +878,16 @@
       '<span class="note" style="margin:0">Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.</span></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
         var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · ');
-        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
-          '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(meta) + '</div>' +
+        // A tick box is described by the rest of its row: Tab down the ticks read only "Add Cargo Train", without
+        // the reason it's unticked or the thing to check, the things this review is for.
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '" aria-describedby="rv-d' + i + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
+          '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div id="rv-d' + i + '"><div class="m">' + esc(meta) + '</div>' +
           (r.dup ? '<div class="w">You already have this one' + (C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '') + '</div>' : '') +
           (r.was ? '<div class="w">Added from this link before' + (r.was.del ? ', and removed since' : ', now ' + esc(nowCalled(x, r.was))) + '</div>' : '') +
           (r.again ? '<div class="w">Also above in this list.' + (r.on ? ' Untick it unless you have two.' : '') + '</div>' : '') +
-          (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></li>';
+          (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></div></li>';
       }).join('') + '</ul></div>' +
-      '<div class="ft"><span class="note" id="rv-n" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>',
+      '<div class="ft"><span class="note" id="rv-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>',
       function () { return now() !== was; });
     // The ticks and where they all go: changing either is something to lose.
     function now() { return fieldsOf(['rv-room', 'rv-spot', 'rv-box'], rows.map(function (r) { return r.on; })); }

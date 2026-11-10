@@ -673,15 +673,15 @@
         (dropped ? ' ' + (dropped === 1 ? 'One size in the list' : dropped.toLocaleString() + ' sizes in the list') + ' couldn’t be read.' : '') +
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
-        return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add size for ' + esc(nameOf(r.x)) + '">' +
-          '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div>' +
+        return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add size for ' + esc(nameOf(r.x)) + '" aria-describedby="zr-d' + i + '">' +
+          '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div><div id="zr-d' + i + '">' +
           '<div class="m">' + esc(C.shortNum(r.x.num)) + ' · ' + sizeText(r.z) + (S.hasSize(r.x) ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') +
-          (r.doubt ? '<div class="w">Check: ' + esc(r.doubt) + '</div>' : '') + '</div></li>';
+          (r.doubt ? '<div class="w">Check: ' + esc(r.doubt) + '</div>' : '') + '</div></div></li>';
       }).join('') + '</ul></div>' +
-      '<div class="ft"><span class="note" id="zr-n" style="margin:0"></span><button class="btn" type="button" id="zr-go">Add sizes</button></div>');
+      '<div class="ft"><span class="note" id="zr-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="zr-go">Add sizes</button></div>');
     function count() { $('zr-n').textContent = plural(rows.filter(function (r) { return r.on; }).length, 'set'); }
     count();
-    $('zr').onchange = function (e) { var r = rows[+e.target.dataset.i]; r.on = e.target.checked; e.target.parentNode.classList.toggle('off', !r.on); count(); };
+    $('zr').onchange = function (e) { var r = rows[+e.target.dataset.i]; r.on = e.target.checked; e.target.closest('li').classList.toggle('off', !r.on); count(); };
     $('zr').onclick = app.tickRow;
     $('zr-go').onclick = function () {
       var n = 0;

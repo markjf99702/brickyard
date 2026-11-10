@@ -2262,6 +2262,29 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// In a list of rows to tick, each tick box is described by the rest of its row (it read only "Add Cargo Train",
+// without the reason it's unticked or the thing to check), and the count is read out when a tick changes it. In
+// Add sets from Claude and in the planner's Add sizes.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Living room', spot: 'Bookcase' }, b: { id: 'b', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', pieces: 4514, state: 'built' } } });
+  await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10281', name: 'Bonsai Tree' }, { num: '60198', name: 'Cargo Train', year: 2018, pieces: 1226, state: 'sealed', room: 'Garage', check: 'number partly hidden' }] } })).toString('base64url'));
+  await p.waitForSelector('#rv-add');
+  const said = sel => p.$$eval(sel + ' input[type="checkbox"]', bs => bs.map(b => [b.getAttribute('aria-label'), b.checked, document.getElementById(b.getAttribute('aria-describedby')).innerText.replace(/\n+/g, ' / ')]));
+  assert.deepEqual(await said('#rv'), [['Add Bonsai Tree', false, '10281 / You already have this one (Living room › Bookcase)'], ['Add Cargo Train', true, '60198 · 2018 · 1,226 pieces · Sealed · Garage / Check: number partly hidden']]);
+  assert.equal(await p.getByRole('checkbox', { name: 'Add Cargo Train', description: /Check: number partly hidden/ }).count(), 1);
+  assert.equal(await p.getAttribute('#rv-n', 'aria-live'), 'polite');
+  await p.click('#rv li:first-child .t');
+  assert.deepEqual([await p.textContent('#rv-n'), await p.$eval('#rv li:first-child', l => l.className)], ['2 of 2 ticked', ''], 'a tap on the row still ticks it');
+  await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]');
+  await p.goto(base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: [{ num: '10281', w: 21, d: 20, h: 18 }, { num: '10305', w: 44, d: 33, h: 3 }] })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  const sizes = await said('#zr');
+  assert.deepEqual([sizes[0], sizes[1].slice(0, 2), /^10305 · 44 × 33 × 3 cm \/ Check: /.test(sizes[1][2]), await p.getAttribute('#zr-n', 'aria-live')], [['Add size for Bonsai Tree', true, '10281 · 21 × 20 × 18 cm'], ['Add size for Lion Knights’ Castle', false], true, 'polite']);
+  await p.click('#zr li:last-child .t');
+  assert.deepEqual([await p.textContent('#zr-n'), await p.$eval('#zr li:last-child', l => l.className)], ['2 sets', '']);
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
