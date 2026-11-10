@@ -1358,12 +1358,15 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.keyboard.press('Escape');
   await p.clock.runFor(100);
   assert.equal(await p.textContent('[role="status"] .vh'), 'Discard changes?');
-  // A set number that's refused: its box says so to a screen reader, until it's changed.
+  // A set number that's refused: a line under its box says so, as the box's description, and is read out, until
+  // the box is changed.
   await p.fill('#e-num', 'hello');
   await p.press('#e-num', 'Enter');
-  assert.deepEqual([await p.getAttribute('#e-num', 'aria-invalid'), await p.textContent('.toast span'), await p.evaluate(() => document.activeElement.id)], ['true', 'That set number doesn’t look right. It’s usually 4 or 5 digits.', 'e-num']);
+  await p.clock.runFor(100);
+  const NUM = 'That set number doesn’t look right. It’s usually 4 or 5 digits.';
+  assert.deepEqual([await p.getAttribute('#e-num', 'aria-invalid'), await p.textContent('#' + await p.getAttribute('#e-num', 'aria-describedby')), await p.textContent('[role="status"] .vh'), await p.evaluate(() => document.activeElement.id)], ['true', NUM, NUM, 'e-num']);
   await p.fill('#e-num', '10311');
-  assert.equal(await p.getAttribute('#e-num', 'aria-invalid'), null);
+  assert.deepEqual([await p.getAttribute('#e-num', 'aria-invalid'), await p.getAttribute('#e-num', 'aria-describedby'), await p.locator('.sheet .err').count()], [null, null, 0]);
   await c.close();
 }
 
@@ -2115,6 +2118,68 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   }
 }
 
+// A mistake in a sheet is said in a line under the box that's wrong, and stays there until the box is changed
+// (WCAG 2.2, 3.3.1 Error Identification: it was a message at the bottom of the screen, gone in four seconds, and
+// in the planner's sheets no box was marked). The box is marked, has the line as its description and takes the
+// focus; boxes that share a mistake are all marked, and putting one right clears it.
+{
+  const set = (id, name, w, d, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d, h }, ...more });
+  const { c, p } = await withSets({ sets: { lm: set('lm', 'Lamborghini Sián', 60, 25, 13, { num: '42115-1' }), bs: set('bs', 'Medieval Blacksmith', 10, 21, 27) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'lm' }] }, { h: 32, sets: [{ id: 'bs' }] }] } } });
+  const marks = ids => p.evaluate(list => list.map(id => { const e = document.getElementById(id), d = e.getAttribute('aria-describedby'); return [e.getAttribute('aria-invalid'), d && document.getElementById(d).textContent].join(' | '); }), ids);
+  const errs = () => p.evaluate(() => [...document.querySelectorAll('.sheet .err')].filter(e => { const r = e.getBoundingClientRect(), b = e.closest('.bd').getBoundingClientRect(); return r.height > 0 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1; }).map(e => e.textContent)); // the ones in view
+  const focus = () => p.evaluate(() => document.activeElement.id);
+  const toastUp = () => p.evaluate(() => !document.querySelector('.toast').hidden);
+  // Add a set with neither a number nor a name.
+  await p.goto(base + '#catalog');
+  await p.click('#add-btn');
+  await p.click('#e-save');
+  const BOTH = 'Give it a set number or a name.';
+  assert.deepEqual([await errs(), await marks(['e-num', 'e-name']), await focus(), await toastUp()], [[BOTH], ['true | ' + BOTH, 'true | ' + BOTH], 'e-num', false], 'said under the boxes, not in a message that goes');
+  await p.waitForTimeout(5000);
+  assert.deepEqual(await errs(), [BOTH], 'and still said five seconds later');
+  await p.fill('#e-name', 'Orchid');
+  assert.deepEqual([await errs(), await marks(['e-num', 'e-name'])], [[], [' | ', ' | ']], 'typing in either box clears it');
+  // A size that can't be read, far down the sheet: the line is brought into view with its box.
+  await p.fill('#e-d', 'deep');
+  await p.click('#e-save');
+  assert.deepEqual([await errs(), await marks(['e-w', 'e-d', 'e-h']), await focus()], [['Depth: “deep” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.'], [' | ', 'true | Depth: “deep” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.', ' | '], 'e-d']);
+  await p.fill('#e-d', '12');
+  assert.deepEqual(await errs(), []);
+  await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]');
+  // The planner's sheet for a set: one size of three missing; a shelf that no longer takes it.
+  await p.goto(base + '#shelves');
+  await p.click('.sv-set[data-set="lm"]');
+  await p.fill('#z-d', ''); await p.fill('#z-h', '');
+  await p.click('#z-save');
+  const THREE = 'Give all three sizes, or none.';
+  assert.deepEqual([await errs(), await marks(['z-w', 'z-d', 'z-h']), await focus(), await toastUp()], [[THREE], [' | ', 'true | ' + THREE, 'true | ' + THREE], 'z-d', false]);
+  await p.fill('#z-d', '25'); await p.fill('#z-h', '50');
+  assert.deepEqual(await errs(), []);
+  assert.equal(await p.$eval('#z-where option[value="k:1"]', o => o.disabled), false);
+  await p.selectOption('#z-where', 'k:1');
+  await p.click('#z-save');
+  const TALL = await p.textContent('#z-msg');
+  assert.match(TALL, /50 cm/);
+  assert.deepEqual([await marks(['z-where']), await focus()], [['true | ' + TALL], 'z-where'], 'a shelf that won’t take it is marked, with the reason');
+  await p.selectOption('#z-where', '');
+  assert.deepEqual([await marks(['z-where']), await p.textContent('#z-msg')], [[' | '], ''], 'until another is chosen');
+  await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]');
+  // A bookcase with no width, then a shelf with no height.
+  await p.click('[data-case="k"]');
+  await p.fill('#k-w', '');
+  await p.click('#k-save');
+  const WD = 'Give the width and depth inside, in cm.';
+  assert.deepEqual([await errs(), await marks(['k-w', 'k-d']), await focus(), await toastUp()], [[WD], ['true | ' + WD, ' | '], 'k-w', false]);
+  await p.fill('#k-w', '76');
+  await p.fill('#k-h1', '');
+  await p.click('#k-save');
+  assert.deepEqual([await errs(), await marks(['k-h0', 'k-h1']), await focus()], [['Give shelf 2 a height, or remove it.'], [' | ', 'true | Give shelf 2 a height, or remove it.'], 'k-h1']);
+  // The line is no wider than its sheet, and the sheet is no wider than the screen.
+  assert.ok(await p.evaluate(() => document.querySelector('.sheet .err').getBoundingClientRect().right <= 390 && document.querySelector('.sheet').scrollWidth <= 390));
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
@@ -2320,14 +2385,15 @@ await page.click('[data-close]');
   await p.fill('#k-h0', '32,5');
   await p.fill('#k-w', '14 1/8');
   await p.click('#k-save');
-  assert.deepEqual([await p.locator('.sheet').count(), await p.getAttribute('#k-w', 'aria-invalid'), await p.evaluate(() => document.activeElement.id), await toastSays()],
-    [1, 'true', 'k-w', ['Width: “14 1/8” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.', '']], 'a size that can’t be read keeps the sheet open and says which box');
+  const errs = () => p.locator('.sheet .err').allTextContents(); // what a sheet says is wrong, under the box
+  assert.deepEqual([await p.locator('.sheet').count(), await p.getAttribute('#k-w', 'aria-invalid'), await p.evaluate(() => document.activeElement.id), await errs()],
+    [1, 'true', 'k-w', ['Width: “14 1/8” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.']], 'a size that can’t be read keeps the sheet open and says which box');
   await p.fill('#k-w', '30"');
   await p.click('#k-add');
   assert.deepEqual([(await rows())[2], await p.evaluate(() => document.activeElement.id)], ['28 |  | Height of shelf 3, cm | Remove shelf 3', 'k-h2'], 'a new shelf starts at the height above it, ready to type over');
   await p.fill('#k-h2', '');
   await p.click('#k-save');
-  assert.deepEqual([await p.locator('.sheet').count(), await toastSays()], [1, ['Give shelf 3 a height, or remove it', '']]);
+  assert.deepEqual([await p.locator('.sheet').count(), await errs(), await p.getAttribute('#k-h2', 'aria-describedby')], [1, ['Give shelf 3 a height, or remove it.'], 'k-h2-err']);
   await p.fill('#k-h2', '40');
   await p.click('#k-save');
   assert.deepEqual([await p.locator('.sheet').count(), await kept(), await toastSays()], [0, [76.2, 26, '32.5: 28:b+g 40:'], ['1 set is back in Not on a shelf yet. Read as inches: 76.2 cm', 'Undo']], '"32,5" is one shelf of 32.5 cm, inches are worked out, and the message says what came off');
@@ -2341,7 +2407,7 @@ await page.click('[data-close]');
   await p.click('.sv-set[data-set="a"]');
   await p.fill('#z-w', '20 x 15');
   await p.click('#z-save');
-  assert.deepEqual([await p.locator('.sheet').count(), (await toastSays())[0].slice(0, 30)], [1, 'Width: “20 x 15” isn’t a lengt']);
+  assert.deepEqual([await p.locator('.sheet').count(), (await errs())[0].slice(0, 30)], [1, 'Width: “20 x 15” isn’t a lengt']);
   await p.click('#z-cat');
   await p.waitForSelector('#e-save');
   await p.fill('#e-w', '9 7/8"'); await p.fill('#e-d', '5,5');
@@ -2350,7 +2416,7 @@ await page.click('[data-close]');
   await p.click('.item:has-text("Bonsai Tree")');
   await p.fill('#e-h', '3200');
   await p.click('#e-save');
-  assert.deepEqual([await p.locator('.sheet').count(), await toastSays()], [1, ['Height: “3200” is more than Brickyard keeps (500 cm).', '']]);
+  assert.deepEqual([await p.locator('.sheet').count(), await errs()], [1, ['Height: “3200” is more than Brickyard keeps (500 cm).']]);
   await discard(p);
   // A bookcase made shallower than the sets on it.
   await p.goto(base + '#shelves');

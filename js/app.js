@@ -559,22 +559,48 @@
     box.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  // A mistake in a sheet is said in a line under the box that's wrong, which stays until the box is changed (it was
+  // a message at the bottom of the screen, gone in a few seconds, leaving a thin red border or nothing; WCAG 2.2,
+  // 3.3.1 Error Identification). The line is the box's description, the box is marked invalid and takes the focus,
+  // and the words are read out. Several boxes can share one mistake ("Give all three sizes, or none"): the line
+  // goes under the first, and putting any of them right clears it. In a row of boxes side by side, the line goes
+  // under the row.
+  function wrong(boxes, msg) {
+    boxes = [].concat(boxes).filter(Boolean);
+    var el = boxes[0], line = document.createElement('p'), li = el.closest('.levels li'), under = el.closest('.two, .three') || el.closest('.field') || el;
+    if (under.parentNode.classList.contains('field')) under = under.parentNode; // a row of boxes under a label of its own (Size when built)
+    boxes.forEach(right);
+    line.className = 'err'; line.id = el.id + '-err'; line.textContent = msg;
+    if (li) li.appendChild(line); else under.parentNode.insertBefore(line, under.nextSibling);
+    var clear = function () { boxes.forEach(function (b) { b.removeEventListener('input', clear); b.removeEventListener('change', clear); right(b); }); };
+    boxes.forEach(function (b) {
+      b.setAttribute('aria-invalid', 'true'); b.setAttribute('aria-describedby', line.id); b._err = line;
+      b.addEventListener('input', clear); b.addEventListener('change', clear);
+    });
+    el.focus();
+    if (line.scrollIntoView) line.scrollIntoView({ block: 'nearest' });
+    say(msg);
+  }
+  function right(box) {
+    if (!box._err) return;
+    box._err.remove(); box._err = null;
+    box.removeAttribute('aria-invalid'); box.removeAttribute('aria-describedby');
+  }
+
   // The lengths typed in a sheet's size boxes, each given as [the box's id, what to call it]. They're cm unless
-  // they say inches (C.readLength). One that can't be read is marked and takes the focus, a message says which
-  // box and what would do, and this is null: the sheet stays open. Otherwise { v: { id: cm }, note }, where note
+  // they say inches (C.readLength). One that can't be read is marked and takes the focus, a line under it says
+  // which box and what would do (wrong), and this is null: the sheet stays open. Otherwise { v: { id: cm }, note }, where note
   // says what was read as inches ("Read as inches: 32.1 cm"), to go in the message that says it's saved.
   function lengths(boxes) {
     var v = {}, inch = [];
     for (var i = 0; i < boxes.length; i++) {
       var el = $(boxes[i][0]), r = C.readLength(el.value);
       if (r.bad) {
-        el.setAttribute('aria-invalid', 'true'); el.focus();
-        el.addEventListener('input', function () { this.removeAttribute('aria-invalid'); }, { once: true });
-        toast(boxes[i][1] + ': ' + (r.bad === 'big' ? '“' + el.value.trim() + '” is more than Brickyard keeps (500 cm).'
-          : '“' + el.value.trim() + '” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.'), 'long');
+        wrong(el, boxes[i][1] + ': ' + (r.bad === 'big' ? '“' + el.value.trim() + '” is more than Brickyard keeps (500 cm).'
+          : '“' + el.value.trim() + '” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.'));
         return null;
       }
-      el.removeAttribute('aria-invalid');
+      right(el);
       v[boxes[i][0]] = r.cm;
       if (r.inch) inch.push([boxes[i][1].toLowerCase(), r.cm + ' cm']);
     }
@@ -652,7 +678,6 @@
     // back to its own words.
     $('e-num').addEventListener('input', function () {
       var b = $('e-save');
-      this.removeAttribute('aria-invalid');
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
       // What the boxes took from a first copy of the old number goes with it, unless it's been changed since.
       Object.keys(lent).forEach(function (id) { if ($(id).value === lent[id]) $(id).value = ''; });
@@ -676,7 +701,7 @@
       e.preventDefault();
       var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
-      if (raw && !num) { toast('That set number doesn’t look right. It’s usually 4 or 5 digits.'); $('e-num').setAttribute('aria-invalid', 'true'); $('e-num').focus(); return; }
+      if (raw && !num) { wrong($('e-num'), 'That set number doesn’t look right. It’s usually 4 or 5 digits.'); return; }
       // The sizes are cm unless they say inches; '14 1/8"' used to be saved as 14 cm.
       var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
       if (!z) return;
@@ -690,7 +715,7 @@
         instr: $('e-instr').checked ? true : (x.instr === false ? false : null), tags: $('e-tags').value, notes: $('e-notes').value,
         size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] }, check: righted ? '' : x.check, added: x.added || today(),
       });
-      if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
+      if (!y) { wrong([$('e-num'), $('e-name')], 'Give it a set number or a name.'); return; }
       // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
       // (which used to save without a word).
       var dup = isNew ? C.findDup(DOC, y) : y.num && y.num !== numWas ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
@@ -1101,7 +1126,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, toastAfter: toastAfter, lengths: lengths, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

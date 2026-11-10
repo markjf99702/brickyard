@@ -453,7 +453,15 @@
     $('z-cat').onclick = function (e) { e.preventDefault(); app.showSet(id); };
     // What can't be done is said in the sheet, which stays open with nothing saved. (A tick that couldn't be
     // honoured used to close the sheet with the set as it was, and no word.)
-    function refuse(why) { $('z-msg').textContent = why; }
+    // The box it's about (the shelf chosen, or the side-on tick) is marked, takes the focus and has the reason as
+    // its description, until it's changed.
+    function refuse(why, box) {
+      $('z-msg').textContent = why;
+      ['z-where', 'z-turn'].forEach(function (k) { if ($(k)) { $(k).removeAttribute('aria-invalid'); $(k).removeAttribute('aria-describedby'); $(k).onchange = null; } });
+      if (!why || !box) return;
+      box.setAttribute('aria-invalid', 'true'); box.setAttribute('aria-describedby', 'z-msg'); box.focus();
+      box.onchange = function () { refuse(''); };
+    }
     // Save, and Move left or right (by -1 or 1), which save whatever else the sheet holds first: a size typed
     // before Move was thrown away.
     function save(by) {
@@ -465,7 +473,7 @@
       var y = copy(x);
       if (w && d && h) y.size = { w: w, d: d, h: h };
       else if (!w && !d && !h) delete y.size;
-      else { toast('Give all three sizes, or none'); return; }
+      else { app.wrong(['z-w', 'z-d', 'z-h'].map($).filter(function (b) { return !z.v[b.id]; }), 'Give all three sizes, or none.'); return; }
       var want = $('z-where') ? $('z-where').value : '', turn = $('z-turn') ? $('z-turn').checked : false;
       var from = at ? at.c + ':' + at.l : '', ids2 = byId(), list = cases(), next = list.map(copy);
       ids2[id] = y;
@@ -475,9 +483,9 @@
         if (want) {
           var bits = want.split(':'), c1 = next.filter(function (k) { return k.id === bits[0]; })[0], li = +bits[1];
           var f = S.fits(c1, li, y, ids2, $('z-turn') ? turn : false);
-          if (f.why) { refuse(f.why + '.'); return; }
+          if (f.why) { refuse(f.why + '.', want === from && $('z-turn') ? $('z-turn') : $('z-where')); return; }
           // The tick was changed and this shelf only takes the set the other way round.
-          if (at && turn !== at.turn && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn)); return; }
+          if (at && turn !== at.turn && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn), $('z-turn')); return; }
           var p = { id: id }; if (f.turn) p.turn = true;
           if (at && at.c === c1.id && at.l === li) c1.levels[li].sets.splice(pos, 0, p); else c1.levels[li].sets.push(p);
         }
@@ -600,12 +608,13 @@
       var z = app.lengths(boxes); if (!z) return;
       var blank = boxes.filter(function (b) { return !z.v[b[0]]; })[0];
       if (blank) {
-        toast(blank[0] === 'k-w' || blank[0] === 'k-d' ? 'Give the width and depth inside, in cm' : 'Give ' + blank[1].toLowerCase() + ' a height, or remove it');
-        $(blank[0]).focus(); return;
+        if (blank[0] === 'k-w' || blank[0] === 'k-d') app.wrong(['k-w', 'k-d'].map($).filter(function (b) { return !z.v[b.id]; }), 'Give the width and depth inside, in cm.');
+        else app.wrong($(blank[0]), 'Give ' + blank[1].toLowerCase() + ' a height, or remove it.');
+        return;
       }
       var y = C.cleanCase({ id: c ? c.id : 'k' + app.newId().slice(1), name: $('k-name').value || 'Bookcase', room: $('k-room').value, w: z.v['k-w'], d: z.v['k-d'],
         levels: rows.map(function (r, i) { return { h: z.v['k-h' + i], sets: r.from >= 0 ? c.levels[r.from].sets : [] }; }) });
-      if (!y) { toast('Give the width, depth and at least one shelf height'); return; }
+      if (!y) { app.wrong([$('k-w'), $('k-d')], 'Give the width, depth and at least one shelf height.'); return; }
       // Sets on a shelf that was removed go back to the list, and the message says how many.
       var still = S.placements([y]), kept = c ? copy(c) : null;
       var off = c ? Object.keys(S.placements([c])).filter(function (id) { return ids[id] && !still[id]; }).length : 0;
