@@ -127,7 +127,7 @@
     cases.forEach(function (c) { c.levels.forEach(function (l) { l.sets = l.sets.filter(function (p) { return p.id !== id; }); }); });
   }
 
-  // A sizes list from Claude: {"brickyard": 1, "sizes": [{"num": "10497", "w": 51, "d": 25, "h": 33}, ...]}.
+  // A sizes list from Claude: {"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13}, ...]}.
   function cleanSizes(o) {
     var list = o && (o.sizes || (o.batch && o.batch.sizes));
     if (!Array.isArray(list)) return null;

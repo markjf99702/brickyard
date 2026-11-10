@@ -57,13 +57,13 @@ python3 scripts/make_brickyard.py sets.json --out /mnt/user-data/outputs
  ]}
 ```
 
-Every field but a set number or name is optional; `references/brickyard-format.md` lists them all. The script normalises set numbers to Rebrickable's form (`10698` → `10698-1`), drops and flags anything that isn't a set number, maps words like "assembled" or "new in box" onto the four states, warns about doubles, and prints a summary, a **link** and a `.brickyard.json` file path. Read any warnings: they usually mean one more look at a photo.
+Every field but a set number or name is optional; `references/brickyard-format.md` lists them all. The script normalises set numbers to Rebrickable's form (`10698` → `10698-1`), drops and flags anything that isn't a set number, maps words like "assembled" or "new in box" onto the four states, warns about doubles, and prints a summary, a **link** and a `.brickyard.json` file path. Read any warnings: they usually mean one more look at a photo. If it prints a NOTE that the link is long, lead with the file when you hand over: some apps cut long links off.
 
 Without code tools, write the JSON by hand wrapped as `{"brickyard": 1, "batch": {…}}` and give it as text to paste into Brickyard (**Add from photos** › paste box). The link needs the script.
 
 ## Sizes for the shelf planner
 
-Brickyard's shelf planner needs each built set's size, and its **Copy these for Claude** button sends a list of sets without one. Give each set's built size in cm: `w` across the front as it's displayed, `d` front to back, `h` tall. Use the measurements LEGO publishes for the set ("measures over 33 cm high, 51 cm long and 25 cm wide") when you know them, and say in `note` where a size came from if it's a rough estimate. Leave out a set you can't size rather than guess wildly; they can measure it. Write `{"sizes": [{"num": "10497", "w": 51, "d": 25, "h": 33, "note": "…"}]}` and run the same script on it; it prints a sizes link (`#z1z…`). Hand it over the same way, with the sizes listed and the estimates marked.
+Brickyard's shelf planner needs each built set's size, and its **Copy these for Claude** button sends a list of sets without one. Give each set's built size in cm: `w` across the front as it's displayed, `d` front to back, `h` tall. Use the measurements LEGO publishes for the set when you know them (its product page gives 10497 Galaxy Explorer as over 13 cm high, 52 cm long and 32 cm wide), and say in `note` where a size came from, above all when it's a rough estimate. Leave out a set you can't size rather than guess wildly; they can measure it. A size needs the set's number, so a set that's in their list by name alone can't be sized this way; say so. Write `{"sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "LEGO's measurements"}]}` and run the same script on it; it prints a sizes link (`#z1z…`). Hand it over the same way, with the sizes listed and the estimates marked.
 
 ## 4. Hand it over
 

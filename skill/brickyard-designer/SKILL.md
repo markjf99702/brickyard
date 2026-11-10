@@ -29,7 +29,7 @@ Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, ki
 - Turn `r` is 0, 90, 180 or 270. At 0 a part's width runs along x and its depth along z; at 90 or 270 they swap. A 2x4 brick (3001, w 4 × d 2) at r 90 covers 2 studs across and 4 front to back.
 - Slopes, curves and inverted slopes have their **high side at the back** (z = 0 of their own footprint) at r 0. Turned 90 the high side is on the right, 180 at the front, 270 on the left. The script's layer map shows which way each part went.
 - Parts join where one part's top studs meet the cells of the part sitting right on it. Tiles and the slope faces have no studs, so nothing joins on them.
-- Steps (`s`) start at 1. A step may only add parts that join something already built; pushing a part on from underneath is allowed but noted.
+- Steps (`s`) start at 1. A step may only add parts that join something already built; pushing a part on from underneath is allowed but noted. That goes for the first step too: make it one part or one joined group (a base plate, say). Bricks side by side on the table join nothing until the course above ties them, so put that course in the same step.
 
 Write the model as JSON:
 
@@ -69,6 +69,6 @@ Write the model's JSON and the outputs to a scratch or outputs folder, never int
 
 ## 4. Hand it over
 
-Send the link, the file if your surface can attach files, and two or three lines: what it is, how many pieces and steps, and anything you swapped ("the roof is grey because you only have six yellow slopes"). Opening the link saves the model in Brickyard under **Models**, checks it against their pieces, and shows step 1. If the link is too long for where they'll paste it (over about 8,000 characters), say they can also paste the file into **Open a model**.
+Send the link, the file if your surface can attach files, and two or three lines: what it is, how many pieces and steps, and anything you swapped ("the roof is grey because you only have six yellow slopes"). Opening the link saves the model in Brickyard under **Models**, checks it against their pieces, and shows step 1. If the script printed a NOTE that the link is long, lead with the file: some apps cut long links off, and they can open the file with **Open a file** under **Open a model** (or paste its text there).
 
 If they come back with "I'm short of X" (they lost pieces, or have other sets ticked), redesign within the new list rather than telling them to buy parts.

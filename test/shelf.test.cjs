@@ -111,7 +111,21 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
   if (out) {
     const link = out.split('\n').find(l => l.includes('#z1z'));
     eq(await S.parseSizes(link), clean, 'script and page agree on sizes');
+    check(!/NOTE: this link is long/.test(out), 'a short sizes link has no note about its length');
+    // A long sizes link gets the same note as a long batch link: lead with the file.
+    fs.writeFileSync(path.join(dir, 'many.json'), JSON.stringify({ sizes: Array.from({ length: 900 }, (_, i) => ({ num: String(10000 + i * 37), w: 10 + i % 41, d: 8 + i % 23, h: 5 + i % 31, note: 'estimate ' + (i * 7919 % 1000) })) }));
+    const many = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(dir, 'many.json'), '--out', dir]).toString();
+    check(/\nLink \((\d+) characters\):/.test(many) && +/Link \((\d+)/.exec(many)[1] > 6000 && /\nNOTE: this link is long\. Lead with the file; some apps cut long links off\./.test(many), 'a long sizes link says to lead with the file');
   } else console.log('  (python3 not found; skipped the skill script)');
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  // The sizes example is the same set with the same numbers wherever it's written down: the cataloger skill, the
+  // format reference, the script's own help and this file's comment.
+  const example = '{"num": "10497", "w": 52, "d": 32, "h": 13';
+  for (const f of ['skill/brickyard-cataloger/SKILL.md', 'skill/brickyard-cataloger/references/brickyard-format.md', 'skill/brickyard-cataloger/scripts/make_brickyard.py', 'js/shelf-core.js']) {
+    const text = fs.readFileSync(path.join(root, f), 'utf8'), found = text.match(/\{"num": "10497", "w": [^}]*/g) || [];
+    check(found.length > 0 && found.every(x => x.startsWith(example)), f + ' gives the one sizes example' + (found.length ? ': ' + found.join(' | ') : ': none found'));
+  }
 
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);

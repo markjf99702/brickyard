@@ -26,7 +26,7 @@ and warned about; Brickyard's review marks the same ones. Exits 1 (printing why)
 
 Sizes for the shelf planner, for sets already in Brickyard, go in a file of their own and make a sizes link:
 
-{"sizes": [{"num": "10497", "w": 51, "d": 33, "h": 14, "note": "LEGO's measurements"}, ...]}
+{"sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "LEGO's measurements"}, ...]}
 
 w is across the front, d front to back, h tall, in cm as built. Opening the link offers each size for the
 sets in My sets with that number, without adding any sets.
@@ -41,7 +41,8 @@ STATES = {
     'apart': 'apart', 'taken apart': 'apart', 'disassembled': 'apart', 'loose': 'apart', 'in bags': 'apart', 'broken down': 'apart',
     'sealed': 'sealed', 'new in box': 'sealed', 'nib': 'sealed', 'misb': 'sealed', 'unopened': 'sealed', 'new': 'sealed',
 }
-LINK_WARN = 6000
+LINK_WARN = 6000  # characters; check_model.py in the designer skill uses the same number and the same note
+LONG_LINK = 'NOTE: this link is long. Lead with the file; some apps cut long links off.'
 
 
 def s(v, n):
@@ -203,6 +204,8 @@ def sizes_main(a, lst):
         link = make_link(a.base, '#z1z', json.dumps(doc, ensure_ascii=False, separators=(',', ':')))
         print(f'Link ({len(link)} characters):')
         print(link)
+        if len(link) > LINK_WARN:
+            print(LONG_LINK)
 
 
 def main():
@@ -256,7 +259,7 @@ def main():
         print(f'Link ({len(link)} characters):')
         print(link)
         if len(link) > LINK_WARN:
-            print('NOTE: this link is long. Lead with the file; some apps cut long links off.')
+            print(LONG_LINK)
 
 
 if __name__ == '__main__':

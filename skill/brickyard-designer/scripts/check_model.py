@@ -44,6 +44,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_BASE = 'https://brickyard.junkdrawer.works/'
+LINK_WARN = 6000  # characters; make_brickyard.py in the cataloger skill uses the same number and the same note
+LONG_LINK = 'NOTE: this link is long. Lead with the file; some apps cut long links off.'
 
 
 def set_names(v):
@@ -401,6 +403,8 @@ def main():
         link = a.base + '#d1z' + base64.urlsafe_b64encode(packed).decode().rstrip('=')
         print(f'Link ({len(link)} characters):')
         print(link)
+        if len(link) > LINK_WARN:
+            print(LONG_LINK)
     sys.exit(0 if res['ok'] else 1)
 
 

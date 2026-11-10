@@ -291,6 +291,17 @@ print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/s
     check(!path.resolve(lone).startsWith(root + path.sep), 'the copied skill is outside the repo');
     check(away.status === 0 && /Cottage: 40 pieces/.test(away.stdout) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(away.stdout) && fs.existsSync(path.join(lone, 'out/cottage.brickyard-model.json')),
       'the skill on its own checks the cottage' + (away.status === 0 ? '' : '\n    ' + (away.stdout + away.stderr).trim().split('\n').pop()));
+    // A link long enough to be cut off on the way gets a note to lead with the file, at the same length and in
+    // the same words as the cataloger's script. A wall of 1,400 bricks in mixed colours makes one (its first two courses are one
+    // step: bricks side by side on the table join nothing until the course above ties them).
+    const consts = f => { const t = fs.readFileSync(path.join(root, f), 'utf8'); return [(/^LINK_WARN = (\d+)/m.exec(t) || [])[1], (/^LONG_LINK = (.+)$/m.exec(t) || [])[1]]; };
+    eq(consts('skill/brickyard-designer/scripts/check_model.py'), consts('skill/brickyard-cataloger/scripts/make_brickyard.py'), 'both scripts warn about a long link at the same length, in the same words');
+    eq(consts('skill/brickyard-designer/scripts/check_model.py')[0], '6000', 'which is 6,000 characters');
+    const wall = path.join(dir, 'wall.json'), hues = [4, 1, 15, 14, 2, 25, 0, 71];
+    fs.writeFileSync(wall, JSON.stringify({ name: 'Wall', parts: Array.from({ length: 1400 }, (_, i) => { const row = Math.floor(i / 20); return ['3001', hues[(i * 7 + row * 3 + (i * i) % 5) % hues.length], (i % 20) * 4 + (row % 2) * 2, row * 3, 0, 0, Math.max(1, row)]; }) }));
+    const long = sh([wall, '--out', dir]), size = +(/\nLink \((\d+) characters\):/.exec(long[1]) || [])[1];
+    check(long[0] === 0 && size > 6000 && /\nNOTE: this link is long\. Lead with the file; some apps cut long links off\./.test(long[1]), 'script: a long model link says to lead with the file (' + size + ' characters)' + (long[0] === 0 ? '' : '\n    ' + long[1].split('\n').slice(0, 3).join(' | ')));
+    check(!/this link is long/.test(passing[1]), 'script: a short one doesn’t');
     // "sets": "10698-1" is that set, as on the page.
     const texted = path.join(dir, 'texted.json');
     fs.writeFileSync(texted, JSON.stringify({ name: 'Texted', sets: '10698-1', parts: greedy.parts.slice(0, 2) }));
