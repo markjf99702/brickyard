@@ -2179,6 +2179,42 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A bookcase wider than a Billy is squeezed into the same width on a phone, and its words and tap targets were
+// squeezed with it: on a 180 cm bench names were under 5 px and sets 19 px to tap. They're sized for the width the
+// drawing gets: at least 9 px and 43 px on a phone at 120, 147 and 180 cm, and no bigger than a Billy's on a laptop.
+{
+  const set = (id, name, w, d, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d, h }, ...more });
+  const sets = { or: set('or', 'Orchid', 30, 24, 31), fb: set('fb', 'Flower Bouquet', 26, 13, 31), lb: set('lb', 'London Bus', 34, 9, 18), ge: set('ge', 'Galaxy Explorer', 52, 25, 13), g9: set('g9', '', 9, 9, 5, { num: '20915-1' }) };
+  const measure = p => p.evaluate(() => { const svg = document.querySelector('svg.shelf'), k = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width, px = e => parseFloat(getComputedStyle(e).fontSize) * k;
+    const inside = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+    return { names: [...svg.querySelectorAll('.sv-t')].map(px), tags: [...svg.querySelectorAll('.sv-h')].map(px), hits: [...svg.querySelectorAll('.sv-hit')].map(h => { const r = h.getBoundingClientRect(); return Math.min(r.width, r.height); }),
+      said: svg.querySelectorAll('.sv-t').length, fits: [...svg.querySelectorAll('.sv-set')].every(g => !g.querySelector('.sv-t') || inside(g.querySelector('.sv-t').getBoundingClientRect(), g.querySelector('.sv-box').getBoundingClientRect())),
+      tagFits: [...svg.querySelectorAll('g[role="img"]')].every(g => inside(g.querySelector('text').getBoundingClientRect(), g.querySelector('rect').getBoundingClientRect())) }; });
+  for (const w of [120, 147, 180]) {
+    const cases = { k: { id: 'k', t: 1, name: 'Wide one', w, d: 40, levels: [{ h: 35, sets: [{ id: 'or' }, { id: 'fb' }, { id: 'lb' }] }, { h: 35, sets: [{ id: 'ge' }, { id: 'g9' }] }] } };
+    const phone = await withSets({ sets, cases });
+    await phone.p.goto(base + '#shelves');
+    await phone.p.waitForSelector('.sv-set');
+    await phone.p.evaluate(() => document.fonts.ready);
+    const m = await measure(phone.p);
+    assert.deepEqual([m.names.every(x => x >= 9), m.tags.every(x => x >= 9), m.hits.every(x => x >= 43), m.said >= 4, m.fits, m.tagFits], [true, true, true, true, true, true],
+      'at ' + w + ' cm on a phone: names of ' + m.names.map(x => x.toFixed(1)).join(', ') + ' px, labels of ' + m.tags[0].toFixed(1) + ' px, ' + Math.round(Math.min(...m.hits)) + ' px to tap');
+    assert.equal(await phone.p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await phone.c.close();
+    const desk = await withSets({ sets, cases }, { viewport: { width: 1280, height: 800 }, hasTouch: false });
+    await desk.p.goto(base + '#shelves');
+    await desk.p.waitForSelector('.sv-set');
+    const d = await measure(desk.p);
+    assert.deepEqual([d.names.every(x => x >= 9 && x <= 16), d.said >= 4], [true, true], 'at ' + w + ' cm on a laptop the names stay their usual size (' + d.names.map(x => x.toFixed(1)).join(', ') + ' px)');
+    // Narrowed to a phone's width, the drawing's words are sized again.
+    if (w === 180) {
+      await desk.p.setViewportSize({ width: 390, height: 844 });
+      await until(async () => (await measure(desk.p)).names.every(x => x >= 9), 3000, 'the words weren’t sized again when the window narrowed');
+    }
+    await desk.c.close();
+  }
+}
+
 // What the planner says about its sets. With none it can place there's no count ("0 sets of 0 on shelves"), and the
 // note that says which sets it places has the way to My sets. The count reads "3 of 5 sets on shelves", and "All 5
 // sets are on shelves" once they are; from the first set placed, a line says a set in the drawing can be tapped. A

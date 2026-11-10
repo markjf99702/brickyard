@@ -296,7 +296,7 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .sv-stripe { fill: var(--ink); opacity: .22; }
 .sv-set:focus { outline: none; }
 .sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
-.sv-h { fill: var(--muted); font-size: 2.6px; pointer-events: none; }
+.sv-h { fill: var(--muted); pointer-events: none; } /* its size is set in the drawing: bigger on a wide bookcase */
 .sv-tag { fill: color-mix(in srgb, var(--card) 88%, transparent); pointer-events: none; }
 /* A shelf with something wrong on it: its label is red with a "!" in front, white on the red the buttons use. */
 .sv-tag.bad { fill: var(--red-btn); }

@@ -156,10 +156,24 @@
   // For a screen reader the drawing is a group (as an image, the sets in it weren't there at all): each set is a
   // button that says its shelf, whether it's side-on and what's wrong with it, and each shelf's label says its
   // height and how many sets it holds, empty ones too.
+  //
+  // The words and the tap targets are sized in the drawing's own units (cm), for a Billy filling a phone's width,
+  // where a cm gets about 4.2 px. A bookcase drawn smaller than that (a wide one squeezed onto a phone: a 180 cm
+  // bench had names 4.7 px tall and sets to tap of 19 px; a tall one kept short on a laptop) has them scaled up by
+  // `k` to come out the same size on the screen. The size it will be drawn at is worked out the way the
+  // stylesheet does it (svg.shelf in css/app.css), so the planner is drawn again when the window's size changes.
   var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
+  var PX = 4.15; // CSS px to a cm where a Billy fills a 390 px phone's width, a little under
+  function pxPerCm(W, H) {
+    var body = $('shelves-body'), cs = getComputedStyle(body);
+    var room = body.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 26, w = Math.min(room, W * 7); // 26: the card's padding and border
+    if (window.innerWidth > 600) w = Math.min(w, 0.72 * window.innerHeight * W / H);
+    return w > 0 ? w / W : PX;
+  }
   function caseHtml(c, ids, n) {
     var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [];
     c.levels.forEach(function (l) { H += l.h + T; });
+    var k = Math.max(1, PX / pxPerCm(W, H)), hit = HIT * k;
     parts.push('<defs><pattern id="svh' + n + '" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.9" height="2.4" class="sv-stripe"/></pattern></defs>');
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
@@ -179,18 +193,18 @@
       });
       // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
       // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
-      var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + cm(l.h) + ' cm', tw = text.length * 1.28 + 1.6;
-      var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 };
+      var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + cm(l.h) + ' cm', tw = (text.length * 1.28 + 1.6) * k;
+      var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 * k };
       var says = ['Shelf ' + (li + 1), cm(l.h) + ' cm', row.length ? plural(row.length, 'set') : 'empty', full ? 'overfull' : '', tall ? (tall === 1 ? 'a set too tall' : tall + ' sets too tall') : '', out ? (out === 1 ? 'a set too deep' : out + ' sets too deep') : ''].filter(Boolean).join(', ');
-      tags.push('<g role="img" aria-label="' + esc(says) + '"><rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + tag.h + '" rx="1.85" class="sv-tag' + (bad ? ' bad' : '') + '"/>' +
-        '<text x="' + (T + c.w - 1.2) + '" y="' + (y + 3.1) + '" class="sv-h' + (bad ? ' bad' : '') + '" text-anchor="end">' + text + '</text></g>');
+      tags.push('<g role="img" aria-label="' + esc(says) + '"><rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + +tag.h.toFixed(2) + '" rx="' + +(1.85 * k).toFixed(2) + '" class="sv-tag' + (bad ? ' bad' : '') + '"/>' +
+        '<text x="' + +(T + c.w - 0.4 - 0.8 * k).toFixed(2) + '" y="' + +(y + 0.4 + 2.7 * k).toFixed(2) + '" font-size="' + +(2.6 * k).toFixed(2) + '" class="sv-h' + (bad ? ' bad' : '') + '" text-anchor="end">' + text + '</text></g>');
       row.forEach(function (r, i) {
         var x = r.x, f = r.f, top = y + l.h - f.h, next = row[i + 1];
         // A small set is hard to hit with a thumb, so each takes taps on a clear rectangle at least HIT wide and
         // tall: up into the empty shelf above it, and sideways as far as halfway to its neighbours or the shelf's end.
         var left = i ? r.x0 - S.GAP / 2 : T, right = next ? next.x0 - S.GAP / 2 : Math.max(T + c.w, r.x0 + f.along);
-        var hw = Math.max(f.along, Math.min(HIT, right - left)), hx = Math.min(Math.max(left, r.x0 - (hw - f.along) / 2), right - hw);
-        var hh = Math.max(f.h, Math.min(HIT, l.h)), hy = y + l.h - hh;
+        var hw = Math.max(f.along, Math.min(hit, right - left)), hx = Math.min(Math.max(left, r.x0 - (hw - f.along) / 2), right - hw);
+        var hh = Math.max(f.h, Math.min(hit, l.h)), hy = y + l.h - hh;
         var off = !onShelf(x), bw = Math.max(0.5, f.along - 0.3), box = 'x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + bw + '" height="' + f.h + '" rx="0.8"';
         var name = [x.name || C.shortNum(x.num), shelfName(c, li), r.p.turn ? 'side-on' : '', r.tall ? 'too tall for this shelf' : '', r.deep ? 'too deep for this bookcase' : '',
           !off ? '' : x.state === 'apart' ? 'taken apart' : x.state === 'sealed' ? 'sealed' : 'not built'].filter(Boolean).join(', ');
@@ -201,7 +215,7 @@
           '<rect x="' + (r.x0 - 0.45).toFixed(2) + '" y="' + (top - 0.6) + '" width="' + (bw + 1.2).toFixed(2) + '" height="' + (f.h + 1.2) + '" rx="1.3" class="sv-ring"/>' +
           '<rect ' + box + ' fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
           (off ? '<rect ' + box + ' fill="url(#svh' + n + ')" class="sv-hatch"/>' : '') +
-          label(x, r.x0, top, f, tag) + '</g>');
+          label(x, r.x0, top, f, tag, k) + '</g>');
       });
       y += l.h;
       parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board' + (bad ? ' bad' : '') + '"/>');
@@ -265,19 +279,20 @@
     return best && best.lines;
   }
 
-  // A set's name in its rectangle, never under 2.3 units tall (about 10 px where a Billy fills a phone's width; it
-  // went down to 1.6, under 7 px). In order: the whole name across, on one line or two; the whole name up the side
-  // of a set that's taller than it's wide; the start of the name with an ellipsis, across or up; the set's number;
-  // nothing. `tag` is the shelf's label: a set standing under it keeps its name below it.
-  function label(x, x0, top, f, tag) {
+  // A set's name in its rectangle, never under 2.3 units tall on a Billy (about 10 px where one fills a phone's
+  // width; it went down to 1.6, under 7 px), and `k` times that on a bookcase drawn smaller (caseHtml). In order: the whole
+  // name across, on one line or two; the whole name up the side of a set that's taller than it's wide; the start of
+  // the name with an ellipsis, across or up; the set's number; nothing. `tag` is the shelf's label: a set standing
+  // under it keeps its name below it.
+  function label(x, x0, top, f, tag, k) {
     var name = x.name || '', num = C.shortNum(x.num);
     var y0 = x0 + f.along > tag.x && top < tag.y + tag.h ? Math.min(top + f.h, tag.y + tag.h) : top, free = top + f.h - y0;
-    var fs = Math.min(2.6, Math.max(2.3, f.along / 9)), across = free >= fs + 1 ? (f.along - 1) / fs : 0;
-    var vs = Math.min(2.6, f.along - 1), up = f.h > f.along && vs >= 2.3 ? (free - 1.6) / vs : 0;
+    var fs = Math.min(2.6 * k, Math.max(2.3 * k, f.along / 9)), across = free >= fs + k ? (f.along - k) / fs : 0;
+    var vs = Math.min(2.6 * k, f.along - k), up = f.h > f.along && vs >= 2.3 * k ? (free - 1.6 * k) / vs : 0;
     var a = across ? shorten(name, across) : '', b = up ? shorten(name, up) : '', t, stand = false;
-    var two = across && a !== name && free >= 2.2 * fs + 2 ? halves(name, across) : null, cx = x0 + f.along / 2;
+    var two = across && a !== name && free >= 2.2 * fs + 2 * k ? halves(name, across) : null, cx = x0 + f.along / 2;
     if (two) {
-      return '<text y="' + (y0 + fs + 1.4).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t"><tspan x="' + cx + '">' + esc(two[0]) + '</tspan><tspan x="' + cx + '" dy="1.15em">' + esc(two[1]) + '</tspan></text>';
+      return '<text y="' + (y0 + fs + 1.4 * k).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t"><tspan x="' + cx + '">' + esc(two[0]) + '</tspan><tspan x="' + cx + '" dy="1.15em">' + esc(two[1]) + '</tspan></text>';
     }
     if (a && a === name) t = a;
     else if (b && b === name) { t = b; stand = true; }
@@ -286,7 +301,7 @@
     else if (num && ems(num) <= across) t = num;
     else if (num && ems(num) <= up) { t = num; stand = true; }
     else return '';
-    if (!stand) return '<text x="' + cx + '" y="' + (y0 + Math.min(free / 2 + fs / 3, fs + 1.4)).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
+    if (!stand) return '<text x="' + cx + '" y="' + (y0 + Math.min(free / 2 + fs / 3, fs + 1.4 * k)).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
     var cy = (y0 + free / 2).toFixed(2);
     return '<text x="' + cx + '" y="' + cy + '" dy="0.35em" transform="rotate(-90 ' + cx + ' ' + cy + ')" font-size="' + vs.toFixed(2) + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
   }
@@ -665,6 +680,17 @@
     render();
   }
   document.addEventListener('brickyard:route', route);
+  // The words in a drawing are sized for the width it's drawn at (caseHtml), so a new width draws them again: a
+  // phone turned on its side, a window dragged narrower. A phone's keyboard opening changes only the height.
+  var sizedFor = window.innerWidth, resizing = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizing);
+    resizing = setTimeout(function () {
+      if (window.innerWidth === sizedFor && window.innerWidth <= 600) return;
+      sizedFor = window.innerWidth;
+      if (!$('shelves').hidden) render();
+    }, 150);
+  });
   // The catalog changed under the planner (Drive sync, or another tab).
   document.addEventListener('brickyard:changed', function () { if (!$('shelves').hidden) render(); });
   // For a sizes file opened from My sets' menu (js/app.js), which goes on to Add sizes here.
