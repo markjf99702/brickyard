@@ -108,7 +108,7 @@
   // it off: it still holds its room until then. `n` is the bookcase's place on the page, for the hatching's name.
   var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
   function caseHtml(c, ids, n) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0, drawn = 0, gone = [];
+    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0, drawn = 0, gone = [], deep = [];
     c.levels.forEach(function (l) { H += l.h + T; });
     parts.push('<defs><pattern id="svh' + n + '" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.9" height="2.4" class="sv-stripe"/></pattern></defs>');
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
@@ -129,6 +129,7 @@
         drawn++;
         if (x.size.h > l.h) tall++;
         var f = S.footprint(x, p.turn);
+        if (f.deep > c.d) deep.push({ x: x, f: f, turn: !!p.turn });
         row.push({ x: x, p: p, f: f, x0: x0 });
         x0 += f.along + S.GAP;
       });
@@ -158,8 +159,21 @@
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
       (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
       (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
+      (deep.length ? '<p class="flag bad"><span>' + esc(deepSays(c, deep)) + '</span></p>' : '') +
       (gone.length ? '<p class="flag bad"><span>' + esc(goneSays) + '</span><button class="btn sm quiet" type="button" data-act="take-off" data-k="' + esc(c.id) + '">' + (gone.length === 1 ? 'Take it off the shelf' : 'Take them off') + '</button></p>' : '') +
       '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
+  }
+
+  // A set that sticks out past the front of its bookcase: the bookcase's depth was edited, or the set's size was,
+  // after it was placed. (An overfull shelf and a set too tall were flagged; this wasn't.) Whichever way round it
+  // stands, it's the side that runs front to back that counts, and when the other way round would do the line says so.
+  function deepSays(c, deep) {
+    if (deep.length > 2) return deep.length.toLocaleString() + ' sets are too deep for this bookcase (' + cm(c.d) + ' cm deep). Move them to a deeper one.';
+    return deep.map(function (o) {
+      var other = S.footprint(o.x, !o.turn);
+      return nameOf(o.x) + ' is ' + cm(o.f.deep) + ' cm deep ' + (o.turn ? 'side-on' : 'facing out') + '; this bookcase is ' + cm(c.d) + ' cm deep. ' +
+        (other.deep <= c.d ? (o.turn ? 'Turn it to face out.' : 'Turn it side-on.') : 'Move it to a deeper one.');
+    }).join(' ');
   }
 
   // About how wide a piece of text is in the drawing's font (Rubik), in ems: a little over, so what's said to fit does.
@@ -338,7 +352,10 @@
     }
     if ($('z-left')) { $('z-left').onclick = function () { shift(-1); }; $('z-right').onclick = function () { shift(1); }; }
     $('z-save').onclick = function () {
-      var w = C.measure($('z-w').value), d = C.measure($('z-d').value), h = C.measure($('z-h').value);
+      // cm unless they say inches; what can't be read is turned down by app.lengths, which says which box.
+      var z = app.lengths([['z-w', 'Width'], ['z-d', 'Depth'], ['z-h', 'Height']]);
+      if (!z) return;
+      var w = z.v['z-w'], d = z.v['z-d'], h = z.v['z-h'];
       var y = JSON.parse(JSON.stringify(x));
       if (w && d && h) y.size = { w: w, d: d, h: h };
       else if (!w && !d && !h) delete y.size;
@@ -360,13 +377,20 @@
         next.forEach(function (k, i) { if (JSON.stringify(k.levels) !== JSON.stringify(list[i].levels)) put(k); });
       }
       app.closeSheet(); render();
+      if (z.note) toast(z.note);
     };
   }
 
-  // Add or change a bookcase.
+  // Add or change a bookcase. Each shelf has a box of its own for its height, top shelf first, with Remove, and Add
+  // a shelf under them. (They were one box, "32, 32, 40": a phone's number keypad has no comma or space to type
+  // that with, "32,5" was read as two shelves, and taking a height out of the middle left every shelf below it
+  // holding the sets of the one above.) A row keeps the sets of the shelf it started as, wherever it ends up.
+  var MOST = 20; // shelves a bookcase keeps (cleanCase)
   function caseSheet(c) {
     var isNew = !c, preset = isNew ? PRESETS[0] : null;
-    var v = c ? { name: c.name, room: c.room || '', w: c.w, d: c.d, levels: c.levels.map(function (l) { return l.h; }) } : { name: preset.name, room: '', w: preset.w, d: preset.d, levels: preset.levels };
+    var v = c ? { name: c.name, room: c.room || '', w: c.w, d: c.d } : { name: preset.name, room: '', w: preset.w, d: preset.d };
+    var ids = byId(), rows = (c ? c.levels.map(function (l) { return l.h; }) : preset.levels).map(function (h, i) { return { from: c ? i : -1, v: cm(h) }; });
+    var holds = function (r) { return r.from < 0 ? 0 : c.levels[r.from].sets.filter(function (p) { return ids[p.id]; }).length; };
     var rooms = {}; sets().forEach(function (x) { if (x.room) rooms[x.room] = 1; }); cases().forEach(function (k) { if (k.room) rooms[k.room] = 1; });
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a bookcase' : 'Edit ' + esc(c.name)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (isNew ? '<div class="field"><span class="lbl">Start from</span><div class="seg" id="k-preset">' + PRESETS.map(function (p, i) {
@@ -376,25 +400,51 @@
       '<label class="field"><span>Room</span><input id="k-room" list="k-rooms" value="' + esc(v.room) + '" placeholder="e.g. Office"><datalist id="k-rooms">' + Object.keys(rooms).sort(C.natural).map(function (r) { return '<option value="' + esc(r) + '">'; }).join('') + '</datalist></label></div>' +
       '<div class="two"><label class="field"><span>Width inside, cm</span><input id="k-w" inputmode="decimal" value="' + esc(v.w) + '"></label>' +
       '<label class="field"><span>Depth inside, cm</span><input id="k-d" inputmode="decimal" value="' + esc(v.d) + '"></label></div>' +
-      '<label class="field"><span>Height of each shelf, top shelf first (cm)</span><input id="k-levels" inputmode="decimal" value="' + esc(v.levels.join(', ')) + '" placeholder="e.g. 32, 32, 40, 40"></label>' +
+      '<div class="field" role="group" aria-labelledby="k-levels-l"><span class="lbl" id="k-levels-l">Height of each shelf, top shelf first (cm)</span><ol class="levels" id="k-levels"></ol>' +
+      '<div><button class="btn sm quiet" type="button" id="k-add">Add a shelf</button></div></div>' +
       '<p class="note">The height is the clear space above each shelf, up to the one above it. The presets are rough: measure yours for a close fit.</p>' +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
       function () { return now() !== was || $('k-room').value.trim() !== v.room; });
+    // The rows as the sheet has them. What's typed lives in the boxes, so it's read back before the rows change.
+    function read() { rows.forEach(function (r, i) { if ($('k-h' + i)) r.v = $('k-h' + i).value; }); }
+    function draw() {
+      $('k-levels').innerHTML = rows.map(function (r, i) {
+        var n = holds(r);
+        return '<li><span class="n" aria-hidden="true">' + (i + 1) + '</span><input id="k-h' + i + '" inputmode="decimal" autocomplete="off" aria-label="Height of shelf ' + (i + 1) + ', cm" value="' + esc(r.v) + '">' +
+          '<span class="on">' + (n ? plural(n, 'set') : '') + '</span>' +
+          '<button class="btn sm quiet" type="button" data-rm="' + i + '" aria-label="Remove shelf ' + (i + 1) + '"' + (rows.length === 1 ? ' disabled' : '') + '>Remove</button></li>';
+      }).join('');
+      $('k-add').disabled = rows.length >= MOST;
+    }
+    draw();
     // The bookcase as the sheet has it, to tell whether closing would lose a change. Choosing a preset isn't one:
     // it's what the sheet starts from.
-    function now() { return app.fieldsOf(['k-name', 'k-w', 'k-d', 'k-levels']); }
+    function now() { read(); return app.fieldsOf(['k-name', 'k-w', 'k-d'], rows.map(function (r) { return [r.from, String(r.v).trim()]; })); }
     var was = now();
+    $('k-add').onclick = function () {
+      read();
+      // A new shelf starts at the height of the one above it: most are the same.
+      rows.push({ from: -1, v: rows.length ? rows[rows.length - 1].v : '' }); draw();
+      var box = $('k-h' + (rows.length - 1)); box.focus(); box.select();
+    };
+    $('k-levels').onclick = function (e) {
+      var b = e.target.closest('[data-rm]'); if (!b || rows.length === 1) return;
+      read(); rows.splice(+b.dataset.rm, 1); draw();
+      var next = $('k-levels').querySelectorAll('[data-rm]')[Math.min(+b.dataset.rm, rows.length - 1)];
+      if (next && !next.disabled) next.focus(); else $('k-add').focus();
+    };
     if ($('k-preset')) $('k-preset').onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
       var p = PRESETS[+b.dataset.k];
       this.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y === b); });
-      $('k-name').value = p.name; $('k-w').value = p.w; $('k-d').value = p.d; $('k-levels').value = p.levels.join(', ');
+      $('k-name').value = p.name; $('k-w').value = p.w; $('k-d').value = p.d;
+      rows = (p.levels.length ? p.levels : ['']).map(function (h) { return { from: -1, v: String(h) }; }); draw();
       was = now();
       if (p.k === 'custom') $('k-name').focus();
     };
     if ($('k-del')) $('k-del').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
-      var kept = copy(c), ids = byId(), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
+      var kept = copy(c), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
       // Sets that My sets says are on this bookcase, in the words Put these places in My sets writes ("Hall Billy,
       // shelf 2"), stop saying so: the bookcase is gone. Not when another bookcase has the same name.
       var twin = cases().some(function (k) { return k.id !== c.id && k.name === c.name; }), said = [];
@@ -415,11 +465,25 @@
       } });
     };
     $('k-save').onclick = function () {
-      var hs = $('k-levels').value.split(/[^0-9.]+/).map(C.measure).filter(Boolean);
-      var y = C.cleanCase({ id: c ? c.id : 'k' + app.newId().slice(1), name: $('k-name').value || 'Bookcase', room: $('k-room').value, w: $('k-w').value, d: $('k-d').value,
-        levels: hs.map(function (h, i) { return { h: h, sets: c && c.levels[i] ? c.levels[i].sets : [] }; }) });
+      read();
+      // Every size is cm unless it says inches, and one that can't be read keeps the sheet open (app.lengths).
+      var boxes = [['k-w', 'Width'], ['k-d', 'Depth']].concat(rows.map(function (r, i) { return ['k-h' + i, 'Shelf ' + (i + 1)]; }));
+      var z = app.lengths(boxes); if (!z) return;
+      var blank = boxes.filter(function (b) { return !z.v[b[0]]; })[0];
+      if (blank) {
+        toast(blank[0] === 'k-w' || blank[0] === 'k-d' ? 'Give the width and depth inside, in cm' : 'Give ' + blank[1].toLowerCase() + ' a height, or remove it');
+        $(blank[0]).focus(); return;
+      }
+      var y = C.cleanCase({ id: c ? c.id : 'k' + app.newId().slice(1), name: $('k-name').value || 'Bookcase', room: $('k-room').value, w: z.v['k-w'], d: z.v['k-d'],
+        levels: rows.map(function (r, i) { return { h: z.v['k-h' + i], sets: r.from >= 0 ? c.levels[r.from].sets : [] }; }) });
       if (!y) { toast('Give the width, depth and at least one shelf height'); return; }
+      // Sets on a shelf that was removed go back to the list, and the message says how many.
+      var still = S.placements([y]), kept = c ? copy(c) : null;
+      var off = c ? Object.keys(S.placements([c])).filter(function (id) { return ids[id] && !still[id]; }).length : 0;
       put(y); app.closeSheet(); render();
+      var said = [off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ');
+      if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([kept]); toast(kept.name + ' is as it was'); } });
+      else if (said) toast(said);
     };
   }
 

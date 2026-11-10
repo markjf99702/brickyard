@@ -50,6 +50,19 @@ eq(C.shortNum('10698-2'), '10698-2', 'short form keeps other versions');
 eq(C.cleanSet({ num: '10698', name: '  Large   Creative Brick Box ', pieces: '790', state: 'Disassembled', year: '2015', box: 7, junk: 1 }),
   { num: '10698-1', name: 'Large Creative Brick Box', year: 2015, pieces: 790, state: 'apart', box: '7' }, 'cleans and maps a set');
 eq(C.cleanSet({ name: 'x', state: 'on fire', year: 1800, pieces: -4, size: { w: '37,5', d: 0, h: 'tall' } }), { name: 'x', size: { w: 37.5, d: 0, h: 0 } }, 'bad values dropped');
+// A length typed into a size box: cm unless it says inches, and nothing guessed. measure, which cleaning uses, read
+// '14 1/8"' as 14 and "10 in" as 10; the reader the sheets use works inches out and turns down what it can't read.
+{
+  const len = v => { const r = C.readLength(v); return r.bad ? r.bad : r.inch ? r.cm + ' from inches' : r.cm; };
+  eq(['32', '32,5', ' 32.55 ', '32 cm', '32cm', '.5', '32.', 76, 0.04, '', '  ', '0', null, undefined].map(len), [32, 32.5, 32.6, 32, 32, 0.5, 32, 76, 0, 0, 0, 0, 0, 0], 'plain numbers are cm');
+  for (const v of ['32', '32,5', ' 32.55 ', '.5', '32.', 76, 500, '0', '', '7,25']) eq(C.readLength(v).cm, C.measure(v), 'a plain ' + JSON.stringify(v) + ' reads as measure reads it');
+  eq(['10 in', '10in', '11.5"', '9 7/8"', '14 1/8"', '12 5/8 inches', '12-5/8 in.', '5/8 inch', '12,5 in', '14 1/8”', "14 1/8''", '14 1/8″'].map(len),
+    ['25.4 from inches', '25.4 from inches', '29.2 from inches', '25.1 from inches', '35.9 from inches', '32.1 from inches', '32.1 from inches', '1.6 from inches', '31.8 from inches', '35.9 from inches', '35.9 from inches', '35.9 from inches'], 'inches are worked out, to 0.1 cm');
+  eq(["1' 2\"", "1'2\"", '1 ft 2 in', "6'", '6 ft', '2 feet 6', '1’ 2”', "5' 10 1/2\""].map(len), ['35.6 from inches', '35.6 from inches', '35.6 from inches', '182.9 from inches', '182.9 from inches', '76.2 from inches', '35.6 from inches', '179.1 from inches'], 'feet and inches');
+  eq(['12 5/8', '5/8', 'tall', '32 mm', '1e2', '32 x 40', '32, 40', '-5', '12 5/0"', '10 in 5', '1 2 3', '32 cm.', '"', 'in'].map(len), Array(14).fill('unread'), 'anything else with letters or a slash is turned down');
+  eq(['501', '3200', '200 in', "20'"].map(len), ['big', 'big', 'big', 'big'], 'and so is more than 500 cm');
+  eq([C.readLength('500'), C.readLength('0"'), C.readLength(true), C.readLength({})], [{ cm: 500 }, { cm: 0 }, { cm: 0 }, { cm: 0 }], 'the edges');
+}
 eq(C.cleanSet({ year: 2020 }), null, 'needs a number or a name');
 eq(C.cleanSet({ name: 'x', instr: false }).instr, false, 'no instructions is kept');
 eq(C.cleanSet({ name: 'x', tags: 'a, b; A' }).tags, ['a', 'b'], 'tags split and deduped');

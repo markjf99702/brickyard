@@ -32,6 +32,34 @@
     return Math.min(500, Math.round(x * 10) / 10);
   }
 
+  // A length someone typed into a box, in cm: { cm } (0 for an empty box), with inch: true when it was given in
+  // inches and worked out, or { bad } when it can't be read ('unread') or is over the 500 cm kept ('big'). A plain
+  // number is cm, with a point or a comma ("32,5"), and comes out as measure gives it. Inches have to say so: in,
+  // inch, inches or " after the number, which may be a decimal, a fraction or both (12.5", 5/8 in, 12 5/8"), with
+  // feet in front if there are any (1' 2", 2 ft 6 in, 6 ft). Anything else with a letter or a slash in it is
+  // turned down, not guessed at: measure reads '12 5/8"' as 12 and "10 in" as 10, which saved inches as cm
+  // without a word. measure itself is left as it is, because cleanSet and the cataloger's script must agree.
+  function readLength(v) {
+    var t = s(v, 40).toLowerCase().replace(/[\u201c\u201d\u2033]|''|[\u2018\u2019\u2032]{2}/g, '"').replace(/[\u2018\u2019\u2032]/g, "'").replace(/(\d),(\d)/g, '$1.$2');
+    var done = function (x, inch) {
+      if (!isFinite(x) || x > 500) return { bad: 'big' };
+      var o = { cm: x <= 0 ? 0 : Math.round(x * 10) / 10 };
+      if (inch && o.cm) o.inch = true;
+      return o;
+    };
+    if (!t) return { cm: 0 };
+    var m = /^(\d+\.?\d*|\.\d+)\s*(?:cm)?$/.exec(t);
+    if (m) return done(parseFloat(m[1]));
+    var inches = 0, feet = /^(\d+\.?\d*|\.\d+)\s*(?:'|ft\.?|foot|feet)\s*/.exec(t), rest = feet ? t.slice(feet[0].length) : t;
+    if (feet) inches = parseFloat(feet[1]) * 12;
+    if (rest) {
+      m = /^(?:(\d+\.?\d*|\.\d+)|(?:(\d+)[ -])?(\d+)\/(\d+))\s*("|in\.?|inch|inches)?$/.exec(rest);
+      if (!m || (!m[5] && !feet) || (m[3] && !+m[4])) return { bad: 'unread' };
+      inches += m[1] ? parseFloat(m[1]) : (+m[2] || 0) + m[3] / m[4];
+    }
+    return done(inches * 2.54, true);
+  }
+
   // A set number the way Rebrickable writes it: number, dash, version. "10698", "#10698", "Set 10698" and
   // "LEGO 10698" are all "10698-1" (a leading "LEGO" goes, then any run of "set", "no." and "#"), and "10698-2"
   // keeps its version. Anything else is "" ("set 10698 v2", "hello"). shelf-core.js (setNumOf) and the
@@ -437,7 +465,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

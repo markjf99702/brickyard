@@ -290,6 +290,11 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
 .sv-h { fill: var(--muted); font-size: 2.6px; pointer-events: none; }
 .sv-tag { fill: color-mix(in srgb, var(--card) 88%, transparent); pointer-events: none; }
+/* A bookcase's shelves in its sheet: the shelf's number, its height, how many sets stand on it, Remove. */
+.levels { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.levels li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.levels .n { color: var(--muted); font-weight: 600; text-align: right; font-size: 14px; }
+.levels .on { color: var(--muted); font-size: 13.5px; white-space: nowrap; }
 .pic.swatch { width: 64px; height: 52px; border-radius: 8px; box-shadow: inset 0 -5px 0 rgba(0, 0, 0, .18); }
 .rv .pic.swatch { width: 56px; height: 46px; }
 

@@ -591,13 +591,13 @@ await page.click('.chip[data-f="all"]');
   // The shelf planner's sheets: a bookcase, and a set's size and place.
   await p.goto(base + '#shelves');
   await p.click('[data-case="k"]');
-  await p.fill('#k-levels', '33, 33');
+  await p.fill('#k-h0', '34');
   await outside();
   assert.equal(await sheets(), 1, 'a bookcase being changed stays open');
   await p.click('[data-close]');
   await p.waitForTimeout(700);
   await p.click('[data-close]');
-  assert.deepEqual([await sheets(), await p.evaluate(() => window.brickyard.doc().cases.k.levels.length)], [0, 1], 'and is left as it was once discarded');
+  assert.deepEqual([await sheets(), await p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.h))], [0, [33]], 'and is left as it was once discarded');
   await p.click('[data-act="add-case"]');
   await p.click('#k-preset [data-k="2"]');
   await outside();
@@ -1699,6 +1699,72 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A bookcase's sheet has a box for each shelf's height, top shelf first, each with Remove, and Add a shelf. (One box
+// took them all as "32, 32, 40": a phone's number keypad can't type that, "32,5" made two shelves, and inches were
+// saved as cm.) A row keeps its own sets when a shelf above it is removed, and Save says what came off, with Undo.
+// Sizes are cm unless they say inches; what can't be read keeps the sheet open and says which box. A set left deeper
+// than its bookcase is flagged, as one too tall is.
+{
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree', 20, 15, 18), b: set('b', 'Typewriter', 27, 26, 11), g: set('g', 'London Bus', 34, 9, 18) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 30, sets: [{ id: 'a' }] }, { h: 28, sets: [{ id: 'b' }, { id: 'g' }] }] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const kept = () => p.evaluate(() => { const k = window.brickyard.doc().cases.k; return [k.w, k.d, k.levels.map(l => l.h + ':' + l.sets.map(q => q.id).join('+')).join(' ')]; });
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('#k-levels li')].map(li => [li.querySelector('input').value, li.querySelector('.on').textContent, li.querySelector('input').getAttribute('aria-label'), li.querySelector('button').getAttribute('aria-label')].join(' | ')));
+  await p.goto(base + '#shelves');
+  await p.click('[data-case="k"]');
+  assert.deepEqual(await rows(), ['32 |  | Height of shelf 1, cm | Remove shelf 1', '30 | 1 set | Height of shelf 2, cm | Remove shelf 2', '28 | 2 sets | Height of shelf 3, cm | Remove shelf 3'], 'a box for each shelf, saying what stands on it');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('.sheet .btn, .sheet input')].filter(e => { const r = e.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map(e => e.id || e.textContent)), [], 'nothing to tap in it is under 44 px');
+  await p.click('[data-rm="1"]');
+  assert.deepEqual(await rows(), ['32 |  | Height of shelf 1, cm | Remove shelf 1', '28 | 2 sets | Height of shelf 2, cm | Remove shelf 2'], 'a shelf removed takes its sets, and the one below keeps its own');
+  await p.fill('#k-h0', '32,5');
+  await p.fill('#k-w', '14 1/8');
+  await p.click('#k-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await p.getAttribute('#k-w', 'aria-invalid'), await p.evaluate(() => document.activeElement.id), await toastSays()],
+    [1, 'true', 'k-w', ['Width: “14 1/8” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.', '']], 'a size that can’t be read keeps the sheet open and says which box');
+  await p.fill('#k-w', '30"');
+  await p.click('#k-add');
+  assert.deepEqual([(await rows())[2], await p.evaluate(() => document.activeElement.id)], ['28 |  | Height of shelf 3, cm | Remove shelf 3', 'k-h2'], 'a new shelf starts at the height above it, ready to type over');
+  await p.fill('#k-h2', '');
+  await p.click('#k-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await toastSays()], [1, ['Give shelf 3 a height, or remove it', '']]);
+  await p.fill('#k-h2', '40');
+  await p.click('#k-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await kept(), await toastSays()], [0, [76.2, 26, '32.5: 28:b+g 40:'], ['1 set is back in Not on a shelf yet. Read as inches: 76.2 cm', 'Undo']], '"32,5" is one shelf of 32.5 cm, inches are worked out, and the message says what came off');
+  await p.click('.toast button');
+  assert.deepEqual([await kept(), await toastSays()], [[76, 26, '32: 30:a 28:b+g'], ['Billy is as it was', '']], 'Undo puts the bookcase back with its sets');
+  // A set's sizes, in the planner's sheet and in My sets'.
+  await p.click('.sv-set[data-set="a"]');
+  await p.fill('#z-h', '7 in');
+  await p.click('#z-save');
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.a.size.h), await toastSays()], [17.8, ['Read as inches: 17.8 cm', '']]);
+  await p.click('.sv-set[data-set="a"]');
+  await p.fill('#z-w', '20 x 15');
+  await p.click('#z-save');
+  assert.deepEqual([await p.locator('.sheet').count(), (await toastSays())[0].slice(0, 30)], [1, 'Width: “20 x 15” isn’t a lengt']);
+  await p.click('#z-cat');
+  await p.waitForSelector('#e-save');
+  await p.fill('#e-w', '9 7/8"'); await p.fill('#e-d', '5,5');
+  await p.click('#e-save');
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.a.size), await toastSays()], [{ w: 25.1, d: 5.5, h: 17.8 }, ['Saved. Read as inches: 25.1 cm', '']], 'My sets reads sizes the same way');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await p.fill('#e-h', '3200');
+  await p.click('#e-save');
+  assert.deepEqual([await p.locator('.sheet').count(), await toastSays()], [1, ['Height: “3200” is more than Brickyard keeps (500 cm).', '']]);
+  await discard(p);
+  // A bookcase made shallower than the sets on it.
+  await p.goto(base + '#shelves');
+  await p.click('[data-case="k"]');
+  await p.fill('#k-d', '5');
+  await p.click('#k-save');
+  assert.deepEqual(await p.locator('.case .flag.bad').allTextContents(), ['3 sets are too deep for this bookcase (5 cm deep). Move them to a deeper one.']);
+  await p.click('[data-case="k"]');
+  await p.fill('#k-d', '20');
+  await p.click('#k-save');
+  assert.deepEqual(await p.locator('.case .flag.bad').allTextContents(), ['Typewriter is 26 cm deep facing out; this bookcase is 20 cm deep. Move it to a deeper one.']);
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },
@@ -1767,7 +1833,7 @@ await page.click('[data-close]');
   assert.deepEqual(await why(), ['39 cm tall; your tallest shelf is 32 cm'], 'the reason gives the set’s height and the tallest shelf’s');
   await p.click('[data-act="add-case"]');
   await p.click('#k-preset [data-k="3"]');
-  await p.fill('#k-name', 'Tall one'); await p.fill('#k-w', '40'); await p.fill('#k-d', '30'); await p.fill('#k-levels', '45');
+  await p.fill('#k-name', 'Tall one'); await p.fill('#k-w', '40'); await p.fill('#k-d', '30'); await p.fill('#k-h0', '45');
   await p.click('#k-save');
   assert.match(await p.textContent('[data-act="fill"]'), /Fit 1 set/);
   assert.deepEqual(await why(), [], 'the old reason goes once a bookcase would take the set');

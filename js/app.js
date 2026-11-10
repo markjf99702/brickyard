@@ -527,6 +527,28 @@
     box.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  // The lengths typed in a sheet's size boxes, each given as [the box's id, what to call it]. They're cm unless
+  // they say inches (C.readLength). One that can't be read is marked and takes the focus, a message says which
+  // box and what would do, and this is null: the sheet stays open. Otherwise { v: { id: cm }, note }, where note
+  // says what was read as inches ("Read as inches: 32.1 cm"), to go in the message that says it's saved.
+  function lengths(boxes) {
+    var v = {}, inch = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var el = $(boxes[i][0]), r = C.readLength(el.value);
+      if (r.bad) {
+        el.setAttribute('aria-invalid', 'true'); el.focus();
+        el.addEventListener('input', function () { this.removeAttribute('aria-invalid'); }, { once: true });
+        toast(boxes[i][1] + ': ' + (r.bad === 'big' ? '“' + el.value.trim() + '” is more than Brickyard keeps (500 cm).'
+          : '“' + el.value.trim() + '” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.'), 'long');
+        return null;
+      }
+      el.removeAttribute('aria-invalid');
+      v[boxes[i][0]] = r.cm;
+      if (r.inch) inch.push([boxes[i][1].toLowerCase(), r.cm + ' cm']);
+    }
+    return { v: v, note: !inch.length ? '' : 'Read as inches: ' + (inch.length === 1 ? inch[0][1] : inch.map(function (x) { return x.join(' '); }).join(', ')) };
+  }
+
   function field(label, inner) { return '<label class="field"><span>' + label + '</span>' + inner + '</label>'; }
   function input(id, val, extra) { return '<input id="' + id + '" value="' + esc(val == null ? '' : val) + '" autocomplete="off"' + (extra || '') + '>'; }
 
@@ -606,11 +628,14 @@
       var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
       if (raw && !num) { toast('That set number doesn’t look right. It’s usually 4 or 5 digits.'); $('e-num').setAttribute('aria-invalid', 'true'); $('e-num').focus(); return; }
+      // The sizes are cm unless they say inches; '14 1/8"' used to be saved as 14 cm.
+      var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
+      if (!z) return;
       var y = C.cleanSet({
         num: num, name: $('e-name').value, year: $('e-year').value, pieces: $('e-pieces').value, theme: $('e-theme').value, state: st,
         room: $('e-room').value, spot: $('e-spot').value, box: $('e-box').value, missing: $('e-missing').value,
         instr: $('e-instr').checked ? true : (x.instr === false ? false : null), tags: $('e-tags').value, notes: $('e-notes').value,
-        size: { w: $('e-w').value, d: $('e-d').value, h: $('e-h').value }, check: x.check, added: x.added || today(),
+        size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] }, check: x.check, added: x.added || today(),
       });
       if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
       // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
@@ -622,7 +647,7 @@
         return;
       }
       y.id = x.id; putSet(y); save(); closeSheet(); renderCatalog();
-      toast(isNew ? 'Added' : 'Saved');
+      toast((isNew ? 'Added' : 'Saved') + (z.note ? '. ' + z.note : ''));
     };
   }
 
@@ -984,7 +1009,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, toastAfter: toastAfter, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, lengths: lengths, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();
