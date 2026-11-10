@@ -2843,7 +2843,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForSelector('#build-list .list', { timeout: 10000 });
   assert.deepEqual(await p.locator('#build-list .list .item .t').allTextContents(), ['Saved cottage', 'Cottage · example']);
   await p.goto(base);
-  assert.match(await p.textContent('#home-build-stat'), /^1 model from Claude/);
+  await p.waitForFunction(() => document.getElementById('home-build-stat').textContent === '1 model from Claude');
   await c.close();
 }
 
@@ -2867,7 +2867,8 @@ let stored = (await doc()).loose['sf-test'];
 assert.deepEqual([stored.name, stored.box, stored.parts.length], ['Blue tub (garage)', '14', 3]);
 assert.match(await page.textContent('.pieces .group'), /862/, 'the pool is the box (790, as My sets has it) plus the tub (72)');
 await page.goto(base + '#');
-await page.waitForFunction(() => /72 loose pieces/.test(document.getElementById('home-build-stat').textContent));
+// The home screen's card says the same number (it said "72 loose pieces", counting only those).
+await page.waitForFunction(() => /^862 pieces to build from/.test(document.getElementById('home-build-stat').textContent));
 // A model that needs more red 2x4s than the box has is short without the tub and fine with it.
 const reds = { brickyard: 1, model: { name: 'Red wall', parts: Array.from({ length: 12 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
 await page.goto(base + '#d1z' + deflateRawSync(JSON.stringify(reds)).toString('base64url'));
@@ -3829,6 +3830,37 @@ await page.click('[data-close]');
     assert.deepEqual(errors, [], 'and nothing went wrong in the page: ' + file);
     await c.close();
   }
+}
+
+// The home screen's Build from your box card says the number that screen says beside Your pieces, whatever is
+// ticked there. (It counted loose pieces only: "86 loose pieces" where the builder said 876, and with the brick box
+// alone, "Try the example cottage".)
+{
+  const sets = { box: { id: 'box', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' }, tree: { id: 'tree', t: 1, num: '21318-1', name: 'Tree House', pieces: 3036, state: 'apart' } };
+  const { c, p } = await withSets({ sets, loose: { tub: { id: 'tub', t: 1, name: 'Tub', parts: [['3001', 4, 50], ['3003', 1, 36]] } } });
+  const card = async () => {
+    await p.goto(base);
+    await p.waitForFunction(() => document.getElementById('home-build-stat').textContent.trim());
+    return p.textContent('#home-build-stat');
+  };
+  const beside = async () => {
+    await p.click('#go-build');
+    await p.waitForSelector('#build-list .pieces .group');
+    return p.textContent('#build-list .pieces .group span:last-child');
+  };
+  assert.deepEqual([await card(), await beside()], ['876 pieces to build from', '876'], 'the card and Your pieces say the same number');
+  await p.uncheck('[data-pool="tub"]');
+  await p.waitForFunction(() => document.querySelector('#build-list .pieces .group span:last-child').textContent === '790');
+  assert.deepEqual([await card(), await beside()], ['790 pieces to build from', '790'], 'and the same with a lot unticked');
+  await p.evaluate(m => localStorage.setItem('brickyard.models', JSON.stringify({ m1: { model: m, added: 1 } })), { name: 'Wall', parts: [['3001', 4, 0, 0, 0, 0, 1]] });
+  assert.equal(await card(), '790 pieces to build from · 1 model from Claude', 'the models from Claude follow the pieces');
+  await beside();
+  await p.uncheck('[data-pool="box"]');
+  await p.waitForFunction(() => document.querySelector('#build-list .pieces .group span:last-child').textContent === '');
+  assert.equal(await card(), '1 model from Claude', 'with nothing ticked, the models alone');
+  await p.evaluate(() => localStorage.removeItem('brickyard.models'));
+  assert.equal(await card(), 'Try the example cottage', 'and with neither, the example');
+  await c.close();
 }
 
 // Fits a phone: nothing scrolls sideways.

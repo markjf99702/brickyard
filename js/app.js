@@ -238,16 +238,36 @@
     document.querySelectorAll('.bar').forEach(function (b) { b.classList.toggle('scrolled', window.scrollY > 4); });
   }, { passive: true });
 
+  // The Build from your box card says what that screen says: the number beside Your pieces there (C.yourPieces), and
+  // the models from Claude. It counted loose pieces only: with the brick box taken apart and a lot of 86 it said
+  // "86 loose pieces" where the builder said 876, and with the box alone, "Try the example cottage". Which sets have
+  // a parts list is in parts/index.json; until that's here (`listed`) the card keeps the words it had, and if it
+  // can't be had, it counts what it can.
+  var listed = null, asking = false;
+  function buildStat(index) {
+    var models = 0, saved = read('brickyard.models') || {};
+    models = Object.keys(saved).filter(function (k) { return saved[k] && saved[k].model; }).length; // as Build from your box lists them
+    var n = C.yourPieces(DOC, index, read('brickyard.pool') || {}).pieces;
+    var bits = [n ? plural(n, 'piece') + ' to build from' : '', models ? plural(models, 'model') + ' from Claude' : ''].filter(Boolean);
+    // Each half is kept whole where the line is too short for both (a phone), so it breaks after the dot between.
+    $('home-build-stat').innerHTML = bits.map(function (b, i) { return '<span>' + esc(b) + (i < bits.length - 1 ? ' ·' : '') + '</span>'; }).join(' ') || 'Try the example cottage';
+  }
   function renderHome() {
     var t = C.totals(C.live(DOC));
-    var loose = C.liveLots(DOC).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'Nothing here yet. Start with your sets.';
-    var models = 0;
-    try {
-      var saved = JSON.parse(localStorage.getItem('brickyard.models') || '{}') || {};
-      models = Object.keys(saved).filter(function (k) { return saved[k] && saved[k].model; }).length; // as Build from your box lists them
-    } catch (e) { /* none saved */ }
-    $('home-build-stat').textContent = [models ? plural(models, 'model') + ' from Claude' : '', loose ? plural(loose, 'loose piece') : ''].filter(Boolean).join(' · ') || 'Try the example cottage';
+    if (listed) buildStat(listed);
+    else if (!asking) {
+      asking = true;
+      if (!$('home-build-stat').textContent) $('home-build-stat').textContent = '\u00a0'; // the line's room, so the cards don't move when the words come
+      // Once every script has run: the copy opened inside Claude carries the file in the page, after this script.
+      whenParsed(function () {
+        partsFile('index.json').then(function (index) {
+          asking = false;
+          if (Object.keys(index).length) listed = index;
+          buildStat(index);
+        });
+      });
+    }
     var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
     // As the planner counts them: each set once, and only those it can draw (a set on a shelf with no size isn't).
     var S = window.ShelfCore, on = S.sort(C.live(DOC), S.dedupe(cases)).placed.filter(S.hasSize).length;
@@ -1084,6 +1104,7 @@
   // ever counted twice.
   // The parts the builder can draw, and the other numbers some of them go by (3023 is 3023b: parts/aliases.json,
   // which js/build-core.js reads the same way).
+  function whenParsed(run) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run(); }
   function partsFile(name) {
     if (window.BRICKYARD_DATA) return Promise.resolve(window.BRICKYARD_DATA['parts/' + name] || {});
     return fetch('parts/' + name).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
@@ -1242,7 +1263,7 @@
       takeIncoming(C.parseIncoming(JSON.stringify(window.BRICKYARD_EXAMPLE)));
     }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', comeBack); else comeBack();
+  whenParsed(comeBack);
   window.brickyard = {
     doc: function () { return DOC; },
     // For the shelf planner (js/shelves.js) and Build from your box (js/build.js), which adds the brick box.

@@ -171,6 +171,27 @@
     return Object.keys(doc.loose || {}).map(function (k) { return doc.loose[k]; }).filter(function (x) { return !x.del; });
   }
 
+  // "Your pieces" in Build from your box: which sets and lots count, and how many pieces that is. The one place the
+  // rule lives, for the builder's own list (js/build.js) and the number on the home screen's card (js/app.js), which
+  // counted loose pieces only and so said "86 loose pieces" where the builder said 876.
+  // `index` is parts/index.json: the sets Brickyard has a parts list for, each with its list's count. `ticks` is what
+  // the person ticked or unticked there (brickyard.pool: {id: true or false}).
+  // A set is listed when it has a parts list. It counts when it's taken apart, unless its tick says otherwise; a lot
+  // counts unless it's unticked. A set's count is its pieces in My sets, so the two screens agree (the parts list for
+  // 10698 adds up to 804, the box says 790); with none there, it's the parts list's.
+  function yourPieces(doc, index, ticks) {
+    var has = function (o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); };
+    var on = function (id, usual) { return has(ticks, id) ? !!ticks[id] : usual; };
+    var sets = live(doc).filter(function (x) { return x.num && has(index, x.num); }).map(function (x) {
+      return { id: x.id, num: x.num, name: x.name || 'Set ' + shortNum(x.num), pieces: x.pieces || index[x.num], state: x.state, on: on(x.id, x.state === 'apart') };
+    });
+    var lots = liveLots(doc).map(function (x) {
+      return { id: x.id, name: x.name, box: x.box || '', parts: x.parts, kinds: x.parts.length, pieces: lotTotals(x).pieces, on: on(x.id, true) };
+    }).sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true }); });
+    var count = function (n, x) { return n + (x.on ? x.pieces : 0); };
+    return { sets: sets, lots: lots, pieces: sets.reduce(count, 0) + lots.reduce(count, 0) };
+  }
+
   // A bookcase for the shelf planner: its inside width and depth in cm, and its shelves from the top down, each
   // with the height clear above it and the sets standing on it, left to right ({id, turn} where turn means the
   // set stands side-on, its depth facing out).
@@ -488,7 +509,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

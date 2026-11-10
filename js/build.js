@@ -70,15 +70,11 @@ const orSay = fn => async (...a) => {
   }
 };
 
-// Sets in My sets that Brickyard has a parts list for. Taken-apart sets count by default; the toggles override.
-// `pieces` is the count My sets shows for the set, so the two screens agree (the parts list for 10698 adds up to
-// 804, the box says 790); with none there, it's the parts list's.
-function poolSets() {
-  const prefs = read(POOL, {});
-  return Object.values(app.doc().sets).filter(x => !x.del && x.num && index[x.num])
-    .map(x => ({ id: x.id, num: x.num, name: x.name || 'Set ' + x.num.replace(/-1$/, ''), pieces: x.pieces || index[x.num], state: x.state,
-      on: x.id in prefs ? prefs[x.id] : x.state === 'apart' }));
-}
+// Your pieces: the sets in My sets that Brickyard has a parts list for, and the lots of loose pieces (from a scanner,
+// or a list from Claude). Which of them count, and how many pieces that is, is worked out in js/core.js (yourPieces),
+// where the home screen's card gets its number too.
+function mine() { return window.BrickCore.yourPieces(app.doc(), index, read(POOL, {})); }
+function poolSets() { return mine().sets; }
 // Taken-apart sets Brickyard has no parts list for, by name: their pieces can't be counted yet. Built and sealed
 // sets aren't pieces to build from, so a missing list for one of those is nothing to mention.
 function missingLists() {
@@ -88,21 +84,15 @@ function missingLists() {
 }
 // Why an unticked set is off, when it's the set's state that says so.
 const OFF = { built: 'built, so off unless you take it apart', partial: 'partly built, so off', sealed: 'sealed, so off' };
-// Lots of loose pieces (from a scanner, or a list from Claude). They count unless unticked.
+// `usable` is how many of a lot's pieces the builder can draw.
 function poolLots() {
-  const prefs = read(POOL, {});
-  return Object.values(app.doc().loose || {}).filter(x => !x.del)
-    .map(x => ({ id: x.id, name: x.name, box: x.box || '', parts: x.parts, kinds: x.parts.length,
-      pieces: x.parts.reduce((n, r) => n + r[2], 0), usable: x.parts.reduce((n, r) => n + (shapes[B.canon(r[0])] ? r[2] : 0), 0),
-      on: x.id in prefs ? prefs[x.id] : true }))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  return mine().lots.map(l => Object.assign(l, { usable: l.parts.reduce((n, r) => n + (shapes[B.canon(r[0])] ? r[2] : 0), 0) }));
 }
 async function currentPool() {
   const on = poolSets().filter(s => s.on), lots = poolLots().filter(l => l.on);
   const invs = await Promise.all(on.map(s => get('parts/sets/' + s.num + '.json')));
   on.forEach((s, i) => { s.parts = invs[i].parts || []; }); // so a model can say which sets its pieces come from
-  return { sets: on, lots, any: on.length + lots.length > 0, pool: B.poolOf(invs.concat(lots)),
-    pieces: on.reduce((n, s) => n + s.pieces, 0) + lots.reduce((n, l) => n + l.pieces, 0) };
+  return { sets: on, lots, any: on.length + lots.length > 0, pool: B.poolOf(invs.concat(lots)), pieces: mine().pieces };
 }
 
 // Models are kept in this browser, keyed by their parts, so opening the same link twice keeps one copy. The same

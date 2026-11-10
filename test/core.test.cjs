@@ -23,6 +23,31 @@ for (const f of ['js/app.js', 'js/core.js']) {
   check(!err, f + ' parses' + (err ? ': ' + err.message : ''));
 }
 
+// Your pieces, for Build from your box and the home screen's card: a set with a parts list counts when it's taken
+// apart, unless its tick says otherwise; a lot counts unless it's unticked; a set's count is its pieces in My sets,
+// or with none there, its parts list's.
+{
+  const index = { '10698-1': 804 };
+  const doc = C.cleanDoc({ catalog: {
+    sets: {
+      box: { id: 'box', t: 1, num: '10698', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' },
+      built: { id: 'built', t: 1, num: '10698', state: 'built' },
+      other: { id: 'other', t: 1, num: '21318', name: 'Tree House', pieces: 3036, state: 'apart' },
+      gone: { id: 'gone', t: 2, del: 1 },
+    },
+    loose: { tub: { id: 'tub', t: 1, name: 'Tub 10', parts: [['3001', 4, 50], ['3003', 1, 36]] }, bag: { id: 'bag', t: 1, name: 'Tub 2', parts: [['3001', 4, 5]] }, out: { id: 'out', t: 3, del: 1 } },
+  } });
+  const mine = t => { const y = C.yourPieces(doc, index, t); return [y.sets.map(x => [x.id, x.on, x.pieces]), y.lots.map(x => [x.id, x.on, x.pieces]), y.pieces]; };
+  eq(mine({}), [[['box', true, 790], ['built', false, 804]], [['bag', true, 5], ['tub', true, 86]], 881], 'taken-apart sets with a parts list and every lot count; a set with no pieces of its own has its list’s');
+  eq(mine({ box: false, built: true, tub: false })[2], 804 + 5, 'the ticks say otherwise');
+  eq(mine({ box: false, built: false, tub: false, bag: false })[2], 0, 'everything unticked is no pieces');
+  eq(mine({ constructor: false, other: true })[2], 881, 'a tick for something that isn’t listed changes nothing');
+  eq(C.yourPieces(doc, {}, null).pieces, 91, 'with no parts lists known, the lots are all there is');
+  eq(C.yourPieces(doc, Object.create(null), {}).sets, [], 'and a set number is looked up in the lists only');
+  eq(C.yourPieces(C.emptyDoc(), index, {}), { sets: [], lots: [], pieces: 0 }, 'an empty catalog has none');
+  eq(C.yourPieces(C.cleanDoc({ catalog: { sets: { a: { id: 'a', num: '10698', state: 'apart' } } } }), index, {}).sets[0].name, 'Set 10698', 'a set with no name is called by its number');
+}
+
 // Set numbers.
 eq(C.setNum('10698'), '10698-1', 'plain number gets -1');
 eq(C.setNum('#10698-2'), '10698-2', 'version kept, # dropped');
