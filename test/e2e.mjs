@@ -1204,6 +1204,88 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'and Back from there is My sets, with no sheet left over');
   await c.close();
 }
+
+// A long list keeps its place when a sheet closes. The first sheet closed after arriving on a screen threw My sets
+// (and the Shelf planner) back to the top: closing goes back over the sheet's place in history, and the browser put
+// the page where it had it for the place before. Scrolled by real touch drags, as a thumb does it. A reload in the
+// middle of the list still comes back to the same place.
+{
+  const many = {}, shelf = n => ({ h: 32, sets: [0, 1, 2].map(i => ({ id: 's' + (n * 3 + i) })) });
+  for (let i = 0; i < 150; i++) many['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(3, '0'), room: 'Office', state: 'built', size: { w: 10, d: 10, h: 10 } };
+  const cases = {};
+  for (let k = 0; k < 3; k++) cases['k' + k] = { id: 'k' + k, t: 1, name: 'Billy ' + (k + 1), w: 76, d: 26, levels: [0, 1, 2, 3, 4].map(l => shelf(k * 5 + l)) };
+  const { c, p } = await withSets({ sets: many, cases });
+  const cdp = await c.newCDPSession(p);
+  const y = () => p.evaluate(() => Math.round(window.scrollY));
+  // Drags the page up n times, and waits for it to come to rest.
+  const drag = async n => {
+    for (let i = 0; i < n; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 650 }] });
+      for (let at = 650; at >= 150; at -= 50) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: at }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await p.waitForTimeout(150);
+    }
+    for (let was = -1, now = await y(); now !== was; was = now, now = await y()) await p.waitForTimeout(250);
+  };
+  // Taps whatever matches `sel` and is in the middle of the screen, clear of the bars.
+  const tapOne = async sel => {
+    const at = await p.evaluate(sel => {
+      const el = [...document.querySelectorAll(sel)].find(e => { const r = e.getBoundingClientRect(); return r.top > 220 && r.bottom < 620; }), r = el.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    }, sel);
+    await p.touchscreen.tap(at[0], at[1]);
+    await p.waitForSelector('.sheet');
+  };
+  const closed = () => p.waitForFunction(() => !(history.state && history.state.sheet) && !document.querySelector('.scrim'));
+  // Brickyard opened afresh each time: it's the first sheet after arriving that jumped.
+  const arrive = async go => { await p.goto('about:blank'); await p.goto(base); await p.tap(go); };
+  for (const how of ['Close', 'Save', 'Back', 'a tap outside']) {
+    await arrive('#go-catalog');
+    await p.waitForSelector('#list-wrap .item');
+    await drag(2);
+    const was = await y();
+    assert.ok(was > 2000, 'the drags moved My sets a long way down (' + was + ')');
+    await tapOne('#list-wrap .item');
+    if (how === 'Close') await p.tap('.sheet [data-close]');
+    else if (how === 'Save') { await p.fill('#e-notes', 'saved'); await p.tap('#e-save'); }
+    else if (how === 'Back') await p.goBack();
+    else await p.touchscreen.tap(195, 12);
+    await closed();
+    await p.waitForTimeout(400);
+    assert.ok(Math.abs(await y() - was) <= 2, 'the first sheet in My sets closed by ' + how + ' leaves the list where it was: ' + was + ', now ' + await y());
+  }
+  await arrive('#go-shelves');
+  await p.waitForSelector('.sv-set');
+  await drag(1);
+  let was = await y();
+  assert.ok(was > 800, 'the drags moved the planner down (' + was + ')');
+  await tapOne('.sv-set');
+  await p.tap('.sheet [data-close]');
+  await closed();
+  await p.waitForTimeout(400);
+  assert.ok(Math.abs(await y() - was) <= 2, 'a set’s sheet in the Shelf planner closes with the bookcases where they were: ' + was + ', now ' + await y());
+  // A reload keeps the place too, on each screen (the browser did this itself until Brickyard took the job over).
+  await p.reload();
+  await p.waitForSelector('.sv-set');
+  await p.waitForTimeout(400);
+  assert.ok(Math.abs(await y() - was) <= 2, 'a reload of the Shelf planner comes back to the same place: ' + was + ', now ' + await y());
+  await p.tap('#shelves .back');
+  await p.tap('#go-catalog');
+  assert.equal(await y(), 0, 'a move to another screen still starts at its top');
+  await drag(3);
+  was = await y();
+  await p.reload();
+  await p.waitForSelector('#list-wrap .item');
+  await p.waitForTimeout(400);
+  assert.ok(Math.abs(await y() - was) <= 2, 'and a reload of My sets: ' + was + ', now ' + await y());
+  // Opened afresh (a link, a bookmark), it starts at the top, whatever the tab remembers.
+  await p.goto('about:blank');
+  await p.goto(base + '#catalog');
+  await p.waitForSelector('#list-wrap .item');
+  await p.waitForTimeout(300);
+  assert.equal(await y(), 0, 'opened afresh, My sets starts at the top');
+  await c.close();
+}
 // The preview copy (in a frame, with no sets) moves to My sets and opens its example batch, which stays open.
 {
   const c = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });

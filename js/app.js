@@ -5,6 +5,12 @@
   var KEY = 'brickyard.v1', PREFS = 'brickyard.prefs', TOOK = 'brickyard.took';
   var SITE = 'https://brickyard.junkdrawer.works/';
   var FRAMED = window.top !== window; // the Artifact copy: no downloads
+  // Where the page is scrolled to is Brickyard's to keep, not the browser's. A sheet has a place of its own in
+  // history and closing it goes back over that place; the browser then put the page where it had it for the place
+  // before, which for the first sheet closed after arriving on a screen was the top: 300 sets down My sets, Close
+  // threw the list back to its start. The one thing the browser did with it that's wanted, coming back to the same
+  // place after a reload, is done here instead (comeBack).
+  try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) { /* the browser keeps it */ }
 
   // ---------- storage ----------
   function read(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
@@ -933,8 +939,8 @@
       tookFrom(batch.id, took);
       // What the screen shows next is the new sets, and that some need a look: the list used to stay at its top,
       // with the new rows far down it, "To check" off the side of the chip row and no word about it in the message.
-      // Once the sheet's place in history is gone, and a moment after: as it goes, the browser puts the page back
-      // where it was when the sheet opened.
+      // Once the sheet's place in history is gone, and a moment after: a browser that still puts the page back
+      // itself as that place goes would undo it.
       save(); renderCatalog(); closeSheet(function () { setTimeout(function () { showNew(ids, nc); }, 0); });
       // Undo takes out the sets this tap added (a batch with the wrong box typed for all of them was fourteen sets
       // to put right or remove by hand), and forgets that the link was opened, so it's offered whole again.
@@ -1118,6 +1124,20 @@
     refresh();
   });
 
+  // A reload (or coming back to the tab's page from another site) shows the screen where it was left. The place is
+  // kept for the tab as the page goes, with the screen it's a place on, and put back once that screen has been drawn
+  // again: when every script has run, the Shelf planner's among them. Opened any other way, a screen starts at its top.
+  var AT = 'brickyard.at';
+  window.addEventListener('pagehide', function () {
+    try { sessionStorage.setItem(AT, JSON.stringify({ h: location.hash, y: Math.round(window.scrollY) })); } catch (e) { /* no place kept */ }
+  });
+  function comeBack() {
+    var nav = window.performance && performance.getEntriesByType && performance.getEntriesByType('navigation')[0], at = null;
+    if (!nav || (nav.type !== 'reload' && nav.type !== 'back_forward')) return;
+    try { at = JSON.parse(sessionStorage.getItem(AT) || 'null'); } catch (e) { /* none kept */ }
+    if (at && at.h === location.hash && at.y > 0) window.scrollTo(0, at.y);
+  }
+
   if ('serviceWorker' in navigator && window.isSecureContext && !FRAMED) navigator.serviceWorker.register('sw.js').catch(function () {});
   offEntry();
   if (!checkLink()) {
@@ -1128,6 +1148,7 @@
       takeIncoming(C.parseIncoming(JSON.stringify(window.BRICKYARD_EXAMPLE)));
     }
   }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', comeBack); else comeBack();
   window.brickyard = {
     doc: function () { return DOC; },
     // For the shelf planner (js/shelves.js) and Build from your box (js/build.js), which adds the brick box.
