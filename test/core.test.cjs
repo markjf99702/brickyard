@@ -174,6 +174,14 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   check(C.matches(x, 'box 3'), 'search finds a moving box');
   check(C.matches(x, 'partly'), 'search finds the state');
   check(!C.matches(x, 'castle'), 'search misses');
+  // The Check note is searched like the other notes (it wasn't: "blurry" found nothing); piece counts and sizes aren't.
+  {
+    const unsure = C.cleanSet({ num: '42115', name: 'Lamborghini', pieces: 3696, size: { w: 60, d: 25, h: 13 }, check: 'number read from a blurry corner; could be 42083' });
+    check(C.matches(unsure, 'blurry', []), 'search looks in a set’s Check note');
+    check(C.matches(unsure, 'lamborghini 42083', []), 'with other words too');
+    check(C.matches(unsure, 'to check', []), 'and "to check" still finds it');
+    check(!C.matches(unsure, '3696', []) && !C.matches(unsure, '60', []), 'but not in its piece count or its size');
+  }
   check(C.matches(C.cleanSet({ name: 'Bonsai Tree', box: 'Kitchen 2' }), 'box kitchen 2'), 'a box label of two words, with no list of labels');
 }
 // Search reads a name the way it's said, not the way it's punctuated: an accent, a curly or straight apostrophe, a

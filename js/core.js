@@ -384,6 +384,8 @@
   function inBox(x, label) { return !!x.box && natural(boxName(x.box), label) === 0; }
 
   // labels: every moving-box label in the catalog. Without them, the set's own is the only one known.
+  // A set's number, name, theme, room, spot, moving box, missing pieces, notes, Check note, tags, state and year
+  // are searched; not its piece count or sizes, where "60" would find half the catalog.
   // Besides the set's own fields, the words the screen uses are searched: "missing pieces" finds the sets with
   // something missing and "to check" the ones marked, and "not packed" is the sets with no moving box. A word of
   // four letters or more that isn't found is tried without its last s or es ("flowers" finds Flower Bouquet).
@@ -401,7 +403,7 @@
       q = q.replace(/(^|\s)not packed(?=\s|$)/, ' ');
     }
     // The number's "-1" is left out of the text without punctuation: "76391-1" read as 763911, and "911" found it.
-    var rest = [shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '',
+    var rest = [shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, x.check, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '',
       x.missing ? 'missing pieces' : '', x.check ? 'to check' : ''].join(' ');
     var hay = fold((x.num || '') + ' ' + rest), plain = unpunct(fold(rest));
     var has = function (w) { var u = unpunct(w); return hay.indexOf(w) >= 0 || (!!u && plain.indexOf(u) >= 0); };
