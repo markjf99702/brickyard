@@ -389,6 +389,16 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
   .toast.act { flex-wrap: wrap; justify-content: flex-end; }
 }
 
+/* A contrast theme (Windows) takes backgrounds and shadows away, which were all that marked the chosen State and the
+   chosen filter, and left buttons as bare words. Buttons get an outline, the chosen one the theme's highlight
+   colours, and a bookcase's boards the text colour. */
+@media (forced-colors: active) {
+  .btn, .icon-btn, .sync-btn, .seg button, .toast button { border: 1px solid ButtonText; }
+  .btn.danger { padding-left: 16px; }
+  .chip[aria-pressed="true"], .seg button[aria-pressed="true"] { background: Highlight; color: HighlightText; border-color: Highlight; forced-color-adjust: none; }
+  .sv-board, .sv-frame { fill: CanvasText; }
+}
+
 /* On paper: the list, under a line that says what it's a list of (js/app.js fills it in). Not the search, the
    chips or the buttons; a group's heading stays with its first set, and no set is cut across two pages. The page
    is as tall as the list (as tall as the screen at least, it ended on a blank sheet). */

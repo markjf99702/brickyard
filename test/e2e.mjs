@@ -2309,6 +2309,23 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// In a contrast theme (forced colours) the chosen filter and the chosen State are in the theme's highlight colours
+// (they were marked by a background and a shadow, which the theme takes away, so all four States looked the same),
+// and buttons have an outline.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built' }, b: { id: 'b', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart' } } }, { forcedColors: 'active', viewport: { width: 1000, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  await p.goto(base + '#catalog');
+  const bg = sel => p.$$eval(sel, els => els.map(e => getComputedStyle(e).backgroundColor));
+  await p.click('.chip[data-f="built"]');
+  const chips = await bg('.chip');
+  assert.ok(chips[1] !== chips[0] && chips[0] === chips[2], 'the chosen chip stands out: ' + chips);
+  await p.click('.item[data-id="a"]');
+  const seg = await bg('#e-state button');
+  assert.ok(seg[0] === chips[1] && seg[0] !== seg[1] && seg[1] === seg[2] && seg[2] === seg[3], 'and the chosen State: ' + seg);
+  assert.deepEqual(await p.$$eval('#e-save, [data-close], #e-del, #e-state button', els => els.map(e => getComputedStyle(e).borderTopWidth)), Array(7).fill('1px'), 'buttons have an outline');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
