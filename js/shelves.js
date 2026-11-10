@@ -54,8 +54,11 @@
       // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
       var placed = sorted.placed.filter(S.hasSize).length, total = placed + sorted.waiting.length + sorted.noSize.length;
       var fitting = sorted.waiting.filter(function (x) { return !S.whyNot(all, x, ids); }).length;
+      // When nothing waiting fits there's no Fit button, and the count says why there's nothing more to press.
+      var rest = total - placed, stuck = !fitting && rest ? '; the other ' + (rest === 1 ? 'one ' : rest.toLocaleString() + ' ') +
+        (!sorted.noSize.length ? (rest === 1 ? 'doesn’t fit' : 'don’t fit') : !sorted.waiting.length ? (rest === 1 ? 'needs a size' : 'need a size') : 'don’t fit or need a size') : '';
       // Nothing to count until there's a set the planner places (the note at the end says which those are).
-      if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>';
+      if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' + stuck : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>';
       html += '<div class="acts-row">' + (fitting ? '<button class="btn" type="button" data-act="fill">Fit ' + (fitting === sorted.waiting.length ? plural(fitting, 'set') : 'the sets') + ' onto the shelves</button>' : '') +
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
@@ -70,9 +73,14 @@
       }
     }
     if (sorted.waiting.length) {
-      html += '<h2 class="group"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2><ul class="list">' + sorted.waiting.map(function (x) {
-        return setRow(x, whyNot(x, all, ids));
-      }).join('') + '</ul>';
+      // Each set with why it's waiting (worked out afresh from the bookcases and sizes as they are now, so it never
+      // outlives a bookcase or a size changing): the ones that fit somewhere first, then the ones that only need
+      // room, then the ones no shelf here can take.
+      var rows = sorted.waiting.map(function (x, i) { var r = all.length ? S.reason(all, x, ids) : { why: '', kind: '' }; return { x: x, why: r.why, kind: r.kind, i: i }; });
+      var rank = function (r) { return r.kind === '' ? 0 : r.kind === 'room' ? 1 : 2; };
+      rows.sort(function (a, b) { return rank(a) - rank(b) || a.i - b.i; });
+      html += '<h2 class="group"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
+        '<ul class="list">' + rows.map(function (r) { return setRow(r.x, r.why); }).join('') + '</ul>';
     }
     if (sorted.noSize.length) {
       html += '<h2 class="group"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
@@ -98,9 +106,26 @@
       (why ? '<div class="m warn">' + esc(why) + '</div>' : '') + '</div><span></span></button></li>';
   }
 
-  // Why a waiting set isn't on a shelf, from the bookcases and sizes as they are now: right after a fill that's
-  // what the fill found, and it never outlives a bookcase or a size changing.
-  function whyNot(x, all, ids) { return all.length ? S.whyNot(all, x, ids) : ''; }
+  // The reasons under Not on a shelf yet, added up in one line: how many sets need more shelf and about how much,
+  // how many are too tall, too deep or too wide for anything here. (After Fit, 83 rows each gave their own reason
+  // and nothing said what they came to.) A part that's zero is left out.
+  function needLine(rows, all) {
+    var of = function (kind) { return rows.filter(function (r) { return r.kind === kind; }); };
+    var is = function (n, one, many) { return (n === 1 ? '1 ' + one : n.toLocaleString() + ' ' + many); };
+    var room = of('room'), tall = of('tall').length, deep = of('deep').length, wide = of('wide').length, big = of('big').length, bits = [];
+    var hs = [].concat.apply([], all.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
+    var most = function (f) { return cm(Math.max.apply(null, all.map(f))); }, one = all.length === 1;
+    if (room.length) {
+      var need = S.shelfNeeded(room.map(function (r) { return r.x; }), all);
+      bits.push(is(room.length, 'needs', 'need') + ' more shelf: about ' + (need < 100 ? Math.ceil(need / 5) * 5 + ' cm' : (need < 1000 ? (Math.round(need / 10) / 10) : Math.round(need / 100)) + ' m') + '.');
+    }
+    if (tall) bits.push(is(tall, 'is', 'are') + ' taller than your ' + (hs.length === 1 ? 'shelf' : 'tallest shelf') + ' (' + cm(Math.max.apply(null, hs)) + ' cm).');
+    if (deep) bits.push(is(deep, 'is', 'are') + ' deeper than your ' + (one ? 'bookcase' : 'deepest bookcase') + ' (' + most(function (c) { return c.d; }) + ' cm).');
+    if (wide) bits.push(is(wide, 'is', 'are') + ' wider than your ' + (one ? 'bookcase' : 'widest bookcase') + ' (' + most(function (c) { return c.w; }) + ' cm).');
+    if (big) bits.push(is(big, 'is', 'are') + ' too big some other way.');
+    // One set that doesn't fit says why on its own row; the line is for adding several up.
+    return rows.length - of('').length > 1 ? '<p class="note" id="need-line">' + esc(bits.join(' ')) + '</p>' : '';
+  }
 
   // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
   // above it (its size or the shelf's height changed after it was placed), is marked in red. A set that has been
@@ -251,12 +276,16 @@
     if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSheet(g.dataset.set); }
   });
 
+  // Fit, with Undo: the bookcases it changed go back as they were.
   function fillAll() {
-    var before = cases(), r = S.fill(before, sets()), moved = 0;
-    r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) put(c); });
+    var before = cases(), r = S.fill(before, sets()), moved = 0, kept = [];
+    r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) { kept.push(copy(before[i])); put(c); } });
     moved = S.sort(sets(), r.cases).placed.length - S.sort(sets(), before).placed.length;
     render();
-    toast(moved ? plural(moved, 'set') + ' placed' + (r.left.length ? '; ' + r.left.length + ' didn’t fit' : '') : 'Nothing else fits. See why under each set.');
+    if (!moved) { toast('Nothing else fits. See why under each set.'); return; }
+    toast(plural(moved, 'set') + ' placed' + (r.left.length ? '; ' + r.left.length + ' didn’t fit' : ''), false, { label: 'Undo', run: function () {
+      putCasesBack(kept); toast(moved === 1 ? 'Took that set off again' : 'Took those ' + moved.toLocaleString() + ' sets off again');
+    } });
   }
 
   // Takes off a bookcase every set on it that isn't built or partly built any more.
@@ -391,6 +420,7 @@
     var v = c ? { name: c.name, room: c.room || '', w: c.w, d: c.d } : { name: preset.name, room: '', w: preset.w, d: preset.d };
     var ids = byId(), rows = (c ? c.levels.map(function (l) { return l.h; }) : preset.levels).map(function (h, i) { return { from: c ? i : -1, v: cm(h) }; });
     var holds = function (r) { return r.from < 0 ? 0 : c.levels[r.from].sets.filter(function (p) { return ids[p.id]; }).length; };
+    var onIt = c ? Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length : 0;
     var rooms = {}; sets().forEach(function (x) { if (x.room) rooms[x.room] = 1; }); cases().forEach(function (k) { if (k.room) rooms[k.room] = 1; });
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a bookcase' : 'Edit ' + esc(c.name)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (isNew ? '<div class="field"><span class="lbl">Start from</span><div class="seg" id="k-preset">' + PRESETS.map(function (p, i) {
@@ -403,6 +433,7 @@
       '<div class="field" role="group" aria-labelledby="k-levels-l"><span class="lbl" id="k-levels-l">Height of each shelf, top shelf first (cm)</span><ol class="levels" id="k-levels"></ol>' +
       '<div><button class="btn sm quiet" type="button" id="k-add">Add a shelf</button></div></div>' +
       '<p class="note">The height is the clear space above each shelf, up to the one above it. The presets are rough: measure yours for a close fit.</p>' +
+      (onIt ? '<div><button class="btn sm quiet" type="button" id="k-clear">Take every set off</button></div>' : '') +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
       function () { return now() !== was || $('k-room').value.trim() !== v.room; });
     // The rows as the sheet has them. What's typed lives in the boxes, so it's read back before the rows change.
@@ -441,6 +472,17 @@
       rows = (p.levels.length ? p.levels : ['']).map(function (h) { return { from: -1, v: String(h) }; }); draw();
       was = now();
       if (p.k === 'custom') $('k-name').focus();
+    };
+    // Starting a bookcase again: Fit leaves placed sets where they are, so the way to a fresh arrangement was to
+    // take each set off in its own sheet. It takes a second tap, and the message has Undo.
+    if ($('k-clear')) $('k-clear').onclick = function () {
+      if (!app.secondTap(this)) { this.textContent = 'Tap again to take ' + (onIt === 1 ? 'it' : 'all ' + onIt.toLocaleString()) + ' off'; return; }
+      var kept = copy(c), next = copy(c);
+      next.levels.forEach(function (l) { l.sets = []; });
+      put(next); app.closeSheet(); render();
+      toast((onIt === 1 ? '1 set is' : onIt.toLocaleString() + ' sets are') + ' off ' + c.name, false, { label: 'Undo', run: function () {
+        putCasesBack([kept]); toast(onIt === 1 ? 'That set is back on its shelf' : 'Those ' + onIt.toLocaleString() + ' sets are back on their shelves');
+      } });
     };
     if ($('k-del')) $('k-del').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }

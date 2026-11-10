@@ -64,32 +64,51 @@
   // there is to put it in: "Too deep for every bookcase (32 cm)" under a bookcase whose shelves are all labelled
   // 32 cm (their height) read as the bookcase's own size. A set can stand either way round, so its depth or width
   // here is the lesser of the two, "even side-on" when that's the way that gives it.
-  function whyNot(cases, x, byId) {
-    if (!hasSize(x)) return 'It needs a size';
-    if (!cases.length) return 'No bookcases yet';
+  function whyNot(cases, x, byId) { return reason(cases, x, byId).why; }
+  // The same with its kind, for counting: { why, kind } where kind is '' (it fits somewhere), 'size', 'none' (no
+  // bookcases), 'room', 'deep', 'tall', 'wide' or 'big' (anything else).
+  function reason(cases, x, byId) {
+    if (!hasSize(x)) return { why: 'It needs a size', kind: 'size' };
+    if (!cases.length) return { why: 'No bookcases yet', kind: 'none' };
     var why = [];
     for (var i = 0; i < cases.length; i++) for (var li = 0; li < cases[i].levels.length; li++) {
       var f = fits(cases[i], li, x, byId);
-      if (!f.why) return '';
+      if (!f.why) return { why: '', kind: '' };
       why.push(f.why);
     }
     var all = function (re) { return why.every(function (w) { return re.test(w); }); };
     var most = function (of) { return Math.max.apply(null, cases.map(of)); }, one = cases.length === 1;
     var least = Math.min(x.size.w, x.size.d);
-    if (why.some(function (w) { return /room/.test(w); })) return 'No room left on a shelf it fits';
+    if (why.some(function (w) { return /room/.test(w); })) return { why: 'No room left on a shelf it fits', kind: 'room' };
     if (all(/deep/)) {
-      return least + ' cm deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + most(function (c) { return c.d; }) + ' cm' + (one ? ' deep' : '');
+      return { kind: 'deep', why: least + ' cm deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + most(function (c) { return c.d; }) + ' cm' + (one ? ' deep' : '') };
     }
     if (all(/tall/)) {
       var hs = [].concat.apply([], cases.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
-      return x.size.h + ' cm tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + Math.max.apply(null, hs) + ' cm' + (hs.length === 1 ? ' tall' : '');
+      return { kind: 'tall', why: x.size.h + ' cm tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + Math.max.apply(null, hs) + ' cm' + (hs.length === 1 ? ' tall' : '') };
     }
     if (all(/wide/)) {
-      return least + ' cm wide' + (x.size.w > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'widest bookcase is ') + most(function (c) { return c.w; }) + ' cm' + (one ? ' wide' : '');
+      return { kind: 'wide', why: least + ' cm wide' + (x.size.w > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'widest bookcase is ') + most(function (c) { return c.w; }) + ' cm' + (one ? ' wide' : '') };
     }
-    if (all(/deep|wide|big/)) return 'At ' + x.size.w + ' × ' + x.size.d + ' cm, too big for ' + (one ? 'your bookcase' : 'every bookcase');
-    if (all(/deep|tall/)) return 'Too tall or too deep for every shelf';
-    return 'Too big for every shelf';
+    if (all(/deep|wide|big/)) return { kind: 'big', why: 'At ' + x.size.w + ' × ' + x.size.d + ' cm, too big for ' + (one ? 'your bookcase' : 'every bookcase') };
+    if (all(/deep|tall/)) return { kind: 'big', why: 'Too tall or too deep for every shelf' };
+    return { kind: 'big', why: 'Too big for every shelf' };
+  }
+
+  // How much more shelf the sets that have run out of room would take, in cm: each one's width along the shelf the
+  // way Fit would stand it (facing out if some shelf takes it that way when empty, else side-on), and the gap beside
+  // it. The bits of shelf still free aren't taken off: each is too short for any of these sets, which is why they're
+  // waiting. It's a guide to how many more shelves to find, not a promise that they'd pack that tightly.
+  function shelfNeeded(sets, cases) {
+    var total = 0;
+    sets.forEach(function (x) {
+      if (!hasSize(x)) return;
+      var out = cases.some(function (c) {
+        return x.size.d <= c.d && x.size.w <= c.w && c.levels.some(function (l) { return x.size.h <= l.h; });
+      });
+      total += tenths(footprint(x, !out).along) + tenths(GAP);
+    });
+    return total / 10;
   }
 
   // Where every set is: id → {c: case id, l: level index, turn}.
@@ -226,7 +245,7 @@
     });
   }
 
-  var api = { GAP: GAP, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, placements: placements, sort: sort, dedupe: dedupe,
+  var api = { GAP: GAP, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort, dedupe: dedupe,
     fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.ShelfCore = api;
 })(this);

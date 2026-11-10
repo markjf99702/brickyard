@@ -1666,7 +1666,7 @@ await page.click('[data-close]');
     rows: [...document.querySelectorAll('#shelves-body .list .item')].map(r => [...r.querySelectorAll('.t, .m')].map(e => e.textContent).join(' | ')), flag: [...document.querySelectorAll('.case .flag')].map(f => [f.querySelector('span').textContent, (f.querySelector('button') || {}).textContent || '']) }));
   await p.goto(base + '#shelves');
   await p.waitForSelector('.case');
-  assert.deepEqual(await seen(), { sum: '3 of 4 sets on shelves', head: '76 × 26 cm inside · 2 shelves · 3 sets', drawn: ['tw', 'mc off', 'bt off'], rows: ['Bookshop | On Billy narrow, shelf 1'],
+  assert.deepEqual(await seen(), { sum: '3 of 4 sets on shelves; the other one needs a size', head: '76 × 26 cm inside · 2 shelves · 3 sets', drawn: ['tw', 'mc off', 'bt off'], rows: ['Bookshop | On Billy narrow, shelf 1'],
     flag: [['2 sets here aren’t built now: Medieval Castle and Bonsai Tree.', 'Take them off']] }, 'a set with no size is listed with its shelf; taken-apart and sealed sets are hatched and flagged');
   await p.click('[data-act="take-off"]');
   assert.deepEqual([await toastSays(), (await seen()).drawn, (await seen()).flag], [['2 sets are off Billy narrow', 'Undo'], ['tw'], []], 'the button takes them off');
@@ -1762,6 +1762,39 @@ await page.click('[data-close]');
   await p.fill('#k-d', '20');
   await p.click('#k-save');
   assert.deepEqual(await p.locator('.case .flag.bad').allTextContents(), ['Typewriter is 26 cm deep facing out; this bookcase is 20 cm deep. Move it to a deeper one.']);
+  await c.close();
+}
+
+// Fit has Undo, and a bookcase can be started again: "Take every set off" in its sheet, on a second tap, with Undo
+// too. (Fit leaves placed sets where they are, so a fresh arrangement meant opening every set's sheet.) When nothing
+// waiting fits, the count says so, and one line under Not on a shelf yet adds up why: how many need more shelf and
+// about how much, how many are too tall or too deep. The sets that only need room come first.
+{
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const sets = { t: set('t', 'Tree House', 27, 24, 37), g: set('g', 'Galaxy Explorer', 52, 32, 13), e: set('e', 'Eiffel Tower', 58, 58, 149) };
+  for (let i = 0; i < 6; i++) sets['s' + i] = set('s' + i, 'Set ' + i, 30, 20, 20);
+  const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 32, sets: [] }] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const waiting = () => p.evaluate(() => ({ sum: document.querySelector('#shelves-body .sumline').textContent, line: (document.getElementById('need-line') || {}).textContent || '', rows: [...document.querySelectorAll('#shelves-body .list .item .t')].map(e => e.textContent).join(', ') }));
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await waiting(), { sum: '0 of 9 sets on shelves', line: '2 are taller than your tallest shelf (32 cm). 1 is deeper than your bookcase (26 cm).', rows: 'Set 0, Set 1, Set 2, Set 3, Set 4, Set 5, Tree House, Galaxy Explorer, Eiffel Tower' }, 'before Fit: the sets that fit first');
+  await p.click('[data-act="fill"]');
+  assert.deepEqual([await on(), await toastSays()], ['s0+s1 / s2+s3', ['4 sets placed; 5 didn’t fit', 'Undo']], 'Fit says what it did, with Undo');
+  assert.deepEqual(await waiting(), { sum: '4 of 9 sets on shelves; the other 5 don’t fit', line: '2 need more shelf: about 65 cm. 2 are taller than your tallest shelf (32 cm). 1 is deeper than your bookcase (26 cm).', rows: 'Set 4, Set 5, Tree House, Galaxy Explorer, Eiffel Tower' },
+    'the count says nothing else fits, and one line adds up why');
+  await p.click('.toast button');
+  assert.deepEqual([await on(), await toastSays(), await p.locator('[data-act="fill"]').count()], [' / ', ['Took those 4 sets off again', ''], 1], 'Undo takes them off again');
+  await p.click('[data-act="fill"]');
+  await p.click('[data-case="k"]');
+  await p.click('#k-clear');
+  assert.deepEqual([await p.textContent('#k-clear'), await on()], ['Tap again to take all 4 off', 's0+s1 / s2+s3'], 'taking every set off asks first');
+  await p.waitForTimeout(650);
+  await p.click('#k-clear');
+  assert.deepEqual([await on(), await toastSays(), await p.locator('.sheet').count()], [' / ', ['4 sets are off Billy', 'Undo'], 0]);
+  await p.click('.toast button');
+  assert.deepEqual([await on(), await toastSays()], ['s0+s1 / s2+s3', ['Those 4 sets are back on their shelves', '']], 'and Undo stands them where they were');
   await c.close();
 }
 
@@ -2068,7 +2101,7 @@ await page.click('[data-close]');
   await p.waitForSelector('.case');
   assert.deepEqual(await says(p), ['0 of 4 sets on shelves', 'Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.'], 'nothing placed yet: the count, and no word about tapping');
   await p.click('[data-act="fill"]');
-  assert.deepEqual((await says(p)).slice(0, 2), ['2 of 4 sets on shelves', 'Tap a set to move it, turn it side-on or fix its size.']);
+  assert.deepEqual((await says(p)).slice(0, 2), ['2 of 4 sets on shelves; the other 2 don’t fit or need a size', 'Tap a set to move it, turn it side-on or fix its size.']);
   assert.equal(await p.textContent('#shelves-body .list .item:has-text("Galaxy Explorer") .warn'), '32 cm deep; your bookcase is 26 cm deep');
   await p.evaluate(() => { const d = window.brickyard.doc(); for (const id of ['g', 'n']) window.brickyard.putSet(Object.assign({}, d.sets[id], { state: 'apart' })); window.brickyard.refresh(); });
   assert.deepEqual(await says(p), ['All 2 sets are on shelves', 'Tap a set to move it, turn it side-on or fix its size.']);

@@ -108,6 +108,19 @@ eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10
   const full = S.fill([{ id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 32, sets: [] }] }], [a, b]);
   eq([full.cases[0].levels[0].sets.length, full.left.length], [2, 0], 'Fit puts both on the shelf');
 }
+// Counting why sets wait, and how much more shelf the ones short of room would take: each the way Fit would stand
+// it (facing out if an empty shelf takes it that way, else side-on) plus the gap.
+{
+  const billy2 = { id: 'b', name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'f1' }, { id: 'f2' }] }, { h: 32, sets: [{ id: 'f3' }, { id: 'f4' }] }] };
+  const on = [set('f1', 40, 20, 30), set('f2', 30, 20, 30), set('f3', 40, 20, 30), set('f4', 30, 20, 30)];
+  const waits = [set('r1', 20, 15, 18), set('r2', 22, 40, 12), set('t', 20, 20, 40), set('d', 30, 28, 10), set('w', 80, 90, 10), set('m', 80, 20, 10)], all5 = ids(on.concat(waits));
+  eq(waits.map(x => S.reason([billy2], x, all5).kind), ['room', 'room', 'tall', 'deep', 'deep', 'big'], 'each waiting set’s kind of reason');
+  eq(waits.map(x => S.reason([billy2], x, all5).why), waits.map(x => S.whyNot([billy2], x, all5)), 'with the same words as before');
+  eq([S.reason([billy2], set('s', 3, 3, 3), all5), S.reason([], set('s', 5, 5, 5), {}).kind, S.reason([billy2], { id: 'n' }, {}).kind], [{ why: '', kind: '' }, 'none', 'size'], 'and one that fits, no bookcases, no size');
+  eq(S.shelfNeeded(waits.slice(0, 2), [billy2]), 20 + 1 + 40 + 1, 'facing out (20), and side-on where facing out is too deep (40), each with its gap');
+  eq(S.shelfNeeded([set('a', 11.4, 5, 5), set('b', 63.6, 5, 5)], [billy2]), 77, 'added up in tenths');
+  eq(S.shelfNeeded([], [billy2]), 0, 'nothing waiting needs nothing');
+}
 // A set that stops belonging on its shelf. One whose size was cleared is still placed, and is listed under Needs a
 // size too (it isn't drawn, and was in neither list). One taken apart since stays placed, for the page to flag, and
 // Fit leaves it where it is.
