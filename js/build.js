@@ -199,7 +199,7 @@ function openSheet() {
   $('model-go').onclick = async () => {
     try {
       const m = await B.parseModel($('model-paste').value);
-      const id = saveModel(m); app.closeSheet(); location.hash = '#model-' + id;
+      const id = saveModel(m); app.closeSheet(() => { location.hash = '#model-' + id; });
     } catch (e) { toast('That doesn’t look like a model from Claude'); }
   };
 }
@@ -289,7 +289,7 @@ $('model-menu').onclick = () => {
   $('mm-parts').onclick = partsSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {
     if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
-    const all = saved(); delete all[current.id]; write(MODELS, all); app.closeSheet(); location.hash = '#build';
+    const all = saved(); delete all[current.id]; write(MODELS, all); app.closeSheet(() => { location.hash = '#build'; });
   };
 };
 

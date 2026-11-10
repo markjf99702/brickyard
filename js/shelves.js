@@ -179,7 +179,8 @@
     // Its size and place as the sheet has them, to tell whether closing would lose a change.
     function now() { return app.fieldsOf(['z-w', 'z-d', 'z-h', 'z-where', 'z-turn']); }
     var was = now();
-    $('z-cat').onclick = function () { app.closeSheet(); };
+    // Moving to My sets waits for the sheet to be closed, or Back's step over the sheet would undo the move.
+    $('z-cat').onclick = function (e) { e.preventDefault(); app.closeSheet(function () { location.hash = '#catalog'; }); };
     function shift(by) {
       var c = copy(app.doc().cases[at.c]), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
       var p = l.sets.splice(i, 1)[0]; l.sets.splice(i + by, 0, p); app.putCase(c); app.closeSheet(); render();
@@ -271,7 +272,7 @@
       '<p class="note">Paste the link or the file Claude sent.</p><textarea class="paste" id="z-paste" aria-label="Paste a sizes link or file" placeholder="https://brickyard.junkdrawer.works/#z1z…"></textarea></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="z-go">Open</button></div>');
     $('z-go').onclick = function () {
-      S.parseSizes($('z-paste').value).then(function (z) { app.closeSheet(); reviewSizes(z); }, function () { toast('That doesn’t look like sizes from Claude'); });
+      S.parseSizes($('z-paste').value).then(function (z) { app.closeSheet(function () { reviewSizes(z); }); }, function () { toast('That doesn’t look like sizes from Claude'); });
     };
   }
   function reviewSizes(list) {

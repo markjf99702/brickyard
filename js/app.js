@@ -97,8 +97,9 @@
   function route() {
     // Going to another screen (Back, or a link) closes an open sheet, so it isn't left over the screen before with
     // the page under it locked. A sheet opened for the address being shown stays: the preview opens its example
-    // just after moving to My sets, before the browser says it moved.
-    if (openScrim && openScrim._at !== location.hash) closeSheet();
+    // just after moving to My sets, before the browser says it moved. History has moved on already, so the sheet
+    // only comes off the screen.
+    if (openScrim && openScrim._at !== location.hash) dropSheet();
     var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h), onShelves = /^#(shelves|z1[zj])/.test(h);
     $('home').hidden = onCat || onBuild || onShelves; $('catalog').hidden = !onCat; $('build').hidden = !onBuild; $('shelves').hidden = !onShelves;
     if (onCat) renderCatalog(); else if (!onBuild && !onShelves) renderHome();
@@ -263,10 +264,47 @@
   // While a sheet is open the screens behind it (and the footer) are inert, so Tab and screen readers stay in the
   // sheet. The toast is outside them, so it's still read out.
   function behind(on) { document.querySelectorAll('body > section, body > .jd-foot').forEach(function (el) { el.inert = on; }); }
+
+  // A sheet has a place of its own in the browser's history (the same address, marked as a sheet), so Back closes
+  // the sheet and stays on the screen instead of leaving it. One sheet opened over another takes over its place.
+  // When a sheet closes itself (Close, Save, a tap outside) it goes back over that place, which the browser does a
+  // moment later: `going` is true until it has, and what has to wait for it (moving to another screen, which would
+  // otherwise be the thing gone back over) is given to closeSheet and kept in `after`. The preview copy leaves
+  // history alone: it's shared with the page around it.
+  var going = false, goTimer = 0, after = [];
+  function onEntry() { return !FRAMED && !!(history.state && history.state.sheet); }
+  function pushEntry() {
+    if (FRAMED) return false;
+    try { history.pushState({ sheet: 1 }, ''); return true; } catch (e) { return false; } // the sheet still works, without Back
+  }
+  function landed() {
+    clearTimeout(goTimer); going = false;
+    var run = after; after = [];
+    run.forEach(function (f) { f(); });
+    // A sheet opened while Back was on its way had its place taken from under it.
+    if (openScrim && !onEntry()) openScrim._placed = pushEntry();
+  }
+  function goBack() {
+    // If the browser never says it went back, carry on anyway rather than keep everything waiting.
+    going = true; goTimer = setTimeout(landed, 3000); history.back();
+  }
+  // On a sheet's place with no sheet open (after a reload, or Forward once Back has closed it): step off it, so
+  // the next Back isn't a press that does nothing.
+  function offEntry() { if (!openScrim && !going && onEntry()) goBack(); }
+  window.addEventListener('popstate', function () {
+    if (going) { landed(); return; }
+    var s = openScrim;
+    if (!s) { offEntry(); return; }
+    // Back with a sheet open: its place is gone, and the address is still its screen's. (Anywhere else, route()
+    // closes it.) With changes in it, it takes its place back and asks first, like Close.
+    if (!s._placed || onEntry() || s._at !== location.hash) return;
+    if (!changed(s) || sure(s)) dropSheet(); else s._placed = pushEntry();
+  });
+
   // dirty, when given, says whether the sheet holds changes that closing would throw away. While it does, a tap on
-  // the page outside does nothing, and Close or Escape ask first (askClose).
+  // the page outside does nothing, and Close, Escape or Back ask first (askClose).
   function openSheet(html, dirty) {
-    closeSheet();
+    dropSheet();
     if (!toastStays) hideToast(); // "Added 7 sets" would sit on top of the next sheet
     lastFocus = document.activeElement;
     var scrim = document.createElement('div');
@@ -283,6 +321,7 @@
     scrim.addEventListener('input', calm);
     scrim._dirty = typeof dirty === 'function' ? dirty : null;
     scrim._at = location.hash; // the screen it belongs to (route)
+    scrim._placed = onEntry() || pushEntry();
     document.body.appendChild(scrim);
     document.body.style.overflow = 'hidden';
     behind(true);
@@ -292,28 +331,38 @@
     f.focus({ preventScroll: true });
     return scrim.firstChild;
   }
+  function changed(s) { return !!(s._dirty && s._dirty()); }
+  // Turns the sheet's Close button into "Discard changes?". True when this is the tap after that one.
+  function sure(s) {
+    var b = s.querySelector('[data-close]');
+    if (!b || secondTap(b)) return true;
+    if (!b.dataset.label) b.dataset.label = b.textContent;
+    b.textContent = 'Discard changes?'; b.focus({ preventScroll: true });
+    return false;
+  }
   // The person asking to close: the sheet's Close button, Escape, or a tap on the page outside (outside is true).
   // closeSheet is the sheet closing itself once it's done. With changes in it, a tap outside does nothing, and the
   // others turn Close into "Discard changes?" and close on the next one, so nothing typed goes on one slip.
   function askClose(outside) {
     var s = openScrim;
-    if (!s) return;
-    if (s._dirty && s._dirty()) {
-      var b = s.querySelector('[data-close]');
-      if (outside) return;
-      if (b && !secondTap(b)) {
-        if (!b.dataset.label) b.dataset.label = b.textContent;
-        b.textContent = 'Discard changes?'; b.focus({ preventScroll: true });
-        return;
-      }
-    }
-    closeSheet();
+    if (s && (!changed(s) || (!outside && sure(s)))) closeSheet();
   }
-  function closeSheet() {
+  // Takes the sheet off the screen, leaving history as it is.
+  function dropSheet() {
     if (!openScrim) return;
     var s = openScrim; openScrim = null;
     s.remove(); document.body.style.overflow = ''; behind(false);
     if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus();
+  }
+  // Closes the sheet and goes back over its place in history. `then` runs once that's done (at once when there was
+  // nothing to go back over): anything that moves to another screen has to wait for it.
+  function closeSheet(then) {
+    if (openScrim) {
+      dropSheet();
+      if (onEntry() && !going) goBack();
+    }
+    if (typeof then !== 'function') return;
+    if (going) after.push(then); else then();
   }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openScrim) askClose(); });
   // What's in a sheet's fields (and anything else that counts), as one text, to tell whether it has changed since
@@ -431,13 +480,13 @@
   function takeSizes(doc) {
     var z = window.ShelfCore.cleanSizes(doc);
     if (!z || !window.BrickyardShelves) throw new Error('empty');
-    location.hash = '#shelves';
-    window.BrickyardShelves.reviewSizes(z);
+    closeSheet(function () { location.hash = '#shelves'; window.BrickyardShelves.reviewSizes(z); });
   }
   function takeModel(doc) {
     var m = window.BuildCore && window.BuildCore.cleanModel(doc);
     if (!m || !window.BrickyardBuild) throw new Error('empty');
-    location.hash = '#model-' + window.BrickyardBuild.saveModel(m);
+    var id = window.BrickyardBuild.saveModel(m);
+    closeSheet(function () { location.hash = '#model-' + id; });
   }
   function checkLink() {
     var h = location.hash;
@@ -533,9 +582,11 @@
     $('ls-add').onclick = function () {
       var y = C.cleanLot(Object.assign({}, lot, { name: $('ls-name').value, box: $('ls-box').value }), lot.id, Date.now());
       if (!y) return;
-      DOC.loose[y.id] = y; save(); closeSheet();
-      toast((had ? 'Replaced ' : 'Added ') + plural(n.pieces, 'loose piece'));
-      if (location.hash === '#build') route(); else location.hash = '#build';
+      DOC.loose[y.id] = y; save();
+      closeSheet(function () {
+        toast((had ? 'Replaced ' : 'Added ') + plural(n.pieces, 'loose piece'));
+        if (location.hash === '#build') route(); else location.hash = '#build';
+      });
     };
   }
 
@@ -564,7 +615,7 @@
     $('m-claude').onclick = claudeSheet;
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
     $('m-link').onclick = copyAll;
-    if ($('m-sync')) $('m-sync').onclick = function () { closeSheet(); window.BrickyardSync.sheet(); };
+    if ($('m-sync')) $('m-sync').onclick = function () { window.BrickyardSync.sheet(); };
     if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1)); };
     if ($('m-csv')) $('m-csv').onclick = function () {
       closeSheet();
@@ -614,6 +665,7 @@
   });
 
   if ('serviceWorker' in navigator && window.isSecureContext && !FRAMED) navigator.serviceWorker.register('sw.js').catch(function () {});
+  offEntry();
   if (!checkLink()) {
     route();
     // The preview copy has no sets of its own, so it opens on Claude's example batch.

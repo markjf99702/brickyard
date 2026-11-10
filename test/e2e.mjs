@@ -452,24 +452,137 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
-// Back with a sheet open goes back and closes the sheet, instead of leaving it over the screen before with the page
-// under it locked.
+// Back with a sheet open closes the sheet and stays on the screen, where it was scrolled to (it used to leave My sets
+// for the home screen). Back again goes on back. A sheet closed by its own buttons leaves nothing in the way.
 {
-  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree' } } });
-  const state = () => p.evaluate(() => [document.querySelectorAll('.scrim').length, document.body.style.overflow, document.getElementById('home').hidden, document.getElementById('home').inert]);
-  await p.goto(base + '#catalog');
-  await p.click('.item:has-text("Bonsai Tree")');
+  const many = { k: { id: 'k', t: 1, num: '21318-1', name: 'Kept apart', state: 'apart' } };
+  for (let i = 0; i < 30; i++) many['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), room: 'Office', state: 'built', size: { w: 10, d: 10, h: 10 } };
+  const { c, p } = await withSets({ sets: many, cases: { b: { id: 'b', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 's0' }] }] } } });
+  const at = () => p.evaluate(() => [location.hash, document.querySelectorAll('.scrim').length, document.body.style.overflow,
+    ['home', 'catalog', 'build', 'shelves'].filter(id => !document.getElementById(id).hidden).join(), !!(history.state && history.state.sheet)]);
+  // Back, as the browser's button does it. The page has to have caught up before the next step.
+  const back = async () => { await p.goBack(); await p.waitForTimeout(150); };
+  const settled = () => p.waitForFunction(() => !(history.state && history.state.sheet) && !document.querySelector('.scrim'));
+  await p.click('#go-catalog');
+  await p.waitForSelector('.item');
+  await p.evaluate(() => window.scrollTo(0, 900));
+  await p.click('.item:has-text("Set 14")');
   await p.waitForSelector('.sheet');
-  await p.goBack();
-  await p.waitForFunction(() => !document.getElementById('home').hidden);
-  assert.deepEqual(await state(), [0, '', false, false], 'Back from a set’s sheet: home, no sheet, and the page scrolls and works');
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back from a set’s sheet: still My sets, no sheet, and the page scrolls again');
+  assert.equal(await p.evaluate(() => Math.round(window.scrollY)), 900, 'and where it was scrolled to');
+  assert.equal(await p.evaluate(() => document.getElementById('catalog').inert), false);
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false], 'Back again goes home');
+  // Closed by Close, by a tap outside or by Save, the sheet is gone from history too: one Back leaves My sets.
+  for (const how of ['Close', 'a tap outside', 'Save']) {
+    await p.click('#go-catalog');
+    await p.click('.item:has-text("Set 02")');
+    if (how === 'Close') await p.click('[data-close]');
+    else if (how === 'a tap outside') await p.mouse.click(195, 12);
+    else { await p.fill('#e-notes', 'saved by ' + how); await p.click('#e-save'); }
+    await settled();
+    assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], how + ' closes the sheet and stays');
+    await back();
+    assert.deepEqual(await at(), ['', 0, '', 'home', false], 'after ' + how + ', one Back goes home');
+  }
+  // One sheet opened from another (the menu, then Add from photos) is one step: Back closes it and stays.
+  await p.click('#go-catalog');
+  await p.click('#menu-btn');
+  await p.click('#m-claude');
+  assert.match(await p.textContent('#sheetTitle'), /Add from photos/);
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'the menu then Add from photos, then Back: no sheet, same screen');
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false]);
+  // A reload with a sheet open (or a phone bringing the tab back) leaves no step that does nothing: one Back goes home.
+  await p.click('#go-catalog');
+  await p.click('#menu-btn');
+  assert.equal((await at())[4], true);
+  await p.reload();
+  await p.waitForSelector('.item');
+  await settled();
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false], 'after a reload with a sheet open, one Back goes home');
+  // A link from Claude taking over the tab while a sheet is open: its sheet opens, and once added, one Back goes home.
+  await p.click('#go-catalog');
+  await p.click('#menu-btn');
+  await p.evaluate(h => { location.hash = h; }, '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10497', name: 'Galaxy Explorer' }] } })).toString('base64url'));
+  await p.waitForSelector('#rv-add');
+  await p.click('#rv-add');
+  await settled();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false]);
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back steps over where the menu was');
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false], 'and then home');
+  // With changes in the sheet, Back asks first, like Close, and the next Back discards them.
+  await p.click('#go-catalog');
+  await p.click('.item:has-text("Set 03")');
+  await p.fill('#e-missing', 'a grey 1×2 plate');
+  await back();
+  assert.deepEqual([await at(), await p.textContent('[data-close]'), await p.inputValue('#e-missing')], [['#catalog', 1, 'hidden', 'catalog', true], 'Discard changes?', 'a grey 1×2 plate'], 'Back with something typed keeps the sheet and asks');
+  await p.waitForTimeout(700);
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'the next Back closes it, still on My sets');
+  assert.equal(await p.evaluate(() => window.brickyard.doc().sets.s3.missing), undefined);
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false]);
+  // The shelf planner: Back closes a set's sheet and stays; See in My sets goes there, and Back comes back.
+  await p.click('#go-shelves');
+  await p.click('.sv-set');
+  await p.waitForSelector('#z-cat');
+  await back();
+  assert.deepEqual(await at(), ['#shelves', 0, '', 'shelves', false], 'Back from a set’s sheet in the shelf planner stays there');
+  await p.click('.sv-set');
+  await p.click('#z-cat');
+  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'See in My sets goes to My sets');
+  await back();
+  assert.deepEqual(await at(), ['#shelves', 0, '', 'shelves', false], 'and Back from there is the shelf planner, without the sheet');
+  // A sizes link pasted into Add from photos goes on to the shelf planner's Add sizes: Back closes that and stays there.
+  await p.goto(base + '#catalog');
+  await p.click('#claude-btn');
+  await p.fill('#paste', base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: [{ num: '21318', w: 30, d: 20, h: 39 }] })).toString('base64url'));
+  await p.click('#p-go');
+  await p.waitForSelector('#zr-go');
+  await p.waitForFunction(() => !document.getElementById('shelves').hidden);
+  assert.deepEqual(await at(), ['#shelves', 1, 'hidden', 'shelves', true]);
+  await back();
+  assert.deepEqual(await at(), ['#shelves', 0, '', 'shelves', false], 'Back from Add sizes stays on the shelf planner');
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'and Back again is My sets, with Add from photos closed');
+  // A model: Back closes its menu and stays on the model; a model opened by pasting, and one removed, land where they should.
   await p.goto(base + '#model-x-cottage');
   await p.waitForSelector('#model-view:not([hidden])');
   await p.click('#model-menu');
-  await p.waitForSelector('.sheet');
-  await p.goBack();
-  await p.waitForFunction(() => !document.getElementById('home').hidden);
-  assert.deepEqual(await state(), [0, '', false, false], 'Back from a model’s menu too');
+  await p.click('#mm-parts');
+  assert.match(await p.textContent('#sheetTitle'), /All the pieces/);
+  await back();
+  assert.deepEqual([await at(), await p.isVisible('#model-view')], [['#model-x-cottage', 0, '', 'build', false], true], 'Back from a model’s menu stays on the model');
+  await p.goto(base + '#build');
+  await p.click('#open-model');
+  const wall = { brickyard: 1, model: { name: 'Wall', parts: Array.from({ length: 4 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
+  await p.fill('#model-paste', JSON.stringify(wall));
+  await p.click('#model-go');
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  assert.deepEqual((await at()).slice(1), [0, '', 'build', false], 'a pasted model opens, with the sheet gone');
+  await p.click('#model-menu');
+  await p.click('#mm-del');
+  await p.waitForTimeout(700);
+  await p.click('#mm-del');
+  await p.waitForSelector('#build-list:not([hidden]) .list');
+  assert.deepEqual(await at(), ['#build', 0, '', 'build', false], 'a removed model lands on the list of models');
+  // Loose pieces pasted in My sets land on Build from your box once added.
+  await p.goto(base + '#catalog');
+  await p.click('#claude-btn');
+  await p.fill('#paste', JSON.stringify({ brickyard: 1, loose: { id: 'tub', name: 'Blue tub', parts: [['3001', 4, 40]] } }));
+  await p.click('#p-go');
+  await p.click('#ls-add');
+  await p.waitForSelector('li.lot');
+  assert.deepEqual(await at(), ['#build', 0, '', 'build', false], 'adding loose pieces lands on Build from your box');
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'and Back from there is My sets, with no sheet left over');
   await c.close();
 }
 // The preview copy (in a frame, with no sets) moves to My sets and opens its example batch, which stays open.
@@ -485,6 +598,9 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await f.waitForSelector('#rv-add');
   await f.waitForTimeout(600);
   assert.deepEqual([await f.evaluate(() => location.hash), await f.locator('#rv-add').count()], ['#catalog', 1], 'the example’s sheet stays open on My sets');
+  assert.equal(await f.evaluate(() => history.state), null, 'and the preview leaves the history it shares with the page around it alone');
+  await f.click('[data-close]');
+  assert.deepEqual([await f.evaluate(() => location.hash), await f.locator('.scrim').count()], ['#catalog', 0], 'its sheet closes, still on My sets');
   await c.close();
 }
 
