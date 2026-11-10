@@ -1736,6 +1736,44 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// "You already have …" is said under the Set number box as well as in a message, and stays there until the number
+// changes. On a phone with the number box in use, the keyboard covers the bottom half of the screen: the message
+// showed at y 697 and the button that had turned into "Add another copy" at y 788, both under it, so pressing Done
+// seemed to do nothing. The line is right under the box, and the message is at the top while the sheet is open.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', room: 'Living room', spot: 'Bookcase' }, o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid' } } });
+  const ASK = 'You already have Tree House (Living room › Bookcase). Tap again to add a second copy.';
+  const line = () => p.evaluate(() => { const el = document.getElementById('e-dup'), r = el.getBoundingClientRect(), n = document.getElementById('e-num').getBoundingClientRect(), t = document.querySelector('.toast');
+    return { says: el.hidden ? null : el.textContent, under: Math.round(r.top - n.bottom), bottom: Math.round(r.bottom), toast: t.hidden ? null : Math.round(t.getBoundingClientRect().bottom) }; });
+  await p.goto(base + '#catalog');
+  await p.tap('#add-btn');
+  assert.equal((await line()).says, null, 'no line under the number to begin with');
+  await p.fill('#e-num', '21318');
+  await p.press('#e-num', 'Enter'); // the keyboard's Done
+  let l = await line();
+  assert.deepEqual([l.says, await p.textContent('.toast'), await p.textContent('#e-save')], [ASK, ASK, 'Add another copy']);
+  // A phone's keyboard covers from about y 508 of 844 down.
+  assert.ok(l.under >= 0 && l.under < 24 && l.bottom < 500, 'the line is right under the number box, in the top half of the screen ' + JSON.stringify(l));
+  assert.ok(l.toast < 500, 'and the message is at the top of the screen, not under a keyboard (' + l.toast + ')');
+  await p.evaluate(() => document.querySelector('.toast span').click());
+  assert.deepEqual([(await line()).says, await p.locator('.toast').isHidden()], [ASK, true], 'the line stays when the message has gone');
+  await p.fill('#e-num', '21319');
+  assert.deepEqual([(await line()).says, await p.textContent('#e-save')], [null, 'Add set'], 'and goes when the number changes');
+  await p.fill('#e-num', '21318');
+  await p.press('#e-num', 'Enter');
+  await p.waitForTimeout(650);
+  await p.press('#e-num', 'Enter');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.equal(await p.locator('#list-wrap .item').count(), 3, 'Done a second time adds the second copy');
+  // A set whose number is changed to one you have: the same, in its own words.
+  await p.click('.item:has-text("Orchid")');
+  await p.fill('#e-num', '21318');
+  await p.click('#e-save');
+  assert.deepEqual([(await line()).says, await p.textContent('#e-save')], ['You already have Tree House (Living room › Bookcase). Tap again to keep both.', 'Save anyway']);
+  await discard(p);
+  await c.close();
+}
+
 // Messages can be read and acted on by everyone. The place they're shown in is on the page from the start (a screen
 // reader tends to miss one that arrives with its first words in it). A message stays longer the more there is to
 // read, 10 seconds with a button, and waits while the mouse is on it or its button has the keyboard's focus. Ctrl+Z

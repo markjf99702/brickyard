@@ -671,6 +671,7 @@
       (isNew ? '' : picHtml(x, 'head-pic')) +
       (x.check ? '<p class="flag"><span><b>Check:</b> ' + esc(x.check) + '</span><button class="btn sm quiet" type="button" id="e-ok">It’s right</button></p>' : '') +
       '<div class="two">' + field('Set number', box('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', box('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
+      '<p class="note hint" id="e-dup" hidden></p>' +
       field('Name', box('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
       '<p class="note hint" id="e-still" role="status" hidden></p>' +
       '<div class="two">' + field('Pieces', box('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', box('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
@@ -727,6 +728,7 @@
     $('e-num').addEventListener('input', function () {
       var b = $('e-save');
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
+      $('e-dup').hidden = true;
       // What the boxes took from a first copy of the old number goes with it, unless it's been changed since.
       Object.keys(lent).forEach(function (id) { if ($(id).value === lent[id]) $(id).value = ''; });
       lent = {};
@@ -803,7 +805,13 @@
           var el = $(f[0]);
           if (!el.value.trim() && f[1]) { el.value = f[1]; lent[f[0]] = String(f[1]); }
         });
-        toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.'));
+        var ask = 'You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.');
+        // Said under the number too, where it stays until the number changes. With the number box in use on a
+        // phone, the keyboard covers the button that just changed its words, and the bottom of the screen where
+        // the message used to show: pressing Done there seemed to do nothing.
+        $('e-dup').textContent = ask; $('e-dup').hidden = false;
+        if ($('e-dup').scrollIntoView) $('e-dup').scrollIntoView({ block: 'nearest' });
+        toast(ask);
         return;
       }
       y.id = x.id;
