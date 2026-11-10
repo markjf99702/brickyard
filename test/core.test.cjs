@@ -99,6 +99,14 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   check(ok, 'merging gives the same catalog in any order');
   const m = C.mergeDocs(C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 5, name: 'Old' } } } }), C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 9, del: 1 } } } }));
   eq(m.sets.a, { id: 'a', t: 9, del: 1 }, 'a later removal wins');
+  // Undo after Remove puts the set back timed after its removal, so it survives a merge with a copy (another device,
+  // Google Drive) that still holds the removal. The same set from before the removal would be taken away again.
+  const gone = C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 9, del: 1 }, b: { id: 'b', t: 3, name: 'Kept' } } } });
+  const back = C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 10, name: 'Tree House', notes: 'one leaf missing', room: 'Office' } } } });
+  const merged = C.mergeDocs(back, gone).sets.a;
+  eq([merged.del, merged.t, merged.name, merged.notes, merged.room], [undefined, 10, 'Tree House', 'one leaf missing', 'Office'], 'a set put back after its removal survives a merge with the removal');
+  eq(C.mergeDocs(gone, back), C.mergeDocs(back, gone), 'whichever way round they merge');
+  eq(C.mergeDocs(C.mergeDocs(back, gone), gone).sets.a.name, 'Tree House', 'and again when the removal comes round once more');
 }
 
 // Search.

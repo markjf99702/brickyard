@@ -242,7 +242,14 @@
     };
     if ($('k-del')) $('k-del').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
-      app.removeCase(c.id); app.closeSheet(); render(); toast('Removed. Its sets are back in Not on a shelf yet.');
+      var kept = copy(c), ids = byId(), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
+      app.removeCase(c.id); app.closeSheet(); render();
+      toast('Removed ' + c.name + (n ? '. Its sets are back in Not on a shelf yet.' : ''), false, { label: 'Undo', run: function () {
+        // A set stood on another bookcase in the meantime stays there.
+        var at = S.placements(cases());
+        kept.levels.forEach(function (l) { l.sets = l.sets.filter(function (p) { return !at[p.id]; }); });
+        app.putBack('cases', kept); toast(kept.name + ' is back');
+      } });
     };
     $('k-save').onclick = function () {
       var hs = $('k-levels').value.split(/[^0-9.]+/).map(C.measure).filter(Boolean);

@@ -166,7 +166,11 @@ function dropLot(l) {
   app.openSheet('<div class="hd"><h2 id="sheetTitle">Remove these loose pieces?</h2><button class="btn sm quiet" type="button" data-close>Keep them</button></div>' +
     '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening the lot’s link or file again brings it back.</p></div>' +
     '<div class="ft"><span></span><button class="btn" type="button" id="lot-drop">Remove</button></div>');
-  $('lot-drop').onclick = () => { app.removeLot(l.id); app.closeSheet(); toast('Removed ' + l.name); renderList(); };
+  $('lot-drop').onclick = () => {
+    const kept = app.doc().loose[l.id];
+    app.removeLot(l.id); app.closeSheet(); renderList();
+    toast('Removed ' + l.name, false, { label: 'Undo', run: () => { app.putBack('loose', kept); toast(l.name + ' is back'); } });
+  };
 }
 
 // A little stack of the model's main colours, for the list.
@@ -289,7 +293,15 @@ $('model-menu').onclick = () => {
   $('mm-parts').onclick = partsSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {
     if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
-    const all = saved(); delete all[current.id]; write(MODELS, all); app.closeSheet(() => { location.hash = '#build'; });
+    const id = current.id, name = current.model.name, all = saved(), kept = all[id];
+    delete all[id]; write(MODELS, all);
+    app.closeSheet(() => {
+      location.hash = '#build';
+      toast('Removed ' + name, false, { label: 'Undo', run: () => {
+        const now = saved(); now[id] = kept; write(MODELS, now);
+        app.refresh(); toast(name + ' is back');
+      } });
+    });
   };
 };
 

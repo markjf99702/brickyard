@@ -27,6 +27,10 @@
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   function putSet(x) { x.t = Date.now(); DOC.sets[x.id] = x; }
   function removeSet(id) { DOC.sets[id] = { id: id, t: Date.now(), del: 1 }; }
+  // Puts back a set, bookcase or lot ('sets', 'cases', 'loose') that was removed, as it was, timed after the
+  // removal. When catalogs merge the later change wins, so the removal doesn't take it away again, here or on
+  // another device.
+  function putBack(kind, x) { var gone = DOC[kind][x.id]; x.t = Math.max(Date.now(), gone ? gone.t + 1 : 0); DOC[kind][x.id] = x; }
 
   // ---------- little helpers ----------
   function $(id) { return document.getElementById(id); }
@@ -429,7 +433,9 @@
     };
     if ($('e-del')) $('e-del').onclick = function () {
       if (!secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
-      removeSet(x.id); save(); closeSheet(); renderCatalog(); toast('Removed');
+      var kept = DOC.sets[x.id] && !DOC.sets[x.id].del ? DOC.sets[x.id] : x, name = kept.name || 'Set ' + C.shortNum(kept.num);
+      removeSet(x.id); save(); closeSheet(); renderCatalog();
+      toast('Removed ' + name, false, { label: 'Undo', run: function () { putBack('sets', kept); save(); refresh(); toast(name + ' is back'); } });
     };
     $('e-save').onclick = function () {
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
@@ -681,6 +687,8 @@
     putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
     removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
+    // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
+    putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     toast: toast, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,

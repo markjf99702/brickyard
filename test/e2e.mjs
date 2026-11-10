@@ -408,6 +408,72 @@ await page.click('#e-del');
 assert.equal((await live()).length, 6);
 assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 'removal is remembered');
 
+// Remove says what it removed and offers Undo, which puts the thing back as it was: a set (with its notes, and its
+// place on a shelf), a bookcase, a lot of loose pieces, a model. Put back, it's timed after the removal, so a copy of
+// the catalog that still holds the removal (another device, Drive) doesn't take it away again.
+{
+  const { c, p } = await withSets({
+    sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built', room: 'Living room', notes: 'a gift', missing: 'one leaf', size: { w: 27, d: 24, h: 37 } },
+      o: { id: 'o', t: 1, name: 'Orchid', state: 'built' } },
+    cases: { k: { id: 'k', t: 1, name: 'Hall Billy', w: 76, d: 26, levels: [{ h: 40, sets: [{ id: 't' }] }, { h: 32, sets: [] }] },
+      e: { id: 'e', t: 1, name: 'Empty Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: '14', parts: [['3001', 4, 40], ['3020', 15, 2]] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const twice = async sel => { await p.click(sel); await p.waitForTimeout(650); await p.click(sel); };
+  const kept = kind => p.evaluate(k => window.brickyard.doc()[k], kind);
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Tree House")');
+  await twice('#e-del');
+  assert.deepEqual(await toastSays(), ['Removed Tree House', 'Undo'], 'Remove names the set and offers Undo');
+  const gone = (await kept('sets')).t;
+  assert.deepEqual([gone.del, await p.locator('.item').count()], [1, 1]);
+  await p.click('.toast button');
+  const back = (await kept('sets')).t;
+  assert.deepEqual([back.name, back.notes, back.missing, back.room, back.size, back.del], ['Tree House', 'a gift', 'one leaf', 'Living room', { w: 27, d: 24, h: 37 }, undefined], 'Undo puts the set back as it was');
+  assert.ok(back.t > gone.t, 'timed after the removal');
+  assert.deepEqual([await toastSays(), await p.locator('.item').count()], [['Tree House is back', ''], 2], 'and says so, with the set in the list again');
+  assert.equal(await p.evaluate(g => window.BrickCore.mergeDocs(window.brickyard.doc(), { sets: { t: g }, cases: {}, loose: {}, seen: {} }).sets.t.name, gone), 'Tree House', 'a copy that still holds the removal doesn’t take it away again');
+  assert.equal(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog.sets.t.name, 'Tree House', 'and it is saved');
+  await p.goto(base + '#shelves');
+  assert.equal(await p.locator('.sv-set').count(), 1, 'it is still on its shelf');
+  // A bookcase.
+  await p.click('[data-case="k"]');
+  await twice('#k-del');
+  assert.deepEqual(await toastSays(), ['Removed Hall Billy. Its sets are back in Not on a shelf yet.', 'Undo']);
+  assert.deepEqual([await p.locator('.case').count(), await p.locator('.sv-set').count()], [1, 0]);
+  await p.click('.toast button');
+  assert.deepEqual([await toastSays(), await p.locator('.case').count(), await p.locator('.sv-set').count()], [['Hall Billy is back', ''], 2, 1], 'Undo puts the bookcase back with the set on it');
+  assert.deepEqual((await kept('cases')).k.levels, [{ h: 40, sets: [{ id: 't' }] }, { h: 32, sets: [] }]);
+  await p.click('[data-case="e"]');
+  await twice('#k-del');
+  assert.deepEqual(await toastSays(), ['Removed Empty Kallax', 'Undo'], 'an empty bookcase has no sets to speak of');
+  // A lot of loose pieces.
+  await p.goto(base + '#build');
+  await p.click('li.lot [data-lot="tub"]');
+  await p.click('#lot-drop');
+  await p.waitForFunction(() => !document.querySelector('li.lot'));
+  assert.deepEqual(await toastSays(), ['Removed Blue tub', 'Undo']);
+  await p.click('.toast button');
+  await p.waitForSelector('li.lot');
+  const tub = (await kept('loose')).tub;
+  assert.deepEqual([await toastSays(), tub.name, tub.box, tub.parts], [['Blue tub is back', ''], 'Blue tub', '14', [['3001', 4, 40], ['3020', 15, 2]]], 'Undo puts the lot back');
+  // A model: removing it says so (it said nothing), and Undo puts it back in the list.
+  const wall = { brickyard: 1, model: { name: 'Wall', parts: Array.from({ length: 4 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } };
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(wall)).toString('base64url'));
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  await p.click('#model-menu');
+  await twice('#mm-del');
+  await p.waitForSelector('#build-list:not([hidden]) .list');
+  assert.deepEqual([await toastSays(), await p.locator('#build-list .list .item:has-text("Wall")').count()], [['Removed Wall', 'Undo'], 0], 'removing a model says what went');
+  await p.click('.toast button');
+  await p.waitForSelector('#build-list .list .item:has-text("Wall")');
+  assert.deepEqual(await toastSays(), ['Wall is back', '']);
+  await p.click('#build-list .list .item:has-text("Wall")');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await p.textContent('#build-title'), 'Wall', 'and it opens again');
+  await c.close();
+}
+
 // Tab stays in an open sheet, never reaching the page behind it, and closing it gives focus back.
 await page.focus('#menu-btn');
 await page.keyboard.press('Enter');
