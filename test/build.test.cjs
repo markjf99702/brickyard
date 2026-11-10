@@ -201,6 +201,13 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
   // 76959 are different pieces, and stay unknown.
   cases['everyday part numbers'] = { name: 'Bare', parts: [['3023', 15, 0, 0, 0, 0, 1], ['3023.dat', 4, 0, 1, 0, 0, 2], ['4073', 14, 0, 2, 0, 0, 3], ['3660', 4, 0, 3, 0, 0, 4], ['3660a', 1, 0, 6, 0, 0, 5], ['6223', 1, 9, 0, 0, 0, 1], ['76959', 1, 9, 3, 0, 0, 1]] };
   eq(B.cleanModel(cases['everyday part numbers']).parts.map(q => q[0]), ['3023b', '3023b', '6141', '3660b', '3660b', '6223', '76959'], 'a model’s part numbers are read as the builder’s');
+  // A model written high off the table is as tall as its parts, not as tall as where it sits: two bricks from y 30.
+  cases['high off the table'] = M([['3001', 4, 0, 30, 0, 0, 1], ['3001', 1, 0, 33, 0, 0, 2]]);
+  eq(B.check(cases['high off the table'], shapes, null).size, { w: 4, d: 2, h: 6 }, 'height is from the lowest part to the highest top');
+  // Numbers that aren't whole are read the same way by both: the nearest, a half going up (2.5 is 3, -2.5 is -2);
+  // text counts for the digits it starts with; true isn't a number, so that part is dropped.
+  cases['numbers that aren’t whole'] = { name: 'Odd', parts: [['3001', 4, 2.5, 0, 0, 0, 1], ['3001', 4, -2.5, 3.4, 0.5, 0, 1.5], ['3001', true, 0, 0, 0, 0, 1], ['3001', '4', '2.7', '0', '-1', '90deg', '3'], ['3001', 4, 0, 0, 0, true, 1], ['3001', 4, 0, 0, 0, 0, 0.4]] };
+  eq(B.cleanModel(cases['numbers that aren’t whole']).parts.map(q => q.slice(1)), [[4, 3, 0, 0, 0, 1], [4, -2, 3, 1, 0, 2], [4, 2, 0, -1, 90, 3], [4, 0, 0, 0, 0, 1], [4, 0, 0, 0, 0, 1]], 'numbers that aren’t whole, as the page reads them');
   Object.assign(cases, batch); // and the seeded models, as they were written (the script cleans them itself)
   let py = null;
   // Importing the script would leave a __pycache__ folder in the repo (and on the site), so it writes no bytecode.
@@ -298,6 +305,22 @@ print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/s
     fs.rmSync(path.join(old, 'aliases.json'));
     const before = sh([bare, '--out', dir, '--no-link', '--no-sets', '--data', old]);
     check(before[0] === 1 && /PROBLEM: Part 3023 isn’t one the builder knows yet/.test(before[1]) && !/Traceback/.test(before[2]), 'script: with no aliases.json, a number is read as written');
+
+    // What the script says about a model's numbers and colours, and its layer map. A number too big to be one
+    // (1e999, which only a hand-written file can hold) drops its part, as on the page, where it stopped the script.
+    const oddFile = path.join(dir, 'odd.json');
+    fs.writeFileSync(oddFile, '{"name": "Odd", "parts": [["3001", 4, 0, 0, 0, 0, 1], ["3001", 999, 0.5, 3, 0, 0, 2], ["3001", 4, 1e999, 6, 0, 0, 3], ["3001", true, 0, 6, 0, 0, 3]]}');
+    const oddRun = sh([oddFile, '--out', dir, '--no-link']);
+    check(oddRun[0] === 0 && !/Traceback/.test(oddRun[2]) && /Odd: 2 pieces/.test(oddRun[1]), 'script: a number too big to be one drops its part, and doesn’t stop it' + (oddRun[0] === 0 ? '' : '\n    ' + (oddRun[1] + oddRun[2]).trim().split('\n').pop()));
+    check(/WARNING: part #2: x 0\.5 isn’t a whole number; read as 1, as Brickyard reads it/.test(oddRun[1]), 'script: it warns about a number that isn’t whole, and reads a half upwards');
+    check(/NOTE: colour 999 isn’t one of the LDraw colours in colors\.json/.test(oddRun[1]), 'script: it notes a colour Brickyard doesn’t know');
+    eq(B.cleanModel(JSON.parse(fs.readFileSync(oddFile, 'utf8'))).parts, JSON.parse(fs.readFileSync(path.join(dir, 'odd.brickyard-model.json'), 'utf8')).model.parts, 'and the page reads that file the same way');
+    const roofFile = path.join(dir, 'roof.json');
+    fs.writeFileSync(roofFile, JSON.stringify({ name: 'Roof', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3039', 1, 0, 3, 0, 90, 2], ['3660b', 14, 2, 3, 0, 180, 2]] }));
+    const roof = sh([roofFile, '--out', dir, '--no-link', '--layers'])[1];
+    check(/A = Slope 45 2x2 \(3039\), Blue, turn 90, high side right, step 2/.test(roof) && /B = Inverted slope 45 2x2 \(3660b\), Yellow, turn 180, full side front \(overhangs to the back\), step 2/.test(roof), 'script: the layer key says which way a slope faces');
+    check(/Layers y=1 to 2: nothing new/.test(roof) && /Layers y=4 to 5: nothing new/.test(roof) && (roof.match(/^Layer y=/gm) || []).length === 2 && /first row is the back/.test(roof), 'script: layers on which nothing starts are one line');
+    check(/Roof: 3 pieces, 2 steps, 4x2 studs, 6 plates tall/.test(roof), 'script: the first line gives the size');
 
     // A pasted list already counts the sets it names, so the model's own sets aren't added on top of it: one
     // brick more than the list has is one too many, with or without the empty --sets.

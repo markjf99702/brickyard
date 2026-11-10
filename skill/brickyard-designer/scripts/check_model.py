@@ -42,7 +42,7 @@ When everything passes it writes NAME.brickyard-model.json to --out, prints the 
 fails it prints the problems and NOT READY, writes no file, prints no link and exits 1. --force writes the file
 and prints the link anyway (still exit 1), for looking at a broken model in Brickyard.
 """
-import argparse, base64, json, re, sys, zlib
+import argparse, base64, json, math, re, sys, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -139,11 +139,28 @@ def clean_model(o):
     m = o.get('model', o) if isinstance(o, dict) else None
     if not isinstance(m, dict) or not isinstance(m.get('parts'), list):
         sys.exit('Expected {"parts": [[part, colour, x, y, z, turn, step], ...]}.')
-    def num(v, lo, hi):
-        try:
-            n = round(float(v))
-        except (TypeError, ValueError):
+    odd = []  # values that weren't whole numbers, for a warning: (part number, field, as written, as read)
+
+    def num(v, lo, hi, i=None, field=''):
+        # A whole number, read the way the page reads one (int in js/build-core.js): a number is rounded to the
+        # nearest, a half going up (2.5 is 3, as Math.round has it; Python's round would make it 2); text counts
+        # for the digits it starts with (parseInt); true and false aren't numbers; neither is one too big to be.
+        if isinstance(v, bool):
             return None
+        if isinstance(v, str):
+            lead = re.match(r'\s*[+-]?[0-9]+', v)
+            n = int(lead.group()) if lead else None
+        elif isinstance(v, (int, float)):
+            try:
+                n = math.floor(v + 0.5)
+            except (OverflowError, ValueError):  # infinity (1e999 in the file), or not a number
+                return None
+        else:
+            return None
+        if n is None:
+            return None
+        if i is not None and n != v and not isinstance(v, str):
+            odd.append((i + 1, field, v, n))
         return n if lo <= n <= hi else None
     parts = []
     for i, q in enumerate(m['parts'][:5000]):
@@ -153,14 +170,18 @@ def clean_model(o):
             continue
         q = (q + [None] * 7)[:7]
         p = ''.join(ch for ch in str(q[0] or '').lower().removesuffix('.dat') if ch.isalnum())[:20]
-        c, x, y, z = num(q[1], 0, 100000), num(q[2], -200, 200), num(q[3], 0, 600), num(q[4], -200, 200)
-        r = num(q[5], 0, 270)
+        c, x, y, z = num(q[1], 0, 100000, i, 'colour'), num(q[2], -200, 200, i, 'x'), num(q[3], 0, 600, i, 'y'), num(q[4], -200, 200, i, 'z')
+        r = num(q[5], 0, 270, i, 'turn')
         r = 0 if r is None else r
-        s = num(q[6], 1, 2000) or 0
+        s = num(q[6], 1, 2000, i, 'step') or 0
         if not p or None in (c, x, y, z) or r % 90:
             print(f'WARNING: part #{i + 1} {q} left out: needs a part, colour, x, y, z and a turn of 0/90/180/270')
             continue
         parts.append([canon(p), c, x, y, z, r, s])
+    for i, field, was, n in odd[:12]:
+        print(f'WARNING: part #{i}: {field} {was:g} isn’t a whole number; read as {n}, as Brickyard reads it')
+    if len(odd) > 12:
+        print(f'WARNING: and {len(odd) - 12} more values that aren’t whole numbers')
     if not parts:
         sys.exit('No usable parts.')
     if any(not q[6] for q in parts):
@@ -262,13 +283,31 @@ def check(model, shapes, pool):
     if ok:
         xs = [c[0] for q in ok for c in q['cells']['foot']]
         zs = [c[1] for q in ok for c in q['cells']['foot']]
-        size = dict(w=max(xs) + 1 - min(xs), d=max(zs) + 1 - min(zs), h=max(q['y'] + q['sh']['h'] for q in ok))
+        # Height is from the lowest part's underside to the highest top, wherever the model sits (it was measured
+        # from y 0, so a model written starting at y 30 came out 30 plates taller than it is).
+        size = dict(w=max(xs) + 1 - min(xs), d=max(zs) + 1 - min(zs), h=max(q['y'] + q['sh']['h'] for q in ok) - min(q['y'] for q in ok))
     return dict(ok=not problems, problems=problems, notes=notes, used=used, short=short, steps=steps, pieces=len(ok), size=size)
 
 
+SIDES = {0: 'back', 90: 'right', 180: 'front', 270: 'left'}
+ACROSS = {'back': 'front', 'right': 'left', 'front': 'back', 'left': 'right'}
+
+
+def facing(sh, r):
+    """Which way a part that isn't the same all round has been turned, for the layer key: where a slope's or a
+    curve's high side is, and where an inverted slope's full-height side is (it overhangs the other way)."""
+    side = SIDES.get(r, 'back')
+    if sh.get('k') in ('slope', 'curve'):
+        return f', high side {side}'
+    if sh.get('k') == 'inv':
+        return f', full side {side} (overhangs to the {ACROSS[side]})'
+    return ''
+
+
 def layers(model, shapes, colors):
-    """Each plate-height layer from above: one character per stud, a letter per part (lower case where the part
-    continues from a lower layer), and a key of what each letter is."""
+    """The model from above, layer by layer (a layer is one plate high): one character per stud, the back row
+    first, a letter per part, and a key of each part that starts on that layer. A run of layers on which nothing
+    starts is one line."""
     cells = {}
     for i, q in enumerate(model['parts']):
         sh = shapes.get(q[0])
@@ -282,14 +321,25 @@ def layers(model, shapes, colors):
         return ''
     xs = [k[0] for k in cells]; zs = [k[2] for k in cells]; ys = sorted({k[1] for k in cells})
     names = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    out = []
+    out = ['Layers from above. Each row runs left to right (x); the first row is the back (lowest z). A capital is a part '
+           'that starts on that layer, lower case one carrying on up from below, a dot is empty.']
+    quiet = []  # layers in a row on which nothing starts
+
+    def fold():
+        if quiet:
+            out.append((f'Layer y={quiet[0]}' if len(quiet) == 1 else f'Layers y={quiet[0]} to {quiet[-1]}') + ': nothing new; the parts below carry on up')
+            quiet.clear()
     for y in ys:
         here = {k: v for k, v in cells.items() if k[1] == y}
         starts = sorted({v[0] for v in here.values() if v[1]})
+        if not starts:
+            quiet.append(y)
+            continue
+        fold()
         label = {}
         for n, i in enumerate(sorted({v[0] for v in here.values()})):
             label[i] = names[n % 26]
-        out.append(f'Layer y={y}' + (f' (new: {len(starts)})' if starts else ''))
+        out.append(f'Layer y={y} (new: {len(starts)})')
         for z in range(min(zs), max(zs) + 1):
             row = ''
             for x in range(min(xs), max(xs) + 1):
@@ -299,7 +349,8 @@ def layers(model, shapes, colors):
         for i in starts:
             q = model['parts'][i]
             col = colors.get(str(q[1]), [str(q[1])])[0]
-            out.append(f'  {label[i]} = {shapes[q[0]]["n"]} ({q[0]}), {col}, turn {q[5]}, step {q[6]}')
+            out.append(f'  {label[i]} = {shapes[q[0]]["n"]} ({q[0]}), {col}, turn {q[5]}{facing(shapes[q[0]], q[5])}, step {q[6]}')
+    fold()
     return '\n'.join(out)
 
 
@@ -409,6 +460,8 @@ def main():
         print('NOTE: no sets or pieces given, so piece counts weren’t checked.')
     for w in warns:
         print('WARNING: ' + w)
+    for c in sorted({q[1] for q in model['parts'] if str(q[1]) not in colors}):
+        notes.append(f'colour {c} isn’t one of the LDraw colours in colors.json. Brickyard will show it grey, as “Colour {c}”, and nobody has pieces in it.')
     for was in sorted(READ_AS):
         notes.append(f'part {was} was read as {READ_AS[was]}, the number the builder knows that piece by.')
     for n in notes:

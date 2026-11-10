@@ -189,12 +189,14 @@
     var count = ok.length;
     var size = { w: 0, d: 0, h: 0 };
     if (ok.length) {
-      var x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y1 = 0;
+      // Height is from the lowest part's underside to the highest top, wherever the model sits (it was measured
+      // from y 0, so a model written starting at y 30 came out 30 plates taller than it is).
+      var x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       ok.forEach(function (q) {
         q.cells.foot.forEach(function (c) { x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0] + 1); z0 = Math.min(z0, c[1]); z1 = Math.max(z1, c[1] + 1); });
-        y1 = Math.max(y1, q.y + q.sh.h);
+        y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y + q.sh.h);
       });
-      size = { w: x1 - x0, d: z1 - z0, h: y1 };
+      size = { w: x1 - x0, d: z1 - z0, h: y1 - y0 };
     }
     return { ok: !problems.length, problems: problems, notes: notes, used: used, short: short, steps: steps, pieces: count, size: size };
   }

@@ -27,7 +27,8 @@ Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, ki
 - `x` runs left to right and `z` back to front, both in studs. `y` runs up in **plates**: a brick is 3, a plate or tile 1.
 - A part's `x, y, z` is the back-left-bottom corner of its footprint **after** turning.
 - Turn `r` is 0, 90, 180 or 270. At 0 a part's width runs along x and its depth along z; at 90 or 270 they swap. A 2x4 brick (3001, w 4 × d 2) at r 90 covers 2 studs across and 4 front to back.
-- Slopes, curves and inverted slopes have their **high side at the back** (z = 0 of their own footprint) at r 0. Turned 90 the high side is on the right, 180 at the front, 270 on the left. The script's layer map shows which way each part went.
+- Slopes, curves and inverted slopes have their **high side at the back** (z = 0 of their own footprint) at r 0. Turned 90 the high side is on the right, 180 at the front, 270 on the left. The script's layer key says which way each one went (`high side right`; for an inverted slope, `full side right (overhangs to the left)`).
+- Nothing can go under an arch or through a door or window frame: the checker treats them as solid.
 - Parts join where one part's top studs meet the cells of the part sitting right on it. Tiles and the slope faces have no studs, so nothing joins on them.
 - Steps (`s`) start at 1. A step may only add parts that join something already built; pushing a part on from underneath is allowed but noted. That goes for the first step too: make it one part or one joined group (a base plate, say). Bricks side by side on the table join nothing until the course above ties them, so put that course in the same step.
 
@@ -60,7 +61,8 @@ python3 scripts/check_model.py lighthouse.json --layers --out OUTDIR
 (Give the script's full path from wherever you're working, and any writable folder for `--out`.)
 
 - It prints any problems with the parts they concern (numbered from 1), then `NOT READY`, and exits 1. For a model with problems it writes no file and prints no link, so there's nothing to hand over by mistake. (A file left in `--out` by an earlier run is not this model; the script points it out.) Fix and run again until it's clean.
-- `--layers` draws every plate-height layer from above, one letter per part, with a key. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
+- `--layers` draws the model from above, layer by layer (a layer is one plate high; the first row is the back), one letter per part, with a key of each part that starts on that layer: its name, colour, turn and step, and for slopes, curves and inverted slopes which side is high. A run of layers on which nothing starts is one line. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
+- Coordinates, turns and steps are whole numbers. The script warns about one that isn't and reads it as Brickyard would (2.5 as 3). It prints a NOTE for a colour that isn't in `data/colors.json`: nobody has pieces in a colour Brickyard doesn't know.
 - Put the model file first: `--sets` and `--pieces` take everything after them. `--sets 10698-1` replaces the model's own `sets`, `--no-sets` counts no set at all, and `--pieces FILE` is a pasted list (the whole budget) or a loose-pieces file (added to the sets). Without any sets or pieces it can't check counts, so always give them.
 - When it passes it writes `NAME.brickyard-model.json` to `--out`, prints a link starting `https://brickyard.junkdrawer.works/#d1z`, and exits 0.
 - `--force` writes the file and prints the link for a model that failed, to look at what's wrong in Brickyard. That one is never for handing over.
