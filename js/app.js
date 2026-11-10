@@ -10,8 +10,13 @@
   function read(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
   function write(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   var DOC = C.cleanDoc(read(KEY) || {});
-  var prefs = Object.assign({ pics: true, group: 'room', show: 'all' }, read(PREFS) || {});
+  var prefs = Object.assign({ pics: true, group: 'room' }, read(PREFS) || {});
   if (FRAMED) prefs.pics = false;
+  // Which sets My sets shows (All, Built, To check…) lasts for the visit only. It used to be remembered with the
+  // rest, and a filter left on weeks before opened My sets on three sets of a hundred, with its lit chip off the
+  // side of the screen.
+  var show = 'all';
+  if ('show' in prefs) { delete prefs.show; write(PREFS, prefs); }
   function save() {
     // Held, so the "Added" or "Saved" that follows in the same tap doesn't cover it: it's the only sign the change
     // will be gone after a reload. The preview copy has no backup download, but it can copy everything as a link.
@@ -142,7 +147,7 @@
     ['missing', 'Missing pieces'], ['check', 'To check'],
   ];
   function passes(x) {
-    var f = prefs.show;
+    var f = show;
     if (f === 'all') return true;
     if (f === 'missing') return !!x.missing;
     if (f === 'check') return !!x.check;
@@ -164,13 +169,20 @@
     $('cat-tools').hidden = !all.length;
     // With no sets yet the empty state has the same two buttons, so the row at the bottom would only repeat them.
     document.querySelector('#catalog .fab-row').hidden = !all.length;
-    if (!FILTERS.some(function (f) { return f[0] === prefs.show; })) prefs.show = 'all';
-    $('chips').innerHTML = FILTERS.filter(function (f) {
-      return f[0] === 'all' || f[0] === prefs.show || (f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : t[f[0]]);
+    var chips = $('chips');
+    chips.innerHTML = FILTERS.filter(function (f) {
+      return f[0] === 'all' || f[0] === show || (f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : t[f[0]]);
     }).map(function (f) {
       var n = f[0] === 'all' ? t.sets : f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : (t[f[0]] || 0);
-      return '<button class="chip" type="button" data-f="' + f[0] + '" aria-pressed="' + (prefs.show === f[0]) + '">' + esc(f[1]) + '<span class="n">' + n + '</span></button>';
+      return '<button class="chip" type="button" data-f="' + f[0] + '" aria-pressed="' + (show === f[0]) + '">' + esc(f[1]) + '<span class="n">' + n + '</span></button>';
     }).join('');
+    // The lit chip is always in view: the row scrolls sideways on a phone, and "To check" is at its far end.
+    var lit = chips.querySelector('[aria-pressed="true"]');
+    if (lit) {
+      var cr = chips.getBoundingClientRect(), lr = lit.getBoundingClientRect();
+      if (lr.right > cr.right - 16) chips.scrollLeft += lr.right - cr.right + 16;
+      else if (lr.left < cr.left + 16) chips.scrollLeft += lr.left - cr.left - 16;
+    }
     $('group').value = prefs.group;
     fillLists(all);
 
@@ -189,11 +201,20 @@
     var labels = Object.keys(all.concat(lots).reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
     var shown = all.filter(function (x) { return passes(x) && C.matches(x, q, labels); });
     var bs = C.boxSearch(q, labels), inBox = function (x) { return x.box && C.boxName(x.box).toLowerCase() === bs.label; };
-    var hunt = bs && bs.label && !bs.rest.trim() && prefs.show === 'all' ? lots.filter(inBox) : [];
+    var hunt = bs && bs.label && !bs.rest.trim() && show === 'all' ? lots.filter(inBox) : [];
     var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), shown.length > 0) : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
-    if (!shown.length) { $('list-wrap').innerHTML = huntLine || '<div class="empty"><p>Nothing matches. Try another word or filter.</p></div>'; return; }
+    if (!shown.length) {
+      // Nothing under the filter that's on, when the same search finds sets with it off: say so, with the way to
+      // them. ("Nothing matches" under To check, with two Millennium Falcons owned, read as not having one.)
+      var under = show === 'all' ? 0 : all.filter(function (x) { return C.matches(x, q, labels); }).length;
+      var name = (FILTERS.filter(function (f) { return f[0] === show; })[0] || [])[1];
+      $('list-wrap').innerHTML = huntLine || '<div class="empty"><p>' + (!under ? 'Nothing matches. Try another word or filter.'
+        : 'Nothing under ' + esc(name) + '. ' + (q ? plural(under, 'set') + (under === 1 ? ' matches' : ' match') + ' in all your sets.' : '') +
+          '</p><div class="acts"><button class="btn quiet" type="button" data-act="all">' + (q ? (under === 1 ? 'Show it' : 'Show them') : 'Show all your sets') + '</button></div>') + '</div>';
+      return;
+    }
 
     if (prefs.group === 'new') shown.sort(function (a, b) { return (b.added || '').localeCompare(a.added || '') || b.t - a.t; });
     else shown.sort(function (a, b) {
@@ -213,7 +234,7 @@
     });
     // Every set by moving box: each box's loose pieces go under its group, and a box holding only loose pieces
     // gets a group of its own, in its place among the others.
-    if (prefs.group === 'box' && !q && prefs.show === 'all' && lots.length) {
+    if (prefs.group === 'box' && !q && show === 'all' && lots.length) {
       lots.forEach(function (l) {
         var name = 'Box ' + C.boxName(l.box), g = groups.filter(function (y) { return C.natural(y.name, name) === 0; })[0];
         if (!g) groups.push(g = { name: name, sets: [] });
@@ -259,12 +280,14 @@
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;
-    prefs.show = b.dataset.f; savePrefs(); renderCatalog();
+    show = b.dataset.f; renderCatalog();
   });
   $('list-wrap').addEventListener('click', function (e) {
     var b = e.target.closest('[data-id]'); if (b) return editSheet(DOC.sets[b.dataset.id]);
     var a = e.target.closest('[data-act]'); if (!a) return;
-    if (a.dataset.act === 'add') editSheet(null); else claudeSheet();
+    if (a.dataset.act === 'add') editSheet(null);
+    else if (a.dataset.act === 'all') { show = 'all'; renderCatalog(); }
+    else claudeSheet();
   });
   $('add-btn').addEventListener('click', function () { editSheet(null); });
   $('claude-btn').addEventListener('click', claudeSheet);
@@ -490,7 +513,7 @@
     if (!x || x.del) return;
     closeSheet(function () {
       var open = function () {
-        if (!rowOf(id) && !passes(x)) { prefs.show = 'all'; savePrefs(); renderCatalog(); }
+        if (!rowOf(id) && !passes(x)) { show = 'all'; renderCatalog(); }
         if (!rowOf(id)) { $('q').value = ''; renderCatalog(); }
         var row = rowOf(id);
         // The row takes the focus, so it comes back to it when the sheet closes.

@@ -299,7 +299,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 // With a filter on (Built, Partly built…) a search for a box is for sets of that kind, so its loose pieces stay out,
-// as they do grouped by box: no "Also in box 14" under no sets, and "Nothing matches" when none of them are in it.
+// as they do grouped by box: no "Also in box 14" under no sets, and nothing listed when none of them are in it.
 {
   const { c, p } = await withSets({
     sets: { t: { id: 't', t: 1, name: 'Typewriter', box: '14', state: 'partial' }, g: { id: 'g', t: 1, name: 'Galaxy Explorer', box: '3', state: 'built' } },
@@ -309,11 +309,56 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await p.fill('#q', 'box 14');
   assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 40 loose pieces'], 'with All, a box’s loose pieces show');
   await p.click('.chip[data-f="built"]');
-  assert.deepEqual([await lines(), await p.textContent('#list-wrap')], [[], 'Nothing matches. Try another word or filter.'], 'Built, with no built set in box 14: nothing matches');
+  assert.deepEqual([await lines(), await p.textContent('#list-wrap .empty p')], [[], 'Nothing under Built. 1 set matches in all your sets.'], 'Built, with no built set in box 14: nothing under Built');
   await p.click('.chip[data-f="partial"]');
   assert.deepEqual([await p.locator('#list-wrap .item .t').allTextContents(), await lines()], [['Typewriter'], []], 'Partly built: the set, and no loose pieces');
   await p.fill('#q', 'box 20');
   assert.deepEqual([await lines(), await p.textContent('#list-wrap')], [[], 'Nothing matches. Try another word or filter.'], 'a box of only loose pieces, with a filter on');
+  await c.close();
+}
+
+// A filter left on doesn't hide My sets the next time Brickyard is opened. It lasts for the visit: a fresh load starts
+// at All (it used to open on "1 of 17 sets", the lit chip off the side of the screen, and a search for a set that's
+// owned said "Nothing matches"). Group by is still remembered. During the visit the lit chip is kept in view, and a
+// search that finds nothing under the filter says how many sets it finds without it, with a button to them.
+{
+  const sets = {};
+  ['built', 'built', 'partial', 'apart', 'sealed', 'built', 'built', 'apart', 'built', 'built', 'built', 'sealed', 'built', 'built', 'built'].forEach((state, i) => {
+    sets['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), state, box: String(1 + i % 4) };
+  });
+  sets.f = { id: 'f', t: 1, num: '75192-1', name: 'Millennium Falcon', state: 'built', room: 'Office' };
+  sets.r = { id: 'r', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', check: 'could be 10340', missing: 'the dial' };
+  const { c, p } = await withSets({ sets });
+  await p.evaluate(() => localStorage.setItem('brickyard.prefs', JSON.stringify({ pics: true, group: 'box', show: 'check' })));
+  await p.goto(base + '#catalog');
+  await p.reload();
+  const lit = () => p.evaluate(() => {
+    const b = document.querySelector('.chip[aria-pressed="true"]'), r = b.getBoundingClientRect();
+    return [b.dataset.f, r.left >= 0 && r.right <= innerWidth];
+  });
+  assert.deepEqual([await p.textContent('#sum'), await lit(), await p.inputValue('#group')], ['17 sets', ['all', true], 'box'], 'a fresh load shows every set, grouped as before');
+  await p.fill('#q', 'falcon');
+  assert.deepEqual(await p.locator('.item .t').allTextContents(), ['Millennium Falcon'], 'and a search finds a set that’s owned');
+  await p.fill('#q', '');
+  await p.click('.chip[data-f="check"]');
+  await p.evaluate(() => { document.getElementById('chips').scrollLeft = 0; });
+  await p.fill('#q', 'retro');
+  assert.deepEqual([await p.textContent('#sum'), await lit()], ['1 of 17 sets', ['check', true]], 'the lit chip is brought into view when the list is drawn');
+  await p.fill('#q', 'falcon');
+  assert.equal(await p.textContent('#list-wrap .empty p'), 'Nothing under To check. 1 set matches in all your sets.', 'nothing under the filter, one without it');
+  await p.fill('#q', 'set');
+  assert.equal(await p.textContent('#list-wrap .empty p'), 'Nothing under To check. 15 sets match in all your sets.');
+  await p.fill('#q', 'falcon');
+  await p.click('#list-wrap [data-act="all"]');
+  assert.deepEqual([await p.locator('.item .t').allTextContents(), await lit(), await p.inputValue('#q')], [['Millennium Falcon'], ['all', true], 'falcon'], 'its button takes the filter off and keeps the search');
+  await p.fill('#q', 'zzz');
+  assert.equal(await p.textContent('#list-wrap'), 'Nothing matches. Try another word or filter.', 'a search that finds nothing anywhere says so plainly');
+  await p.fill('#q', '');
+  await p.click('.chip[data-f="check"]');
+  await p.click('#catalog .back');
+  await p.click('#go-catalog');
+  assert.deepEqual([await p.textContent('#sum'), (await lit())[0]], ['1 of 17 sets', 'check'], 'the filter is kept while Brickyard stays open');
+  assert.equal(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.prefs'))).show, undefined, 'and isn’t saved for next time');
   await c.close();
 }
 
