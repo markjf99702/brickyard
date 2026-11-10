@@ -24,6 +24,14 @@ eq(Object.keys(index), ['10698-1'], 'one parts list so far');
 eq(box.parts.reduce((n, r) => n + r[2], 0), index['10698-1'], 'index counts the 10698 pieces');
 check(Object.values(shapes).every(s => s.n && s.w > 0 && s.d > 0 && s.h > 0 && s.k), 'every shape has a name, size and kind');
 check(box.parts.every(r => colors[String(r[1])]), 'every 10698 colour has a name and hex');
+// The designer skill is uploaded to Claude on its own, so it carries a copy of parts/ in its data/ folder.
+const skill = path.join(root, 'skill/brickyard-designer');
+const filesIn = dir => { try { return fs.readdirSync(dir, { recursive: true, withFileTypes: true }).filter(f => f.isFile()).map(f => path.relative(dir, path.join(f.parentPath || f.path, f.name)).split(path.sep).join('/')).sort(); } catch (e) { return []; } };
+eq(filesIn(path.join(skill, 'data')), filesIn(path.join(root, 'parts')), 'the skill’s data/ has the files parts/ has (run node tools/copy-skill-data.mjs)');
+for (const f of filesIn(path.join(root, 'parts'))) {
+  let copy = null; try { copy = fs.readFileSync(path.join(skill, 'data', f)); } catch (e) { /* missing: reported above */ }
+  check(copy && copy.equals(fs.readFileSync(path.join(root, 'parts', f))), 'the skill’s data/' + f + ' is parts/' + f + ' (run node tools/copy-skill-data.mjs)');
+}
 
 // Turning: a 1x2 brick turned 90 runs front to back, and its cells land inside the turned footprint.
 eq(B.turnSize(shapes['3004'], 90), { w: 1, d: 2 }, '1x2 turned 90 is 1 wide, 2 deep');
@@ -274,6 +282,15 @@ print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/s
       const r = sh(args);
       check(r[0] === 1 && says.test(r[2]), 'script: a model file that isn’t first: ' + (args.join(' ').replace(dir, '').replace(dir, '') || 'none at all') + (says.test(r[2]) ? '' : '\n    ' + r[2].trim().split('\n').pop()));
     }
+    // The skill folder copied somewhere with no repo around it (as it is once uploaded) checks the cottage from
+    // its own data/, and nothing of the repo is needed.
+    const lone = path.join(dir, 'elsewhere');
+    fs.cpSync(skill, path.join(lone, 'brickyard-designer'), { recursive: true });
+    fs.copyFileSync(path.join(root, 'models/cottage.json'), path.join(lone, 'cottage.json'));
+    const away = require('child_process').spawnSync('python3', ['-B', 'brickyard-designer/scripts/check_model.py', 'cottage.json', '--out', 'out'], { cwd: lone, encoding: 'utf8' });
+    check(!path.resolve(lone).startsWith(root + path.sep), 'the copied skill is outside the repo');
+    check(away.status === 0 && /Cottage: 40 pieces/.test(away.stdout) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(away.stdout) && fs.existsSync(path.join(lone, 'out/cottage.brickyard-model.json')),
+      'the skill on its own checks the cottage' + (away.status === 0 ? '' : '\n    ' + (away.stdout + away.stderr).trim().split('\n').pop()));
     // "sets": "10698-1" is that set, as on the page.
     const texted = path.join(dir, 'texted.json');
     fs.writeFileSync(texted, JSON.stringify({ name: 'Texted', sets: '10698-1', parts: greedy.parts.slice(0, 2) }));

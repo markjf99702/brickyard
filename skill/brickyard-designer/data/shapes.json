@@ -1,0 +1,733 @@
+{
+"11212": {
+"bot": "all",
+"d": 3,
+"h": 1,
+"k": "plate",
+"n": "Plate 3x3",
+"top": "all",
+"w": 3
+},
+"14769": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "rtile",
+"n": "Round tile 2x2",
+"top": "none",
+"w": 2
+},
+"15254": {
+"bot": [
+[
+0,
+0
+],
+[
+5,
+0
+]
+],
+"d": 1,
+"h": 6,
+"k": "arch",
+"lintel": 1,
+"n": "Arch 1x6x2",
+"top": "all",
+"w": 6
+},
+"15332": {
+"bot": "all",
+"d": 1,
+"h": 6,
+"k": "frame",
+"n": "Fence 1x4x2",
+"top": "all",
+"w": 4
+},
+"2431": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "tile",
+"n": "Tile 1x4",
+"top": "none",
+"w": 4
+},
+"2456": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x6",
+"top": "all",
+"w": 6
+},
+"2458": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x2 with pin",
+"top": "all",
+"w": 2
+},
+"2877": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x2 with grille",
+"top": "all",
+"w": 2
+},
+"2926": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x4 with wheel pins",
+"top": "all",
+"w": 4
+},
+"3001": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x4",
+"top": "all",
+"w": 4
+},
+"3002": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x3",
+"top": "all",
+"w": 3
+},
+"3003": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x2",
+"top": "all",
+"w": 2
+},
+"3004": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x2",
+"top": "all",
+"w": 2
+},
+"3005": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x1",
+"top": "all",
+"w": 1
+},
+"3009": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x6",
+"top": "all",
+"w": 6
+},
+"3010": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x4",
+"top": "all",
+"w": 4
+},
+"30136": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x2 log",
+"top": "all",
+"w": 2
+},
+"3020": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "plate",
+"n": "Plate 2x4",
+"top": "all",
+"w": 4
+},
+"3021": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "plate",
+"n": "Plate 2x3",
+"top": "all",
+"w": 3
+},
+"3022": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "plate",
+"n": "Plate 2x2",
+"top": "all",
+"w": 2
+},
+"3023b": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x2",
+"top": "all",
+"w": 2
+},
+"3028": {
+"bot": "all",
+"d": 6,
+"h": 1,
+"k": "plate",
+"n": "Plate 6x12",
+"top": "all",
+"w": 12
+},
+"3029": {
+"bot": "all",
+"d": 4,
+"h": 1,
+"k": "plate",
+"n": "Plate 4x12",
+"top": "all",
+"w": 12
+},
+"3031": {
+"bot": "all",
+"d": 4,
+"h": 1,
+"k": "plate",
+"n": "Plate 4x4",
+"top": "all",
+"w": 4
+},
+"3032": {
+"bot": "all",
+"d": 4,
+"h": 1,
+"k": "plate",
+"n": "Plate 4x6",
+"top": "all",
+"w": 6
+},
+"3034": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "plate",
+"n": "Plate 2x8",
+"top": "all",
+"w": 8
+},
+"3037": {
+"bot": "all",
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "slope",
+"low": 1,
+"n": "Slope 45 2x4",
+"top": [
+[
+0,
+0
+],
+[
+1,
+0
+],
+[
+2,
+0
+],
+[
+3,
+0
+]
+],
+"w": 4
+},
+"3039": {
+"bot": "all",
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "slope",
+"low": 1,
+"n": "Slope 45 2x2",
+"top": [
+[
+0,
+0
+],
+[
+1,
+0
+]
+],
+"w": 2
+},
+"3040b": {
+"bot": "all",
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "slope",
+"low": 1,
+"n": "Slope 45 2x1",
+"top": [
+[
+0,
+0
+]
+],
+"w": 1
+},
+"30414": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x4 with studs on side",
+"top": "all",
+"w": 4
+},
+"3062b": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "round",
+"n": "Round brick 1x1",
+"top": "all",
+"w": 1
+},
+"3065": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x2 without centre stud",
+"top": "all",
+"w": 2
+},
+"3068b": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "tile",
+"n": "Tile 2x2",
+"top": "none",
+"w": 2
+},
+"3069b": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "tile",
+"n": "Tile 1x2",
+"top": "none",
+"w": 2
+},
+"3245c": {
+"bot": "all",
+"d": 1,
+"h": 6,
+"k": "brick",
+"n": "Brick 1x2x2",
+"top": "all",
+"w": 2
+},
+"33291": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "round",
+"n": "Round plate 1x1 with petals",
+"top": "all",
+"w": 1
+},
+"3460": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x8",
+"top": "all",
+"w": 8
+},
+"3622": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x3",
+"top": "all",
+"w": 3
+},
+"3659": {
+"bot": [
+[
+0,
+0
+],
+[
+3,
+0
+]
+],
+"d": 1,
+"h": 3,
+"k": "arch",
+"lintel": 1,
+"n": "Arch 1x4",
+"top": "all",
+"w": 4
+},
+"3660b": {
+"bot": [
+[
+0,
+0
+],
+[
+1,
+0
+]
+],
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "inv",
+"low": 1,
+"n": "Inverted slope 45 2x2",
+"top": "all",
+"w": 2
+},
+"3665a": {
+"bot": [
+[
+0,
+0
+]
+],
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "inv",
+"low": 1,
+"n": "Inverted slope 45 2x1",
+"top": "all",
+"w": 1
+},
+"3666": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x6",
+"top": "all",
+"w": 6
+},
+"3710": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x4",
+"top": "all",
+"w": 4
+},
+"3795": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "plate",
+"n": "Plate 2x6",
+"top": "all",
+"w": 6
+},
+"3941": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "round",
+"n": "Round brick 2x2",
+"top": "all",
+"w": 2
+},
+"4070": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x1 with headlight",
+"top": "all",
+"w": 1
+},
+"4287c": {
+"bot": [
+[
+0,
+0
+]
+],
+"d": 3,
+"flat": 1,
+"h": 3,
+"k": "inv",
+"low": 1,
+"n": "Inverted slope 33 3x1",
+"top": "all",
+"w": 1
+},
+"47905": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "brick",
+"n": "Brick 1x1 with studs on two sides",
+"top": "all",
+"w": 1
+},
+"50950": {
+"bot": "all",
+"d": 3,
+"flat": 0,
+"h": 2,
+"k": "curve",
+"low": 0.4,
+"n": "Curved slope 3x1",
+"top": "none",
+"w": 1
+},
+"54200": {
+"bot": "all",
+"d": 1,
+"flat": 0,
+"h": 2,
+"k": "slope",
+"low": 0.4,
+"n": "Cheese slope 1x1",
+"top": "none",
+"w": 1
+},
+"59900": {
+"bot": "all",
+"d": 1,
+"h": 3,
+"k": "cone",
+"n": "Cone 1x1",
+"top": "all",
+"w": 1
+},
+"60479": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "plate",
+"n": "Plate 1x12",
+"top": "all",
+"w": 12
+},
+"60481a": {
+"bot": "all",
+"d": 2,
+"flat": 1,
+"h": 6,
+"k": "slope",
+"low": 1,
+"n": "Slope 65 2x1x2",
+"top": [
+[
+0,
+0
+]
+],
+"w": 1
+},
+"60592": {
+"bot": "all",
+"d": 1,
+"h": 6,
+"k": "frame",
+"n": "Window 1x2x2",
+"top": "all",
+"w": 2
+},
+"60593": {
+"bot": "all",
+"d": 1,
+"h": 9,
+"k": "frame",
+"n": "Window 1x2x3",
+"top": "all",
+"w": 2
+},
+"60596": {
+"bot": "all",
+"d": 1,
+"h": 18,
+"k": "frame",
+"n": "Door frame 1x4x6",
+"top": "all",
+"w": 4
+},
+"6081": {
+"bot": "all",
+"d": 2,
+"flat": 0,
+"h": 4,
+"k": "curve",
+"low": 1,
+"n": "Brick 2x4x1⅓ with curved top",
+"top": "none",
+"w": 4
+},
+"6091": {
+"bot": "all",
+"d": 2,
+"flat": 0,
+"h": 4,
+"k": "curve",
+"low": 1,
+"n": "Brick 1x2x1⅓ with curved top",
+"top": "none",
+"w": 1
+},
+"6141": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "round",
+"n": "Round plate 1x1",
+"top": "all",
+"w": 1
+},
+"6223": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x2",
+"top": "all",
+"w": 2
+},
+"6232": {
+"bot": "all",
+"d": 2,
+"h": 3,
+"k": "brick",
+"n": "Brick 2x2 with pin",
+"top": "all",
+"w": 2
+},
+"76959": {
+"bot": [
+[
+0,
+0
+],
+[
+1,
+0
+]
+],
+"d": 2,
+"flat": 1,
+"h": 3,
+"k": "inv",
+"low": 1,
+"n": "Inverted slope 45 2x2",
+"top": "all",
+"w": 2
+},
+"85984": {
+"bot": "all",
+"d": 1,
+"flat": 0,
+"h": 2,
+"k": "slope",
+"low": 0.4,
+"n": "Cheese slope 1x2",
+"top": "none",
+"w": 2
+},
+"87079": {
+"bot": "all",
+"d": 2,
+"h": 1,
+"k": "tile",
+"n": "Tile 2x4",
+"top": "none",
+"w": 4
+},
+"87544": {
+"bot": "all",
+"d": 1,
+"h": 9,
+"k": "frame",
+"n": "Panel 1x2x3",
+"top": "all",
+"w": 2
+},
+"90195": {
+"bot": "all",
+"d": 1,
+"h": 6,
+"k": "frame",
+"n": "Panel 1x2x2 with arched window",
+"top": "all",
+"w": 2
+},
+"91405": {
+"bot": "all",
+"d": 16,
+"h": 1,
+"k": "plate",
+"n": "Plate 16x16",
+"top": "all",
+"w": 16
+},
+"98138p07": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "rtile",
+"n": "Round tile 1x1 with eye",
+"top": "none",
+"w": 1
+},
+"98138p0c": {
+"bot": "all",
+"d": 1,
+"h": 1,
+"k": "rtile",
+"n": "Round tile 1x1 with closed eye",
+"top": "none",
+"w": 1
+}
+}

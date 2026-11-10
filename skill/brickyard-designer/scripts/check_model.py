@@ -4,7 +4,9 @@
     python3 check_model.py model.json [--pieces FILE ...] [--sets 10698-1 ... | --no-sets] [--data DIR] [--out DIR]
                                       [--layers] [--no-link] [--force]
 
-Put the model file first: --sets and --pieces take everything that follows them.
+Put the model file first: --sets and --pieces take everything that follows them. Part shapes, colours and each
+set's parts list come from the data/ folder beside scripts/ (in the Brickyard repo, from parts/, which data/ is a
+copy of); --data DIR reads them from somewhere else.
 
 model.json:
 
@@ -64,8 +66,10 @@ def set_names(v):
 
 
 def find_data(arg):
-    for d in ([Path(arg)] if arg else []) + [HERE.parent / 'data', HERE.parent.parent.parent / 'parts']:
-        if (d / 'shapes.json').exists():
+    """The folder of part shapes, colours and sets' parts lists: --data, else the Brickyard repo's parts/ when the
+    skill is sitting in the repo (the copy the page reads), else the data/ folder that ships with the skill."""
+    for d in ([Path(arg)] if arg else []) + [HERE.parent.parent.parent / 'parts', HERE.parent / 'data']:
+        if (d / 'shapes.json').exists() and (d / 'colors.json').exists():
             return d
     sys.exit('Can’t find shapes.json; pass --data with the folder holding shapes.json, colors.json and sets/.')
 

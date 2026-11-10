@@ -47,6 +47,8 @@ python3 skill/brickyard-cataloger/scripts/make_brickyard.py sets.json
 python3 skill/brickyard-designer/scripts/check_model.py model.json --layers
 ```
 
+The skill has to work on its own once it's uploaded to Claude, so it carries a copy of `parts/` in `skill/brickyard-designer/data/`. After any change to `parts/`, run `node tools/copy-skill-data.mjs` (the tests fail while the two differ) and upload the skill again.
+
 ## Shelf planner
 
 - **Bookcases**: add each one with its inside width and depth and the clear height of each shelf (presets for an IKEA Billy, a narrow Billy and a Kallax column). Each is drawn from the front, to scale, with your sets on it.
@@ -74,6 +76,7 @@ npx serve .                   # or any static file server, then open the printed
 npm test                      # unit tests, then uses it in Chromium through the real page (needs Playwright)
 node tools/screenshots.mjs    # redraws docs/*.png and og.png (PICS=folder of thumbnails for set pictures)
 node tools/make-icons.mjs     # redraws the PNG icons from icon.svg
+node tools/copy-skill-data.mjs  # copies parts/ into the designer skill's data/, after parts/ changes
 ```
 
 To put it online with GitHub Pages: **Settings → Pages → Build and deployment → Deploy from a branch**, then pick `main` and `/ (root)`. The `CNAME` file serves it at brickyard.junkdrawer.works.
@@ -85,7 +88,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - `js/app.js`: the screens, sheets and storage (`brickyard.v1` in localStorage).
 - `js/build-core.js`: the builder's checks and model links, no DOM; `js/build.js`: the builder's screens and 3D view.
 - `js/shelf-core.js`: the shelf planner's fitting and sizes links, no DOM; `js/shelves.js`: its screen and drawings.
-- `parts/`: part shapes on the stud grid, LDraw colours, and each set's parts list. `models/`: the example cottage.
+- `parts/`: part shapes on the stud grid, LDraw colours, and each set's parts list (copied into `skill/brickyard-designer/data/`). `models/`: the example cottage.
 - `css/app.css`: light and dark palettes.
 - `skill/brickyard-cataloger/`, `skill/brickyard-designer/`: the Claude skills and their scripts.
 - `test/core.test.cjs`, `test/build.test.cjs`, `test/shelf.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.

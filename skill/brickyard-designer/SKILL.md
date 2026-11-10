@@ -14,11 +14,13 @@ What matters, in order:
 
 ## 1. Their pieces
 
-Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `parts/sets/` (`data/sets/` when this skill is used outside the repo) and `parts/index.json` says which sets have one. A set without a list can't be used yet; say so.
+Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `data/sets/` and `data/index.json` says which sets have one. A set without a list can't be used yet; say so.
+
+Paths here are from this skill's folder: `scripts/check_model.py`, and `data/` for everything the checker knows. (In the Brickyard repo the skill is `skill/brickyard-designer/`, and `data/` is a copy of the repo's `parts/`, which the script reads there.)
 
 When they pasted a list, that list is the whole budget, loose pieces and all. Save what they pasted to a text file and give it to the script with `--pieces pieces.txt`. The pasted list already counts the sets it names, so the script leaves the model's own `sets` out of the count and says so in a NOTE. Don't put `--sets` beside a pasted list unless they have sets the list doesn't name: those are counted on top, and the script warns that they are. A `.brickyard-loose.json` file works with `--pieces` too; that one is added on top of the sets.
 
-Part shapes are in `parts/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `parts/colors.json`. Only parts in shapes.json can be used; wheels, hinges and other specials can't yet.
+Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `data/colors.json` (code, then name and hex). Only parts in shapes.json can be used; wheels, hinges and other specials can't yet.
 
 ## 2. Coordinates
 
@@ -52,8 +54,10 @@ Work course by course from a base plate up. Keep a running tally of what you've 
 For anything bigger than a handful of parts, write a small Python script that generates the parts list (loops for walls, a helper for each course) rather than typing coordinates by hand. Then run:
 
 ```sh
-python3 skill/brickyard-designer/scripts/check_model.py lighthouse.json --layers --out OUTDIR
+python3 scripts/check_model.py lighthouse.json --layers --out OUTDIR
 ```
+
+(Give the script's full path from wherever you're working, and any writable folder for `--out`.)
 
 - It prints any problems with the parts they concern (numbered from 1), then `NOT READY`, and exits 1. For a model with problems it writes no file and prints no link, so there's nothing to hand over by mistake. (A file left in `--out` by an earlier run is not this model; the script points it out.) Fix and run again until it's clean.
 - `--layers` draws every plate-height layer from above, one letter per part, with a key. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
@@ -61,7 +65,7 @@ python3 skill/brickyard-designer/scripts/check_model.py lighthouse.json --layers
 - When it passes it writes `NAME.brickyard-model.json` to `--out`, prints a link starting `https://brickyard.junkdrawer.works/#d1z`, and exits 0.
 - `--force` writes the file and prints the link for a model that failed, to look at what's wrong in Brickyard. That one is never for handing over.
 
-Write the JSON and outputs to a scratch folder, not the repo.
+Write the model's JSON and the outputs to a scratch or outputs folder, never into the skill's folder or a repo.
 
 ## 4. Hand it over
 
