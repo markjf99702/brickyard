@@ -2055,6 +2055,28 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// At 200% zoom a phone lays the page out about 195 px wide. Set names stay whole there: the row's picture is smaller
+// and its badge goes under the words (the name was squeezed to a 13 px column, "L. K.", or to nothing), and nothing
+// scrolls sideways, in My sets or on a model. At 390 px a row is laid out as it always was.
+{
+  const sets = { l: { id: 'l', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', pieces: 4514, year: 2022, state: 'built', room: 'Hall' },
+    b: { id: 'b', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart', box: '7' }, m: { id: 'm', t: 1, num: '31120-1', name: 'Medieval Castle', state: 'sealed' },
+    t: { id: 't', t: 1, num: '21327-1', name: 'Typewriter', state: 'partial' }, o: { id: 'o', t: 1, name: 'Orchid' } };
+  const { c, p } = await withSets({ sets }, { viewport: { width: 195, height: 422 } });
+  await p.goto(base + '#catalog');
+  const rows = () => p.$$eval('#list-wrap .item', els => els.map(e => { const t = e.querySelector('.t'), r = t.getBoundingClientRect(), b = e.querySelector('.badge'); return [t.textContent, Math.round(r.width), t.scrollHeight <= t.clientHeight + 1, b ? b.getBoundingClientRect().top >= r.bottom : true]; }));
+  const sideways = () => p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  for (const [name, width, whole, under] of await rows()) assert.ok(width >= 85 && whole && under, name + ' at 195 px: its name is ' + width + ' px wide' + (whole ? '' : ', cut short') + (under ? '' : ', beside its badge'));
+  assert.equal(await sideways(), 0, 'My sets doesn’t scroll sideways at 195 px');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await sideways(), 0, 'nor does a model');
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.goto(base + '#catalog');
+  assert.deepEqual(await p.$eval('#list-wrap .item', e => [getComputedStyle(e).gridTemplateColumns.split(' ').length, Math.round(e.querySelector('.pic').getBoundingClientRect().width)]), [3, 64], 'a row at 390 px is as it was');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

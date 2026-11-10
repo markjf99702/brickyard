@@ -304,4 +304,22 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .jd-foot a { color: inherit; text-decoration: none; display: inline-block; padding: 14px 0; }
 .jd-foot a:hover, .jd-foot a:focus-visible { text-decoration: underline; }
 #catalog ~ .jd-foot { padding-bottom: calc(env(safe-area-inset-bottom) + 4px); }
+/* A phone at 200% zoom lays the page out about 195 px wide. A row kept its 64 px picture and its badge beside the
+   words, which left the set's name a 13 px column ("L. K."), or none. There the picture is smaller and the badge
+   goes under the words; the two buttons at the bottom come after the list; a model's Next button and its name give
+   way too. */
+@media (max-width: 300px) {
+  .item { grid-template-columns: 44px 1fr; gap: 8px; }
+  .item .pic { width: 44px; height: 36px; }
+  .item .badge { grid-column: 2; justify-self: start; }
+  .item > span:empty { display: none; }
+  .item .t { display: block; overflow-wrap: anywhere; } /* every line of the name, not the first two */
+  .item .m { white-space: normal; }
+  .sumline { flex-wrap: wrap; }
+  .fab-row { position: static; flex-wrap: wrap; } /* at the end of the list: stuck to the bottom they covered a third of it */
+  .fab-row .btn { padding: 7px 12px; font-size: 14px; }
+  .stepbar .btn { min-width: 0; }
+  ul.need { grid-template-columns: 1fr; }
+  .bar h1 { font-size: 19px; overflow-wrap: anywhere; }
+}
 @media print { .jd-foot, .bar, .fab-row { display: none; } }
