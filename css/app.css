@@ -148,6 +148,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 a.item { color: inherit; text-decoration: none; }
 .item:hover, .item:focus-visible { border-color: var(--muted); }
+/* A set that was just added (js/app.js, showNew): its row is tinted yellow and fades back to a row like the others,
+   so it's told from the rows around it. Where motion is turned down it has a still yellow line round it instead,
+   which goes when the tint would have. */
+.item.new { animation: new-row 2.6s ease-out; }
+@keyframes new-row { from, 35% { background: color-mix(in srgb, var(--yellow) 34%, var(--card)); border-color: var(--yellow); } }
+@media (prefers-reduced-motion: reduce) { .item.new { animation: none; outline: 2px solid var(--yellow); outline-offset: 1px; } }
 /* A set's picture. Until it has arrived the tile is the plain brick on the soft ground (it was an empty white tile,
    and in dark mode a bright cream block). js/app.js marks the tile `in` once the picture has loaded: it fades in
    over a white ground, and the brick fades out under it (the picture is multiplied onto the tile, so a brick left

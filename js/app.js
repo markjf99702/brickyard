@@ -886,10 +886,23 @@
       var same = !isNew && !gone && sameSet(y, kept);
       if (gone) putBack('sets', y); else if (!same) putSet(y);
       if (!same) save();
+      if (isNew) { renderCatalog(); added(y, z.note); return; }
       closeSheet(); renderCatalog();
-      toast((isNew ? 'Added' : gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
+      toast((gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
     };
   }
+  // A set added by hand is shown, and named: the message was the bare word "Added", and with 300 sets grouped by
+  // room the new row was 25,000 px down, under No room yet, with the page left at its top. Its row is brought into
+  // view and tinted for a moment (showNew). When the filter or the search in force hides it they're left as they
+  // are, and the message says so, with a button that lifts them (reveal). `note` is what was read as inches.
+  function added(y, note) {
+    var name = y.name || 'Set ' + C.shortNum(y.num), chip = FILTERS.filter(function (f) { return f[0] === show; })[0], q = $('q').value.trim();
+    var why = rowOf(y.id) ? '' : !passes(y) ? 'It isn’t under ' + chip[1] : 'It doesn’t match “' + q + '”';
+    closeSheet(function () { if (!why) setTimeout(function () { showNew([y.id], 0, true); }, 0); });
+    var msg = 'Added ' + name + (why ? '. ' + why + (note ? '. ' + note : '.') : note ? '. ' + note : '');
+    if (why) toast(msg, false, { label: 'Show', run: function () { reveal(y.id); } }); else toast(msg);
+  }
+
   // Whether two copies of a set say the same, whatever order their parts are in and whenever each was changed.
   function sameSet(a, b) {
     var flat = function (o) { return JSON.stringify(Object.keys(o).filter(function (k) { return k !== 't'; }).sort().map(function (k) { return [k, o[k]]; })); };
@@ -905,24 +918,42 @@
     for (var i = 0; i < rows.length; i++) if (rows[i].dataset.id === id) return rows[i];
     return null;
   }
+  // Takes off whatever hides a set's row: the filter if the set isn't under it, then the search if it's still hidden.
+  function unhide(id) {
+    if (!rowOf(id) && !passes(DOC.sets[id])) { show = 'all'; renderCatalog(); }
+    if (!rowOf(id)) { $('q').value = ''; renderCatalog(); }
+    return rowOf(id);
+  }
+  // Runs `then` on My sets, going there first from another screen, if the set is still there to show.
+  function onCatalog(id, then) {
+    if (location.hash === '#catalog') { then(); return; }
+    document.addEventListener('brickyard:route', function once() {
+      document.removeEventListener('brickyard:route', once);
+      if (location.hash === '#catalog' && DOC.sets[id] && !DOC.sets[id].del) then();
+    });
+    location.hash = '#catalog';
+  }
   function showSet(id) {
     var x = DOC.sets[id];
     if (!x || x.del) return;
     closeSheet(function () {
-      var open = function () {
-        if (!rowOf(id) && !passes(x)) { show = 'all'; renderCatalog(); }
-        if (!rowOf(id)) { $('q').value = ''; renderCatalog(); }
-        var row = rowOf(id);
+      onCatalog(id, function () {
+        var row = unhide(id);
         // The row takes the focus, so it comes back to it when the sheet closes.
         if (row) { row.scrollIntoView({ block: 'center' }); row.focus({ preventScroll: true }); }
         editSheet(DOC.sets[id]);
-      };
-      if (location.hash === '#catalog') { open(); return; }
-      document.addEventListener('brickyard:route', function once() {
-        document.removeEventListener('brickyard:route', once);
-        if (location.hash === '#catalog' && DOC.sets[id] && !DOC.sets[id].del) open();
       });
-      location.hash = '#catalog';
+    });
+  }
+  // Show, on the message that says a set just added is hidden: its row, without its sheet. The row takes the focus:
+  // the button that had it has gone with the message.
+  function reveal(id) {
+    var x = DOC.sets[id];
+    if (!x || x.del) return;
+    onCatalog(id, function () {
+      var row = unhide(id);
+      showNew([id], 0, true);
+      if (row) row.focus({ preventScroll: true });
     });
   }
 
@@ -1101,14 +1132,25 @@
 
   // After a batch is added: the first of its rows that the search and filter in force show is brought to the middle
   // of the screen, and when any of the sets are to check, the chip row is moved along so the To check chip shows.
-  function showNew(ids, checks) {
+  // The new rows are tinted for a moment (css/app.css, .item.new), so they're told from the rows around them.
+  // `gently` is for one set added by hand: the page only moves when its row isn't already in view, between the bar
+  // at the top and the two buttons at the bottom.
+  var tinted = 0;
+  function showNew(ids, checks, gently) {
     var chips = $('chips'), chip = checks && chips.querySelector('[data-f="check"]');
     if (chip) {
       var cr = chips.getBoundingClientRect(), r = chip.getBoundingClientRect();
       if (r.right > cr.right - 16) chips.scrollLeft += r.right - cr.right + 16;
     }
-    var row = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; })[0];
-    if (row) row.scrollIntoView({ block: 'center' });
+    var rows = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; }), row = rows[0];
+    if (!row) return;
+    var fab = document.querySelector('#catalog .fab-row'), at = row.getBoundingClientRect();
+    var top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom;
+    var bottom = fab.hidden || getComputedStyle(fab).position !== 'sticky' ? window.innerHeight : Math.min(window.innerHeight, fab.getBoundingClientRect().top);
+    if (!gently || at.top < top || at.bottom > bottom) row.scrollIntoView({ block: 'center' });
+    clearTimeout(tinted);
+    allRows().forEach(function (el) { el.classList.toggle('new', rows.indexOf(el) >= 0); });
+    tinted = setTimeout(function () { rows.forEach(function (el) { el.classList.remove('new'); }); }, 2600);
   }
 
   // What this device has added from each link of sets: { batch id: { row in the link: the set's id here } }, kept

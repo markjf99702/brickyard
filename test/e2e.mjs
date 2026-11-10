@@ -2539,6 +2539,92 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// A set added by hand is shown too. The message was the bare word "Added", and in a catalog of 300 sets grouped by
+// room the new row was some 25,000 px down the page, under No room yet, with the page left where it was. Now the
+// message names the set, and its row is brought into view and tinted for a moment; one that's in view already
+// leaves the page where it is. When the filter or the search hides the new set, they're left alone: the message
+// says so, with Show, which lifts what hides it. The rows of a batch from a link are tinted the same way.
+{
+  const sets = {};
+  for (let i = 0; i < 300; i++) sets['s' + i] = { id: 's' + i, t: 1, num: (10200 + i) + '-1', name: 'Set number ' + (i + 1), state: ['built', 'apart', 'partial', 'sealed'][i % 4], room: ['Office', 'Hall', 'Garage', 'Basement', ''][i % 5] };
+  const { c, p } = await withSets({ sets });
+  // Where a set's row is: on the screen between the bar and the two buttons, tinted, and holding the focus?
+  const row = name => p.evaluate(n => {
+    const el = [...document.querySelectorAll('#list-wrap .item')].filter(r => r.querySelector('.t').textContent === n)[0];
+    if (!el) return null;
+    const r = el.getBoundingClientRect(), top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top;
+    return { seen: r.top >= top && r.bottom <= bottom, tint: el.classList.contains('new'), lit: getComputedStyle(el).animationName === 'new-row', focus: document.activeElement === el };
+  }, name);
+  const add = async (num, name, more) => {
+    await p.click('#add-btn');
+    await p.fill('#e-num', num);
+    await p.fill('#e-name', name);
+    if (more) await more();
+    await p.click('#e-save');
+    await p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+    await p.waitForTimeout(300);
+  };
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? [] : [t.querySelector('span').textContent, t.querySelector('button') ? t.querySelector('button').textContent : '']; });
+  await p.goto(base + '#catalog');
+  await add('21061', 'Notre-Dame de Paris');
+  assert.deepEqual(await says(), ['Added Notre-Dame de Paris', ''], 'the message says which set');
+  assert.ok(await p.evaluate(() => scrollY) > 10000, 'the page has moved down to the new set');
+  assert.deepEqual(await row('Notre-Dame de Paris'), { seen: true, tint: true, lit: true, focus: false }, 'its row is on the screen, clear of the bars, and tinted');
+  await p.waitForFunction(() => !document.querySelector('.item.new'), null, { timeout: 6000 });
+  assert.equal(await p.evaluate(() => document.getAnimations().length), 0, 'the tint goes after a moment');
+  // A set whose row is in view already: the page stays put. (Named only, with a size in inches.)
+  const y = await p.evaluate(() => scrollY);
+  await p.click('#add-btn');
+  await p.fill('#e-name', 'Notre-Dame, a second one');
+  for (const k of ['w', 'd', 'h']) await p.fill('#e-' + k, '10"');
+  await p.click('#e-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+  await p.waitForTimeout(300);
+  assert.deepEqual([await says(), await p.evaluate(() => scrollY), await row('Notre-Dame, a second one')],
+    [['Added Notre-Dame, a second one. Read as inches: width 25.4 cm, depth 25.4 cm, height 25.4 cm', ''], y, { seen: true, tint: true, lit: true, focus: false }], 'a row that’s in view is tinted where it is');
+  // Under a filter that hides it: the filter stays, and the message has the way to the set.
+  await p.evaluate(() => scrollTo(0, 0));
+  await p.click('.chip[data-f="sealed"]');
+  await add('21338', 'A-Frame Cabin');
+  assert.deepEqual([await says(), await row('A-Frame Cabin'), await p.getAttribute('.chip[data-f="sealed"]', 'aria-pressed'), await p.evaluate(() => scrollY)],
+    [['Added A-Frame Cabin. It isn’t under Sealed.', 'Show'], null, 'true', 0], 'a set the filter hides: the message says so, and the list is left alone');
+  await p.click('.toast button');
+  assert.deepEqual([await row('A-Frame Cabin'), await p.getAttribute('.chip[data-f="all"]', 'aria-pressed'), await p.locator('.toast').isHidden()],
+    [{ seen: true, tint: true, lit: true, focus: true }, 'true', true], 'Show lifts the filter and brings the row into view');
+  // Hidden by the search, under a filter that would show it: the search goes, the filter stays.
+  await p.click('.chip[data-f="built"]');
+  await p.fill('#q', 'office');
+  await add('21341', 'Galaxy Explorer');
+  assert.deepEqual([await says(), await row('Galaxy Explorer')], [['Added Galaxy Explorer. It doesn’t match “office”.', 'Show'], null]);
+  await p.click('.toast button');
+  assert.deepEqual([await row('Galaxy Explorer'), await p.inputValue('#q'), await p.getAttribute('.chip[data-f="built"]', 'aria-pressed')], [{ seen: true, tint: true, lit: true, focus: true }, '', 'true'], 'Show clears the search and keeps a filter the set is under');
+  // Show pressed from another screen goes to My sets first.
+  await p.fill('#q', 'office');
+  await add('21342', 'Orchid');
+  await p.evaluate(() => { location.hash = '#shelves'; });
+  await p.waitForSelector('#shelves:not([hidden])');
+  await p.click('.toast button');
+  await p.waitForFunction(() => document.querySelector('.item.new'));
+  assert.deepEqual([await p.evaluate(() => location.hash), await row('Orchid')], ['#catalog', { seen: true, tint: true, lit: true, focus: true }]);
+  // A batch from a link: every new row is tinted.
+  await p.goto('about:blank');
+  await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { id: 'zoo3', room: 'Zoo', sets: [{ num: '31058', name: 'Mighty Dinosaurs' }, { num: '60198', name: 'Cargo Train' }] } })).toString('base64url'));
+  await p.click('#rv-add');
+  await p.waitForFunction(() => document.querySelector('.item.new'));
+  assert.deepEqual(await p.$$eval('.item.new .t', ts => ts.map(t => t.textContent)), ['Cargo Train', 'Mighty Dinosaurs'], 'the rows of a batch are tinted');
+  await c.close();
+  // Where motion is turned down the row has a still line round it, and no animation.
+  const still = await withSets({ sets: { o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid' } } }, { reducedMotion: 'reduce' });
+  await still.p.goto(base + '#catalog');
+  await still.p.click('#add-btn');
+  await still.p.fill('#e-num', '21061');
+  await still.p.click('#e-save');
+  await still.p.waitForSelector('.item.new');
+  assert.deepEqual(await still.p.$eval('.item.new', el => { const cs = getComputedStyle(el); return [el.querySelector('.t').textContent, cs.animationName, cs.outlineStyle, cs.outlineWidth]; }), ['Set 21061', 'none', 'solid', '2px']);
+  assert.equal(await still.p.textContent('.toast'), 'Added Set 21061', 'a set with no name is called by its number');
+  await still.c.close();
+}
+
 // A second copy added by its number takes the first copy's name, year, pieces and theme into the empty boxes on
 // the first tap, to be seen before "Add another copy" (it was a bare "Set 75192" beside a first copy that had them
 // all). Not its place, state, missing pieces, notes or size; a box already typed in is left alone; and a change of
