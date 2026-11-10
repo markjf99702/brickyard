@@ -163,10 +163,9 @@ document.addEventListener('brickyard:changed', () => { if (!$('build').hidden &&
 
 function dropLot(l) {
   if (!l) return;
-  const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Remove these loose pieces?</h2><button class="btn sm quiet" type="button" data-close>Keep them</button></div>' +
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">Remove these loose pieces?</h2><button class="btn sm quiet" type="button" data-close>Keep them</button></div>' +
     '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening the lot’s link or file again brings it back.</p></div>' +
     '<div class="ft"><span></span><button class="btn" type="button" id="lot-drop">Remove</button></div>');
-  panel.querySelector('[data-close]').onclick = app.closeSheet;
   $('lot-drop').onclick = () => { app.removeLot(l.id); app.closeSheet(); toast('Removed ' + l.name); renderList(); };
 }
 
@@ -187,18 +186,16 @@ async function copyPool() {
     (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n';
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude with what you’d like built.'); }
   catch (e) {
-    const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Your pieces for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Your pieces for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
       '<div class="bd"><p class="note">Copy this and paste it to Claude.</p><textarea class="paste" id="pool-text" readonly style="min-height:200px">' + esc(text) + '</textarea></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
     $('pool-text').select();
   }
 }
 
 function openSheet() {
-  const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Open a model</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">Open a model</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
     '<p class="note">Paste the link or the file Claude sent.</p><textarea class="paste" id="model-paste" aria-label="Paste a model link or file" placeholder="https://brickyard.junkdrawer.works/#d1z…"></textarea></div>' +
     '<div class="ft"><span></span><button class="btn" type="button" id="model-go">Open</button></div>');
-  panel.querySelector('[data-close]').onclick = app.closeSheet;
   $('model-go').onclick = async () => {
     try {
       const m = await B.parseModel($('model-paste').value);
@@ -285,11 +282,10 @@ document.addEventListener('keydown', e => {
 });
 $('model-menu').onclick = () => {
   const ex = current.id.startsWith('x-');
-  const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(current.model.name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(current.model.name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
     '<li><button type="button" id="mm-parts"><span>All the pieces<small>Everything this model needs, and what you have</small></span></button></li>' +
     (ex ? '' : '<li><button type="button" id="mm-del"><span>Remove from my models<small>Tap twice. Claude’s link still opens it again.</small></span></button></li>') +
     '</ul></div>');
-  panel.querySelector('[data-close]').onclick = app.closeSheet;
   $('mm-parts').onclick = partsSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {
     if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
@@ -300,13 +296,12 @@ $('model-menu').onclick = () => {
 function partsSheet() {
   const { res, pool } = current;
   const rows = Object.keys(res.used).sort((a, b) => partName(a.split('/')[0]).localeCompare(partName(b.split('/')[0])) || a.localeCompare(b));
-  const panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">All the pieces</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">All the pieces</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
     '<ul class="need wide">' + rows.map(k => {
       const [p, c] = k.split('/'), col = colorOf(c), have = pool ? pool[k] || 0 : null, need = res.used[k];
       return '<li' + (have !== null && have < need ? ' class="short"' : '') + '><i style="background:' + col.hex + '"></i><span><b>' + need + '×</b> ' + esc(partName(p)) +
         '<small>' + esc(col.name) + ' · ' + p + (have === null ? '' : ' · you have ' + have) + '</small></span></li>';
     }).join('') + '</ul></div>');
-  panel.querySelector('[data-close]').onclick = app.closeSheet;
 }
 
 // ---------- 3D ----------

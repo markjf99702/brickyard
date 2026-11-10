@@ -166,7 +166,7 @@
       }).join('') + '</optgroup>';
     }).join('');
     var level = at ? app.doc().cases[at.c].levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<div class="three">' +
       '<label class="field"><span>Width, cm</span><input id="z-w" inputmode="decimal" value="' + esc(z.w || '') + '"></label>' +
       '<label class="field"><span>Depth, cm</span><input id="z-d" inputmode="decimal" value="' + esc(z.d || '') + '"></label>' +
@@ -174,8 +174,11 @@
       (all.length ? '<label class="field"><span>Where it stands</span><select id="z-where">' + opts + '</select></label>' : '') +
       (at ? '<label class="check"><input type="checkbox" id="z-turn"' + (at.turn ? ' checked' : '') + '> Stand it side-on (takes its depth along the shelf)</label>' +
         '<div class="acts-row"><button class="btn quiet sm" type="button" id="z-left"' + (pos <= 0 ? ' disabled' : '') + '>Move left</button><button class="btn quiet sm" type="button" id="z-right"' + (pos >= level.sets.length - 1 ? ' disabled' : '') + '>Move right</button></div>' : '') +
-      '</div><div class="ft"><a class="btn quiet" href="#catalog" id="z-cat">See in My sets</a><button class="btn" type="button" id="z-save">Save</button></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
+      '</div><div class="ft"><a class="btn quiet" href="#catalog" id="z-cat">See in My sets</a><button class="btn" type="button" id="z-save">Save</button></div>',
+      function () { return now() !== was; });
+    // Its size and place as the sheet has them, to tell whether closing would lose a change.
+    function now() { return app.fieldsOf(['z-w', 'z-d', 'z-h', 'z-where', 'z-turn']); }
+    var was = now();
     $('z-cat').onclick = function () { app.closeSheet(); };
     function shift(by) {
       var c = copy(app.doc().cases[at.c]), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
@@ -213,7 +216,7 @@
     var isNew = !c, preset = isNew ? PRESETS[0] : null;
     var v = c ? { name: c.name, room: c.room || '', w: c.w, d: c.d, levels: c.levels.map(function (l) { return l.h; }) } : { name: preset.name, room: '', w: preset.w, d: preset.d, levels: preset.levels };
     var rooms = {}; sets().forEach(function (x) { if (x.room) rooms[x.room] = 1; }); cases().forEach(function (k) { if (k.room) rooms[k.room] = 1; });
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a bookcase' : 'Edit ' + esc(c.name)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a bookcase' : 'Edit ' + esc(c.name)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (isNew ? '<div class="field"><span class="lbl">Start from</span><div class="seg" id="k-preset">' + PRESETS.map(function (p, i) {
         return '<button type="button" data-k="' + i + '" aria-pressed="' + (i === 0) + '">' + esc(p.label) + '</button>';
       }).join('') + '</div></div>' : '') +
@@ -222,13 +225,18 @@
       '<div class="field"><span class="lbl">Inside, in cm</span><div class="two"><input id="k-w" inputmode="decimal" aria-label="Width inside in cm" placeholder="Width" value="' + esc(v.w) + '"><input id="k-d" inputmode="decimal" aria-label="Depth inside in cm" placeholder="Depth" value="' + esc(v.d) + '"></div></div>' +
       '<label class="field"><span>Height of each shelf, top shelf first (cm)</span><input id="k-levels" inputmode="decimal" value="' + esc(v.levels.join(', ')) + '" placeholder="e.g. 32, 32, 40, 40"></label>' +
       '<p class="note">The height is the clear space above each shelf, up to the one above it. The presets are rough: measure yours for a close fit.</p>' +
-      '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
+      '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
+      function () { return now() !== was || $('k-room').value.trim() !== v.room; });
+    // The bookcase as the sheet has it, to tell whether closing would lose a change. Choosing a preset isn't one:
+    // it's what the sheet starts from.
+    function now() { return app.fieldsOf(['k-name', 'k-w', 'k-d', 'k-levels']); }
+    var was = now();
     if ($('k-preset')) $('k-preset').onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
       var p = PRESETS[+b.dataset.k];
       this.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y === b); });
       $('k-name').value = p.name; $('k-w').value = p.w; $('k-d').value = p.d; $('k-levels').value = p.levels.join(', ');
+      was = now();
       if (p.k === 'custom') $('k-name').focus();
     };
     if ($('k-del')) $('k-del').onclick = function () {
@@ -254,16 +262,14 @@
     else showText(text);
   }
   function showText(text) {
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Sets for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Sets for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
       '<div class="bd"><p class="note">Copy this and paste it to Claude.</p><textarea class="paste" id="z-text" readonly style="min-height:200px">' + esc(text) + '</textarea></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
     $('z-text').select();
   }
   function openSizes() {
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Sizes from Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Sizes from Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<p class="note">Paste the link or the file Claude sent.</p><textarea class="paste" id="z-paste" aria-label="Paste a sizes link or file" placeholder="https://brickyard.junkdrawer.works/#z1z…"></textarea></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="z-go">Open</button></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
     $('z-go').onclick = function () {
       S.parseSizes($('z-paste').value).then(function (z) { app.closeSheet(); reviewSizes(z); }, function () { toast('That doesn’t look like sizes from Claude'); });
     };
@@ -276,7 +282,7 @@
       mine.forEach(function (x) { rows.push({ x: x, z: z, on: !S.hasSize(x) }); });
     });
     if (!rows.length) { toast('None of those sets are in My sets'); return; }
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
@@ -285,7 +291,6 @@
           '<div class="m">' + sizeText(r.z) + (r.x.size ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft"><span class="note" id="zr-n" style="margin:0"></span><button class="btn" type="button" id="zr-go">Add sizes</button></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
     function count() { $('zr-n').textContent = plural(rows.filter(function (r) { return r.on; }).length, 'set'); }
     count();
     $('zr').onchange = function (e) { var r = rows[+e.target.dataset.i]; r.on = e.target.checked; e.target.parentNode.classList.toggle('off', !r.on); count(); };

@@ -263,15 +263,25 @@
   // While a sheet is open the screens behind it (and the footer) are inert, so Tab and screen readers stay in the
   // sheet. The toast is outside them, so it's still read out.
   function behind(on) { document.querySelectorAll('body > section, body > .jd-foot').forEach(function (el) { el.inert = on; }); }
-  function openSheet(html, onClose) {
+  // dirty, when given, says whether the sheet holds changes that closing would throw away. While it does, a tap on
+  // the page outside does nothing, and Close or Escape ask first (askClose).
+  function openSheet(html, dirty) {
     closeSheet();
     if (!toastStays) hideToast(); // "Added 7 sets" would sit on top of the next sheet
     lastFocus = document.activeElement;
     var scrim = document.createElement('div');
     scrim.className = 'scrim';
     scrim.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' + html + '</div>';
-    scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSheet(); });
-    scrim._onClose = onClose;
+    var x = scrim.querySelector('[data-close]');
+    // Going back to the changes after "Discard changes?" puts Close back, so a later slip is a first tap again.
+    var calm = function () { if (x && x.dataset.sure) { delete x.dataset.sure; x.textContent = x.dataset.label; } };
+    scrim.addEventListener('click', function (e) {
+      if (e.target === scrim) askClose(true);
+      else if (x && x.contains(e.target)) askClose();
+      else calm();
+    });
+    scrim.addEventListener('input', calm);
+    scrim._dirty = typeof dirty === 'function' ? dirty : null;
     scrim._at = location.hash; // the screen it belongs to (route)
     document.body.appendChild(scrim);
     document.body.style.overflow = 'hidden';
@@ -282,14 +292,35 @@
     f.focus({ preventScroll: true });
     return scrim.firstChild;
   }
+  // The person asking to close: the sheet's Close button, Escape, or a tap on the page outside (outside is true).
+  // closeSheet is the sheet closing itself once it's done. With changes in it, a tap outside does nothing, and the
+  // others turn Close into "Discard changes?" and close on the next one, so nothing typed goes on one slip.
+  function askClose(outside) {
+    var s = openScrim;
+    if (!s) return;
+    if (s._dirty && s._dirty()) {
+      var b = s.querySelector('[data-close]');
+      if (outside) return;
+      if (b && !secondTap(b)) {
+        if (!b.dataset.label) b.dataset.label = b.textContent;
+        b.textContent = 'Discard changes?'; b.focus({ preventScroll: true });
+        return;
+      }
+    }
+    closeSheet();
+  }
   function closeSheet() {
     if (!openScrim) return;
     var s = openScrim; openScrim = null;
     s.remove(); document.body.style.overflow = ''; behind(false);
-    if (s._onClose) s._onClose();
     if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus();
   }
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openScrim) closeSheet(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openScrim) askClose(); });
+  // What's in a sheet's fields (and anything else that counts), as one text, to tell whether it has changed since
+  // the sheet opened.
+  function fieldsOf(ids, more) {
+    return JSON.stringify(ids.map(function (id) { var el = $(id); return !el ? null : el.type === 'checkbox' ? el.checked : el.value.trim(); }).concat(more || []));
+  }
 
   // In a list of rows to tick (sets from Claude, sizes), a tap anywhere on a row ticks or unticks it, not only on
   // its little box. The box's own taps tick it already.
@@ -307,6 +338,9 @@
     var isNew = !x;
     x = x ? JSON.parse(JSON.stringify(x)) : { id: newId(), state: 'built' };
     var z = x.size || {};
+    // Everything the sheet lets you change, to tell whether closing it would lose something.
+    var st = x.state, was = null;
+    var now = function () { return fieldsOf(['e-num', 'e-year', 'e-name', 'e-pieces', 'e-theme', 'e-room', 'e-spot', 'e-box', 'e-missing', 'e-instr', 'e-w', 'e-d', 'e-h', 'e-tags', 'e-notes'], [st || '']); };
     var panel = openSheet(
       '<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a set' : esc(x.name || 'Set ' + C.shortNum(x.num))) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
       '<div class="bd">' +
@@ -327,10 +361,10 @@
       field('Tags', input('e-tags', (x.tags || []).join(', '), ' placeholder="Comma between tags"')) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
       '</div>' +
-      '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="button" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>');
+      '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="button" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
+      function () { return now() !== was; });
+    was = now();
 
-    var st = x.state;
-    panel.querySelector('[data-close]').onclick = closeSheet;
     $('e-state').onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
       st = st === b.dataset.v ? '' : b.dataset.v;
@@ -373,13 +407,12 @@
 
   // ---------- adding from Claude ----------
   function claudeSheet() {
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add from photos</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    openSheet('<div class="hd"><h2 id="sheetTitle">Add from photos</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<div class="how"><b>With Claude</b><ol><li>Take photos of your set boxes, the instruction books, or the built models. The set number on a box is the best thing to get in the picture.</li>' +
       '<li>Send them to Claude and say where they are (a room and shelf, or a moving box number).</li><li>Claude sends back a Brickyard link. Open it, check the list, and tap <b>Add</b>.</li></ol></div>' +
       '<p class="note">Claude gives you a file too, in case the link is too long. Open it, or paste the link or file text here:</p>' +
       '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>' +
       '</div><div class="ft"><button class="btn quiet" type="button" id="p-file">Open a file</button><button class="btn" type="button" id="p-go">Open</button></div>');
-    panel.querySelector('[data-close]').onclick = closeSheet;
     $('p-file').onclick = function () { $('file').click(); };
     $('p-go').onclick = function () { var t = $('paste').value; if (!t.trim()) { $('paste').focus(); return; } takeIncoming(C.parseIncoming(t)); };
   }
@@ -425,7 +458,7 @@
     var rows = batch.sets.map(function (x) { var dup = C.findDup(DOC, x); return { x: x, dup: dup, on: !dup }; });
     var seenAt = DOC.seen[batch.id];
     var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.x.check; }).length;
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
+    openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
       (seenAt ? '<p class="flag"><span>You opened this link before. Sets you already have are unticked.</span></p>' : '') +
       '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
@@ -438,14 +471,17 @@
           (r.dup ? '<div class="w">You already have this one' + (C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '') + '</div>' : '') +
           (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
-      '<div class="ft"><span class="note" id="rv-n" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>');
+      '<div class="ft"><span class="note" id="rv-n" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>',
+      function () { return now() !== was; });
+    // The ticks and where they all go: changing either is something to lose.
+    function now() { return fieldsOf(['rv-room', 'rv-spot', 'rv-box'], rows.map(function (r) { return r.on; })); }
+    var was = now();
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
       $('rv-n').textContent = n + ' of ' + rows.length + ' ticked';
       $('rv-add').textContent = n ? 'Add ' + plural(n, 'set') : 'Add';
       $('rv-add').disabled = !n;
     }
-    panel.querySelector('[data-close]').onclick = closeSheet;
     $('rv').onchange = function (e) {
       var li = e.target.closest('li'); if (!li) return;
       rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
@@ -481,7 +517,7 @@
   }
   function looseSheet(lot) {
     var had = DOC.loose[lot.id] && !DOC.loose[lot.id].del ? DOC.loose[lot.id] : null, n = C.lotTotals(lot);
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Add loose pieces</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
+    openSheet('<div class="hd"><h2 id="sheetTitle">Add loose pieces</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede"><b>' + esc(lot.name) + '</b> · ' + plural(n.pieces, 'piece') + ' of ' + plural(n.kinds, 'kind') + '</p>' +
       (had ? '<p class="flag"><span>You already have this lot (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding it again replaces it, so nothing is counted twice.</span></p>' : '') +
       '<p class="note" id="ls-use"></p>' +
@@ -489,7 +525,6 @@
       field('Moving box', input('ls-box', lot.box || (had && had.box) || '', ' list="dl-box" maxlength="40" placeholder="Leave blank if it’s not packed"')) + '</div>' +
       '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove a lot there.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace it' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
-    panel.querySelector('[data-close]').onclick = closeSheet;
     shapeIds().then(function (shapes) {
       var use = lot.parts.reduce(function (k, r) { return k + (shapes[r[0]] ? r[2] : 0); }, 0);
       if ($('ls-use')) $('ls-use').textContent = use === n.pieces ? 'The builder can use all of them.'
@@ -506,10 +541,9 @@
 
   function catalogSheet(doc) {
     var incoming = C.live(doc).length;
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Open a Brickyard file</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
+    openSheet('<div class="hd"><h2 id="sheetTitle">Open a Brickyard file</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
       '<p class="lede">This file has ' + plural(incoming, 'set') + (C.liveLots(doc).length ? ' and ' + plural(C.liveLots(doc).length, 'lot') + ' of loose pieces' : '') + '. Bringing it in merges it with what’s here, set by set, keeping whichever copy was changed last. Nothing here is lost.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
-    panel.querySelector('[data-close]').onclick = closeSheet;
     $('cs-go').onclick = function () {
       DOC = C.mergeDocs(DOC, doc); save(); closeSheet(); renderCatalog(); toast('Merged. You have ' + plural(C.live(DOC).length, 'set') + '.');
     };
@@ -517,7 +551,7 @@
 
   // ---------- menu ----------
   function menuSheet() {
-    var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
+    openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
       '<li><button type="button" id="m-claude"><span>Add from photos<small>Send Claude pictures of your sets and open its link</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
       (window.BrickyardSync && window.BrickyardSync.here ? '<li><button type="button" id="m-sync"><span>Sync with Google Drive<small>The same catalog on every device</small></span></button></li>' : '') +
@@ -527,7 +561,6 @@
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'
         : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.') + '</p></div>');
-    panel.querySelector('[data-close]').onclick = closeSheet;
     $('m-claude').onclick = claudeSheet;
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
     $('m-link').onclick = copyAll;
@@ -564,10 +597,9 @@
     made.then(function (h) {
       var link = SITE + h;
       var show = function () {
-        var panel = openSheet('<div class="hd"><h2 id="sheetTitle">Your catalog as a link</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+        openSheet('<div class="hd"><h2 id="sheetTitle">Your catalog as a link</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
           '<div class="bd"><p class="note">Copy this and open it on the other device. It adds what that device doesn’t have.</p><textarea class="paste" id="all-link" readonly style="min-height:160px">' + esc(link) + '</textarea></div>');
-        panel.querySelector('[data-close]').onclick = closeSheet;
-        $('all-link').select();
+            $('all-link').select();
       };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function () { closeSheet(); toast('Copied. Open the link on your other device.'); }, show);
       else show();
@@ -599,7 +631,7 @@
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
-    toast: toast, openSheet: openSheet, closeSheet: closeSheet, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

@@ -203,8 +203,7 @@
   }
   function sheet() {
     loadGis();
-    var panel = app.openSheet('<div class="hd"><h2 id="sheetTitle">Sync with Google Drive</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd" id="drive-sheet"></div>');
-    panel.querySelector('[data-close]').onclick = app.closeSheet;
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Sync with Google Drive</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd" id="drive-sheet"></div>');
     sheetBody();
   }
   function sheetBody() {

@@ -36,6 +36,8 @@ page.on('request', r => { if (!r.url().startsWith(base) && !r.url().startsWith('
 page.on('dialog', d => { problems.push('dialog: ' + d.message()); d.dismiss(); });
 const doc = () => page.evaluate(() => window.brickyard.doc());
 const live = async () => Object.values((await doc()).sets).filter(x => !x.del);
+// Closing a sheet with changes in it: Close asks first, and the next tap, a moment later, closes it.
+const discard = async p => { await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]'); };
 // A browser of its own with this catalog already saved in it, for checks that need particular sets.
 async function withSets(catalog, opts = {}) {
   const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, serviceWorkers: 'block', ...opts });
@@ -122,7 +124,7 @@ await page.click('#add-btn');
 await page.fill('#e-num', 'hello');
 await page.click('#e-save');
 assert.equal((await live()).length, 1);
-await page.click('[data-close]');
+await discard(page);
 
 // A set you already have takes a second tap to add again, and a double tap is still one tap.
 await page.click('#add-btn');
@@ -130,7 +132,7 @@ await page.fill('#e-num', '10698');
 await page.dblclick('#e-save');
 assert.equal((await live()).length, 1, 'a double tap does not add a second copy');
 assert.equal(await page.textContent('#e-save'), 'Add another copy');
-await page.click('[data-close]');
+await discard(page);
 
 // Open a link from Claude's script: the 10698 already owned comes in unticked.
 const dir = await mkdtemp(join(tmpdir(), 'brickyard-'));
@@ -324,6 +326,79 @@ await page.click('.chip[data-f="all"]');
   await c.close();
 }
 
+// What's typed in a sheet isn't thrown away on one slip. With changes in it, a tap on the dimmed page outside does
+// nothing, and Close or Escape ask first ("Discard changes?") and close on the next one. A sheet nothing was changed
+// in closes as it always did.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built' } },
+    cases: { k: { id: 'k', t: 1, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] } } });
+  const sheets = () => p.locator('.sheet').count(), outside = () => p.mouse.click(195, 12), close = () => p.textContent('[data-close]');
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await outside();
+  assert.equal(await sheets(), 0, 'a tap outside a sheet nothing was changed in closes it');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await p.fill('#e-missing', 'one green leaf');
+  await outside();
+  assert.deepEqual([await sheets(), await p.inputValue('#e-missing')], [1, 'one green leaf'], 'with something typed, a tap outside leaves the sheet open');
+  await p.click('[data-close]');
+  assert.deepEqual([await sheets(), await close()], [1, 'Discard changes?'], 'Close asks first');
+  await p.click('[data-close]');
+  assert.equal(await sheets(), 1, 'and a double tap is still one tap');
+  await p.type('#e-missing', ', and the pot');
+  assert.equal(await close(), 'Close', 'going back to typing puts Close back');
+  await p.keyboard.press('Escape');
+  assert.deepEqual([await sheets(), await close()], [1, 'Discard changes?'], 'Escape asks first too');
+  await p.waitForTimeout(700);
+  await p.keyboard.press('Escape');
+  assert.equal(await sheets(), 0, 'and the next one closes');
+  assert.equal(await p.evaluate(() => window.brickyard.doc().sets.a.missing), undefined, 'nothing was saved');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await p.click('#e-state [data-v="apart"]');
+  await outside();
+  assert.equal(await sheets(), 1, 'a changed state counts as a change');
+  await p.click('#e-state [data-v="built"]');
+  await outside();
+  assert.equal(await sheets(), 0, 'and put back as it was, the sheet closes on one tap again');
+  await p.click('.item:has-text("Bonsai Tree")');
+  await p.fill('#e-missing', 'one green leaf');
+  await p.click('#e-save');
+  assert.deepEqual([await sheets(), await p.evaluate(() => window.brickyard.doc().sets.a.missing)], [0, 'one green leaf'], 'Save saves without asking');
+  // A batch from Claude: unticking a set, or typing where they all go, is a change.
+  await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10497', name: 'Galaxy Explorer' }, { num: '21318', name: 'Tree House' }] } })).toString('base64url'));
+  await p.waitForSelector('#rv-add');
+  await p.click('.rv li >> nth=1 >> .t');
+  await outside();
+  assert.equal(await sheets(), 1, 'a batch with a set unticked stays open');
+  await p.click('.rv li >> nth=1 >> .t');
+  await p.fill('#rv-box', '4');
+  await p.click('[data-close]');
+  assert.deepEqual([await sheets(), await close()], [1, 'Discard changes?'], 'and with a box typed in, Not now asks first');
+  await p.fill('#rv-box', '');
+  assert.equal(await close(), 'Not now');
+  await p.click('[data-close]');
+  assert.equal(await sheets(), 0);
+  // The shelf planner's sheets: a bookcase, and a set's size and place.
+  await p.goto(base + '#shelves');
+  await p.click('[data-case="k"]');
+  await p.fill('#k-levels', '33, 33');
+  await outside();
+  assert.equal(await sheets(), 1, 'a bookcase being changed stays open');
+  await p.click('[data-close]');
+  await p.waitForTimeout(700);
+  await p.click('[data-close]');
+  assert.deepEqual([await sheets(), await p.evaluate(() => window.brickyard.doc().cases.k.levels.length)], [0, 1], 'and is left as it was once discarded');
+  await p.click('[data-act="add-case"]');
+  await p.click('#k-preset [data-k="2"]');
+  await outside();
+  assert.equal(await sheets(), 0, 'choosing a preset for a new bookcase isn’t something to lose');
+  await p.click('#shelves-body .list .item:has-text("Bonsai Tree")');
+  await p.fill('#z-h', '18');
+  await outside();
+  assert.deepEqual([await sheets(), await p.inputValue('#z-h')], [1, '18'], 'a set’s size being typed stays open');
+  await c.close();
+}
+
 // Remove a set.
 await page.click('.item:has-text("Medieval Castle")');
 await page.dblclick('#e-del');
@@ -458,7 +533,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.evaluate(() => window.brickyard.toast('Saved'));
   b = await box();
   assert.ok(b.width < 120 && Math.abs(b.x + b.width / 2 - 195) < 1, 'a short one stays small and centred (' + Math.round(b.width) + ')');
-  await p.click('[data-close]');
+  await discard(p);
   await p.evaluate(() => { window.undone = 0; window.brickyard.toast('Removed Tree House', false, { label: 'Undo', run: () => { window.undone++; } }); });
   assert.equal(await p.textContent('.toast button'), 'Undo');
   await p.click('.toast button');
