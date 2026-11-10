@@ -1862,6 +1862,48 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// The picture's finishing touches: a fence and a door frame have no glass in them (a window does), the "Drag to
+// turn" line goes by itself after a few seconds, a see-through piece's swatch is see-through in All the pieces
+// too, and with the keyboard on the picture the arrow keys turn it and + and - zoom, without changing the step.
+{
+  const { c, p } = await withSets({ sets: {} }, { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: false });
+  const model = { name: 'Fence and door', parts: [['3020', 2, 0, 0, 0, 0, 1], ['3020', 2, 4, 0, 0, 0, 1], ['3020', 2, 8, 0, 0, 0, 1], ['3001', 4, 2, 1, 0, 0, 1], ['3001', 4, 6, 1, 0, 0, 1],
+    ['15332', 15, 0, 4, 1, 0, 2], ['60596', 15, 4, 4, 1, 0, 2], ['60592', 33, 8, 4, 1, 0, 2]] };
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model })).toString('base64url'));
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === 'Fence and door');
+  const view = () => p.evaluate(() => window.BrickyardBuild.inView());
+  assert.equal((await view()).panes, 1, 'only the window has glass: not the fence, not the door frame');
+  assert.equal(await p.isVisible('#stage-hint'), true);
+  await p.waitForFunction(() => document.getElementById('stage-hint').hidden, null, { timeout: 8000 });
+  await p.click('#model-menu'); await p.click('#mm-parts');
+  assert.deepEqual(await p.$$eval('.sheet .need li', ls => ls.filter(l => /Trans/.test(l.textContent)).map(l => l.querySelector('i').style.opacity)), ['0.6'], 'a see-through piece’s swatch in All the pieces');
+  await p.click('[data-close]');
+  // Keys on the picture.
+  assert.deepEqual(await p.$eval('#stage', e => [e.tabIndex, e.getAttribute('role'), /arrow keys turn it, plus and minus zoom/.test(e.getAttribute('aria-label'))]), [0, 'img', true]);
+  await p.click('#step-next');
+  const first = await view();
+  await p.focus('#stage');
+  await p.keyboard.press('ArrowRight');
+  let v = await view();
+  assert.deepEqual([v.moved, v.box.join() !== first.box.join(), await p.textContent('.stepnum'), await p.isVisible('#stage-reset')], [true, true, 'Step 2 of 2', true], 'an arrow key on the picture turns it, and leaves the step');
+  await p.keyboard.press('ArrowLeft');
+  v = await view();
+  assert.deepEqual([v.box.map(n => n.toFixed(3)), await p.textContent('.stepnum')], [first.box.map(n => n.toFixed(3)), 'Step 2 of 2'], 'and the other arrow turns it back');
+  const wide = b => b[2] - b[0];
+  await p.keyboard.press('+');
+  assert.ok(wide((await view()).box) > wide(first.box) * 1.1, 'plus zooms in');
+  await p.keyboard.press('-'); await p.keyboard.press('-');
+  assert.ok(wide((await view()).box) < wide(first.box) * 0.9, 'minus zooms out');
+  for (let i = 0; i < 12; i++) await p.keyboard.press('ArrowUp');
+  assert.ok((await view()).polar <= 0.5201, 'up stops just under the horizon');
+  for (let i = 0; i < 30; i++) await p.keyboard.press('ArrowDown');
+  assert.ok((await view()).polar > 0, 'down stops above the model');
+  await p.evaluate(() => document.activeElement.blur());
+  await p.keyboard.press('ArrowLeft');
+  assert.equal(await p.textContent('.stepnum'), 'Step 1 of 2', 'away from the picture, the arrows are steps again');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

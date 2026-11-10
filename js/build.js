@@ -407,6 +407,7 @@ range.addEventListener('pointercancel', letGo);
 document.addEventListener('keydown', e => {
   if (!current || $('model-view').hidden || document.querySelector('.scrim')) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return; // Alt+Left is the browser's Back
+  if (e.target === $('stage')) return; // on the picture, the arrows turn it (turnKeys)
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return; // the step slider moves itself
   if (e.key === 'ArrowRight') showStep(current.at + 1);
   if (e.key === 'ArrowLeft') showStep(current.at - 1);
@@ -438,7 +439,7 @@ function partsSheet() {
   app.openSheet('<div class="hd"><h2 id="sheetTitle">All the pieces</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
     '<ul class="need wide">' + rows.map(k => {
       const [p, c] = k.split('/'), col = colorOf(c), have = pool ? pool[k] || 0 : null, need = res.used[k];
-      return '<li' + (have !== null && have < need ? ' class="short"' : '') + '><i style="background:' + col.hex + '"></i><span><b>' + need + '×</b> ' + esc(partName(p)) +
+      return '<li' + (have !== null && have < need ? ' class="short"' : '') + '><i style="background:' + col.hex + (col.alpha ? ';opacity:.6' : '') + '"></i><span><b>' + need + '×</b> ' + esc(partName(p)) +
         '<small>' + esc(col.name) + ' · ' + p + (have === null ? '' : ' · you have ' + have) + '</small></span></li>';
     }).join('') + '</ul></div>');
 }
@@ -455,6 +456,8 @@ function wake() { if (running && !raf) raf = requestAnimationFrame(loop); }
 let view = null; // { box, centre, radius: the model's bounds, moved: the person has turned or zoomed the picture }
 // Seen from the front right and a little above, like a set's instructions.
 const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize();
+// Frames with no glass in them: the fence (bars) and the door frame (an empty opening). The rest are windows.
+const FENCE = '15332', OPEN = [FENCE, '60596'];
 const mats = {}, geos = {}, lines = {}, studs = {}, panes = {}; // made once for each colour or part, and kept
 
 function startStage() {
@@ -473,10 +476,8 @@ function startStage() {
     controls.enablePan = false;
     controls.maxPolarAngle = Math.PI * 0.52; // stops just under the horizon: from below a model is a blank slab
     controls.addEventListener('change', redraw);
-    controls.addEventListener('start', () => {
-      $('stage-hint').hidden = true;
-      if (view) { view.moved = true; $('stage-reset').hidden = false; }
-    });
+    controls.addEventListener('start', movedIt);
+    canvas.addEventListener('keydown', turnKeys);
     $('stage-reset').onclick = () => {
       // With damping off for one update, whatever was left of a flick is spent before the camera is put back.
       controls.enableDamping = false; controls.update(); controls.enableDamping = true;
@@ -486,20 +487,50 @@ function startStage() {
     new ResizeObserver(resize).observe(canvas);
     // A phone can take the picture away (the tab left in the background, memory running short). The browser brings
     // it back by itself; until then the stage says so, where it was a blank box with a sad face.
-    let hint = null;
     canvas.addEventListener('webglcontextlost', () => {
       const h = $('stage-hint');
-      if (!hint) hint = { text: h.textContent, hidden: h.hidden };
+      if (!dropped) dropped = { text: h.textContent, hidden: h.hidden };
       h.textContent = 'The picture was dropped. It comes back by itself, or reload.'; h.hidden = false;
     });
     canvas.addEventListener('webglcontextrestored', () => {
       const h = $('stage-hint');
-      if (hint) { h.textContent = hint.text; h.hidden = hint.hidden; hint = null; }
+      if (dropped) { h.textContent = dropped.text; h.hidden = dropped.hidden; dropped = null; }
       redraw();
     });
   }
   running = true;
   resize();
+  redraw();
+  // "Drag to turn" has been read after a few seconds, and sits on the front of a model that fills the stage.
+  if (!hintTimer && !$('stage-hint').hidden) hintTimer = setTimeout(hideHint, 4000);
+}
+let dropped = null, hintTimer = 0; // the hint as it was before "The picture was dropped" took its place
+function hideHint(now) {
+  const h = $('stage-hint');
+  if (dropped) dropped.hidden = true;
+  else if (now === true) h.hidden = true;
+  else if (!h.hidden) { h.classList.add('going'); setTimeout(() => { h.classList.remove('going'); if (!dropped) h.hidden = true; }, 500); } // it fades (css/app.css)
+}
+// The person has turned or zoomed the picture: the hint has done its job, and Reset view shows.
+function movedIt() {
+  hideHint(true);
+  if (view) { view.moved = true; $('stage-reset').hidden = false; }
+}
+// With the picture focused, the arrow keys turn it and + and - zoom, so a keyboard can look round a model too.
+function turnKeys(e) {
+  if (!view || e.altKey || e.ctrlKey || e.metaKey) return;
+  // The model goes the way the arrow points, as it follows a finger: right turns it to the right, up tips it up.
+  const turn = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key], zoom = { '+': 0.8, '=': 0.8, '-': 1.25, _: 1.25 }[e.key];
+  if (!turn && !zoom) return;
+  e.preventDefault();
+  const off = camera.position.clone().sub(controls.target), at = new THREE.Spherical().setFromVector3(off);
+  if (turn) {
+    at.theta += turn[0] * Math.PI / 12; // 15 degrees a press
+    at.phi = Math.max(0.05, Math.min(controls.maxPolarAngle, at.phi + turn[1] * Math.PI / 18));
+  } else at.radius = Math.max(controls.minDistance, Math.min(controls.maxDistance, at.radius * zoom));
+  camera.position.copy(controls.target).add(off.setFromSpherical(at));
+  controls.update();
+  movedIt();
   redraw();
 }
 function stopStage() {
@@ -577,6 +608,8 @@ function bodies(p) {
     case 'frame':
       out.push(box(w - e * 2, PLATE, d - e * 2, e, 0, e), box(w - e * 2, PLATE, d - e * 2, e, H - PLATE, e),
         box(0.22, H, d - e * 2, e, 0, e), box(0.22, H, d - e * 2, w - 0.22 - e, 0, e));
+      // A fence has bars where a window has glass: a thin upright at each stud line between its ends.
+      if (p === FENCE) for (let x = 1; x < w; x++) out.push(box(0.12, H - PLATE * 2, 0.3, x - 0.06, PLATE, d / 2 - 0.15));
       break;
     default: out.push(box(w - e * 2, H, d - e * 2, e, 0, e));
   }
@@ -618,7 +651,7 @@ function partObject(q) {
     inner.add(new THREE.Mesh(g, mat));
     inner.add(new THREE.LineSegments(edgesOf(p)[i], edgeMat));
   });
-  if (sh.k === 'frame') inner.add(new THREE.Mesh(paneOf(p), glassMat));
+  if (sh.k === 'frame' && !OPEN.includes(p)) inner.add(new THREE.Mesh(paneOf(p), glassMat));
   if (studsOf(p)) inner.add(new THREE.Mesh(studsOf(p), mat));
   if (p === '98138p07' || p === '98138p0c') {
     const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.position.set(0.5, sh.h * PLATE, 0.5);
@@ -686,7 +719,9 @@ function inView() {
     const x = (p.x + 1) / 2, y = (1 - p.y) / 2;
     r[0] = Math.min(r[0], x); r[1] = Math.min(r[1], y); r[2] = Math.max(r[2], x); r[3] = Math.max(r[3], y);
   });
-  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved };
+  let panes = 0;
+  scene.traverse(o => { if (o.material === glassMat) panes++; });
+  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes };
 }
 
 function showUpTo(step, animate) {
