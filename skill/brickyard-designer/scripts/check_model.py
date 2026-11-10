@@ -193,22 +193,26 @@ def check(model, shapes, pool):
         g = {}
         for i in members:
             g.setdefault(find(i), []).append(i)
-        return list(g.values())
+        # The biggest group first, and of two the same size the one holding the earliest-listed part, each
+        # group's parts in the order they're listed: the same choice js/build-core.js makes.
+        return sorted(g.values(), key=lambda grp: (-len(grp), grp[0]))
 
     whole = groups([q['i'] for q in ok])
-    if len(whole) > 1:
-        whole.sort(key=len, reverse=True)
-        for g in whole[1:]:
-            problems.append(dict(kind='loose', parts=g, text=('A part isn’t' if len(g) == 1 else f'{len(g)} parts aren’t') + ' joined to the rest of the model'))
+    for g in whole[1:]:
+        problems.append(dict(kind='loose', parts=g, text=('A part isn’t' if len(g) == 1 else f'{len(g)} parts aren’t') + ' joined to the rest of the model'))
+    # Every step on the way holds together too. A step's parts are fine when their group, among everything built
+    # so far, holds a part from an earlier step. A group made only of this step's parts hangs in the air, however
+    # big it is. The first step has nothing earlier, so its biggest group starts the model.
     steps = sorted({q['s'] for q in ok})
     if len(whole) == 1:
-        for s in steps:
-            g = groups([q['i'] for q in ok if q['s'] <= s])
-            if len(g) > 1:
-                g.sort(key=len, reverse=True)
-                lone = [i for grp in g[1:] for i in grp if by_index[i]['s'] == s]
-                if lone:
-                    problems.append(dict(kind='order', step=s, parts=lone, text=f'Step {s} has parts with nothing to join to yet'))
+        for n, s in enumerate(steps):
+            lone = []
+            for k, grp in enumerate(groups([q['i'] for q in ok if q['s'] <= s])):
+                joined = any(by_index[i]['s'] < s for i in grp) if n else k == 0
+                if not joined:
+                    lone += grp
+            if lone:
+                problems.append(dict(kind='order', step=s, parts=sorted(lone), text=f'Step {s} has parts with nothing to join to yet'))
     seen = set()
     for a, b in edges:
         below, above = by_index[a], by_index[b]

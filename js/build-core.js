@@ -135,28 +135,35 @@
       function find(i) { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; }
       edges.forEach(function (e) { if (e[0] in up && e[1] in up) up[find(e[0])] = find(e[1]); });
       var g = {}; members.forEach(function (i) { (g[find(i)] = g[find(i)] || []).push(i); });
-      return Object.keys(g).map(function (k) { return g[k]; });
+      // The biggest group first, and of two the same size the one holding the earliest-listed part, each group's
+      // parts in the order they're listed: so the page and check_model.py name the same parts, whichever way
+      // either happens to walk them.
+      return Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) { return b.length - a.length || a[0] - b[0]; });
     }
 
     // The whole model holds together…
     var all = groups(ok.map(function (q) { return q.i; }));
     if (all.length > 1) {
-      all.sort(function (a, b) { return b.length - a.length; });
       all.slice(1).forEach(function (g) {
         problems.push({ kind: 'loose', parts: g, text: (g.length === 1 ? 'A part isn’t' : g.length + ' parts aren’t') + ' joined to the rest of the model' });
       });
     }
-    // …and so does every step on the way, so it can be built in that order.
+    // …and so does every step on the way, so it can be built in that order. A step's parts are fine when their
+    // group, among everything built so far, holds a part from an earlier step: they join onto what's built. A
+    // group made only of this step's parts hangs in the air, however big it is. (Calling the biggest group "the
+    // model" passed a step that built a bigger lump beside the model, and gave the same model two verdicts
+    // depending on the order its parts were listed in.) The first step has nothing earlier, so its biggest
+    // group starts the model.
     var steps = ok.map(function (q) { return q.s; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return a - b; });
     if (all.length === 1) {
-      steps.forEach(function (s) {
-        var sofar = ok.filter(function (q) { return q.s <= s; }).map(function (q) { return q.i; });
-        var g = groups(sofar);
-        if (g.length > 1) {
-          g.sort(function (a, b) { return b.length - a.length; });
-          var lone = [].concat.apply([], g.slice(1)).filter(function (i) { return byIndex[i].s === s; });
-          if (lone.length) problems.push({ kind: 'order', step: s, parts: lone, text: 'Step ' + s + ' has parts with nothing to join to yet' });
-        }
+      steps.forEach(function (s, n) {
+        var lone = [];
+        groups(ok.filter(function (q) { return q.s <= s; }).map(function (q) { return q.i; })).forEach(function (g, k) {
+          var joined = n ? g.some(function (i) { return byIndex[i].s < s; }) : k === 0;
+          if (!joined) lone = lone.concat(g);
+        });
+        lone.sort(function (a, b) { return a - b; });
+        if (lone.length) problems.push({ kind: 'order', step: s, parts: lone, text: 'Step ' + s + ' has parts with nothing to join to yet' });
       });
     }
     // Worth knowing: a part pushed on from below, under something already built.
