@@ -48,7 +48,7 @@ LONG_LINK = 'NOTE: this link is long. Lead with the file; some apps cut long lin
 def s(v, n):
     if isinstance(v, (bool, dict, list)) or v is None:
         return ''
-    return re.sub(r'\s+', ' ', str(v)).strip()[:n]
+    return re.sub(r'\s+', ' ', str(v)).strip()[:n].strip()  # trimmed again after the cut, as s in js/core.js is
 
 
 def para(v, n):

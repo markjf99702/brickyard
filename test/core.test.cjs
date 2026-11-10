@@ -106,6 +106,44 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   eq(C.cleanBatch({ batch: { sets: [{ num: '10497' }] } }).id, C.cleanBatch({ batch: { sets: [{ num: '10497' }] } }).id, 'same content, same id');
 }
 
+// Cleaning a set twice gives what cleaning it once gave. Text cut at a field's limit is trimmed again after the cut:
+// a cut that landed just after a space used to leave the space on the end, which the next read of the catalog trimmed
+// off (a 40-character box label was 39 the second time). And words every object answers to aren't states or tags
+// already seen: the state "constructor" came back as a function, and a tag "constructor" was dropped.
+{
+  const twice = x => C.cleanSet(C.cleanSet(x));
+  const label = 'Typewriter theand2015 Typewriter3Galaxy 2'; // its 40th character is a space
+  eq([label.charAt(39), C.cleanSet({ name: 'n', box: label }).box], [' ', 'Typewriter theand2015 Typewriter3Galaxy'], 'a cut that lands after a space leaves no space on the end');
+  // Every one-line field, with a space as the last character kept and as the first one cut, and text that just fits.
+  const LIMITS = { name: 160, theme: 60, room: 60, spot: 60, box: 40, check: 300 };
+  const rnd = rng(11), word = () => Array.from({ length: 1 + Math.floor(rnd() * 9) }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(rnd() * 36)]).join('');
+  let stable = 0, kept = 0, n = 0;
+  for (let round = 0; round < 60; round++) {
+    for (const f of Object.keys(LIMITS)) {
+      for (const at of [LIMITS[f] - 1, LIMITS[f], LIMITS[f] + 1]) {
+        let t = ''; while (t.length < at - 1) t += word() + (rnd() < 0.3 ? '  ' : ' ');
+        t = t.slice(0, at - 1).replace(/ $/, 'x') + ' ' + word() + ' ' + word(); // a space as character number `at`
+        const x = { name: 'n', tags: [t, t + ' again'] }; x[f] = t;
+        n++;
+        if (JSON.stringify(twice(x)) === JSON.stringify(C.cleanSet(x))) stable++;
+        const fits = { name: 'n' }; fits[f] = C.cleanSet(x)[f];
+        if (C.cleanSet(fits)[f] === fits[f] && fits[f].length <= LIMITS[f] && fits[f] === fits[f].trim()) kept++;
+      }
+    }
+  }
+  eq([stable, kept], [n, n], 'cleaning twice is cleaning once, for text cut at each field’s limit');
+  const lot = C.cleanLot({ name: 'x'.repeat(79) + ' tub', box: 'y'.repeat(39) + ' 2', parts: [['3001', 4, 1, 'z'.repeat(59) + ' brick']] });
+  eq([lot.name, lot.box, lot.parts[0][3]], ['x'.repeat(79), 'y'.repeat(39), 'z'.repeat(59)], 'the same for a lot’s name, its box and a part’s name');
+  // A value inside its limit cleans to itself, spaces in the middle and all.
+  const whole = { num: '10698-1', name: 'a'.repeat(79) + ' ' + 'b'.repeat(80), theme: 'c'.repeat(29) + ' ' + 'd'.repeat(30), room: 'e'.repeat(60), spot: 'The tall white Billy between the window and the doo, shelf 1', box: 'f'.repeat(38) + ' 2',
+    state: 'built', tags: ['g'.repeat(38) + ' h', 'constructor'], check: 'i'.repeat(299) + 'j' };
+  check(C.sameDoc(C.cleanSet(whole), whole), 'a set whose text is inside its limits cleans to itself');
+  eq([typeof C.state('constructor'), C.state('constructor'), C.state('toString'), C.state('__proto__'), C.state('Taken Apart'), C.state('nib')], ['string', '', '', '', 'apart', 'sealed'], 'a word every object answers to is not a state');
+  eq(C.cleanSet({ name: 'O', state: 'constructor', status: 'valueOf' }), { name: 'O' }, 'and a set sent with one has no state');
+  eq(C.cleanSet({ name: 'O', tags: ['constructor', 'Constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf', 'toString'] }).tags, ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf'], 'nor a tag that was seen already');
+  eq(C.cleanBatch({ batch: { state: 'constructor', sets: [{ name: 'O' }] } }).sets, [{ name: 'O' }], 'nor a batch’s state');
+}
+
 // Doubles.
 {
   const doc = C.cleanDoc({ catalog: { sets: { a: { id: 'a', t: 1, num: '10698', name: 'Box' }, b: { id: 'b', t: 1, name: 'Custom Castle' }, c: { id: 'c', t: 2, del: 1 } } } });
@@ -461,6 +499,16 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     eq([offCm.length, offCm.slice(0, 5)], [0, []], 'script and page give the same cm for all ' + cms.length.toLocaleString() + ' sizes');
     const pyN = callPy('mb.whole(v, 0, 20000)', counts), offN = counts.filter((v, i) => pyN[i] !== (C.cleanSet({ name: 'x', pieces: v }).pieces || 0));
     eq([offN.length, offN.slice(0, 5)], [0, []], 'and the same whole number for every half');
+    // The script trims text again after cutting it, as the page does, and has no state or tag of its own for the
+    // words every object answers to.
+    const edges = [
+      { name: 'n', box: 'Typewriter theand2015 Typewriter3Galaxy 2', room: 'r'.repeat(59) + ' 2', spot: 's'.repeat(59) + '  shelf', theme: 't'.repeat(59) + ' u', check: 'c'.repeat(299) + ' d' },
+      { name: 'x'.repeat(159) + ' y', tags: ['constructor', 'g'.repeat(39) + ' h', 'toString', 'Constructor'], state: 'constructor' },
+      { num: '10698-1', name: 'a'.repeat(79) + ' ' + 'b'.repeat(80), room: 'e'.repeat(60), spot: 'The tall white Billy between the window and the doo, shelf 1', box: 'f'.repeat(38) + ' 2', state: 'built', tags: ['g'.repeat(38) + ' h'] },
+    ];
+    const pyEdges = callPy('mb.clean(v, 0, [])', edges);
+    edges.forEach((x, i) => check(C.sameDoc(pyEdges[i], C.cleanSet(x)), 'script and page agree on text cut at its limit, set ' + (i + 1) + '\n    script ' + JSON.stringify(pyEdges[i]) + '\n    page   ' + JSON.stringify(C.cleanSet(x))));
+    check(C.sameDoc(pyEdges[2], edges[2]), 'and text inside its limits comes through the script as it went in');
     // A file the script can't use ends in its own words, not a Python traceback: one that is a bare string or number
     // has no sets in it. A number too big to be one (1e999, which both Python and the page read as infinity) is 0
     // to both, so the set comes through without it.

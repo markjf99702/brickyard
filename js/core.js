@@ -12,9 +12,12 @@
     sealed: 'sealed', 'new in box': 'sealed', nib: 'sealed', misb: 'sealed', unopened: 'sealed', new: 'sealed',
   };
 
+  // One line of text, at most n characters. Trimmed again after the cut: a cut that landed just after a space left
+  // the space on the end, and the next time the catalog was read it was trimmed off, so a 40-character box label
+  // became 39 and the set looked changed. Text inside its limit comes back as it is.
   function s(v, n) {
     if (typeof v === 'boolean' || v == null || typeof v === 'object') return '';
-    return String(v).replace(/\s+/g, ' ').trim().slice(0, n);
+    return String(v).replace(/\s+/g, ' ').trim().slice(0, n).trim();
   }
   function para(v, n) {
     if (typeof v !== 'string') return '';
@@ -74,7 +77,7 @@
 
   function names(v, n) {
     if (typeof v === 'string') v = v.split(/\s*[,;]\s*/);
-    var out = [], seen = {};
+    var out = [], seen = Object.create(null); // nothing in it to start with: a tag "constructor" was dropped as seen already
     (Array.isArray(v) ? v : []).forEach(function (x) {
       x = s(x, 40); var k = x.toLowerCase();
       if (x && !seen[k]) { seen[k] = 1; out.push(x); }
@@ -85,7 +88,8 @@
   function state(v) {
     var k = s(v, 30).toLowerCase();
     if (STATES.indexOf(k) >= 0) return k;
-    return STATE_WORDS[k] || '';
+    // Only the words in the list: "constructor" is on every object, and came back as a function for a state.
+    return Object.prototype.hasOwnProperty.call(STATE_WORDS, k) ? STATE_WORDS[k] : '';
   }
 
   // One set, from anywhere (Claude's batch, a file, the form). Unknown fields are dropped and values that
