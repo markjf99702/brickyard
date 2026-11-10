@@ -88,7 +88,9 @@ await B.page.evaluate(() => { const d = window.brickyard.doc(); const x = Object
 await A.page.waitForTimeout(14000); await synced(A.page); await synced(B.page);
 assert.deepEqual(inDriveRooms(), ['Office', 'Hall'], 'edits made on two devices at once both reach Drive');
 assert.deepEqual(await rooms(A.page), ['Office', 'Hall'], 'and the first device');
-await syncNow(B.page); // it would on its own within a minute, or when the page is next opened
+// The second too, without being asked: each looks twice after writing (5 and 10 seconds on), so whichever of them
+// wrote last has the other's edit as well. With one look, it went without it until the next minute came round,
+// about one time in five for the first device and one in two for the second.
 assert.deepEqual(await rooms(B.page), ['Office', 'Hall'], 'and the second');
 await A.page.evaluate(() => window.brickyard.putSet(Object.assign({}, window.brickyard.doc().sets.a2, { room: 'Den' })));
 await A.page.waitForTimeout(100);

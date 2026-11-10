@@ -141,7 +141,7 @@
     });
   }
 
-  var syncing = false, again = false, timer = null, edits = 0, told = '';
+  var syncing = false, again = false, timer = null, edits = 0, told = '', looks = 0;
   function sync() {
     if (!here || !D.on) return Promise.resolve();
     if (syncing) { again = true; return Promise.resolve(); }
@@ -168,8 +168,13 @@
       D.last = Date.now(); D.err = ''; told = ''; saveD(); syncing = false; render();
       if (again || D.pending) { again = false; soon(); }
       // Drive can't refuse a write that crosses another device's, so look again shortly after writing: if the
-      // file moved on, the next round merges this device's changes back in.
-      else if (wrote) { clearTimeout(timer); timer = setTimeout(sync, 5000); }
+      // file moved on, the next round merges this device's changes back in. And once more after that: when two
+      // devices write in the same moment, the one that wrote second finds nothing new on its first look (the other
+      // is only then merging), and went without the other's change until the next minute came round.
+      else {
+        if (wrote) looks = 2;
+        if (looks > 0) { looks--; clearTimeout(timer); timer = setTimeout(sync, 5000); }
+      }
     }, function (e) {
       syncing = false; again = false;
       if (e.auth) { dropShared(D.token); D.token = ''; D.exp = 0; }
