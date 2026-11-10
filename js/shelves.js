@@ -114,8 +114,8 @@
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
-      var x0 = T, u = S.used(l, ids), tall = 0, row = [];
-      if (u > c.w + 0.01) over++;
+      var x0 = T, full = S.overfull(c, l, ids), tall = 0, row = [];
+      if (full) over++;
       // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
       // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
       var text = (li + 1) + ' · ' + cm(l.h) + ' cm', tw = text.length * 1.28 + 1.6;
@@ -148,7 +148,7 @@
           label(x, r.x0, top, f, tag) + '</g>');
       });
       y += l.h; high += tall;
-      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (u > c.w + 0.01 || tall ? ' style="fill:var(--red)"' : '') + '/>');
+      parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (full || tall ? ' style="fill:var(--red)"' : '') + '/>');
       y += T;
     });
     var names = gone.slice(0, 3).map(nameOf), more = gone.length - names.length;

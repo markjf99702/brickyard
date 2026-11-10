@@ -17,16 +17,22 @@
     return turn ? { along: z.d, deep: z.w, h: z.h } : { along: z.w, deep: z.d, h: z.h };
   }
 
+  // Sizes are kept to 0.1 cm, and widths are added up and compared in whole tenths: in a computer's arithmetic
+  // 76 - 11.4 - 1 is 63.599999999999994, so two sets that filled a shelf exactly were told there was no room.
+  function tenths(x) { return Math.round(x * 10); }
+
   // Width used on a level, given the sets on it and a lookup from id to set.
   function used(level, byId, skip) {
     var n = 0, total = 0;
     level.sets.forEach(function (p) {
       var x = byId[p.id];
       if (!x || p.id === skip || !hasSize(x)) return;
-      total += footprint(x, p.turn).along; n++;
+      total += tenths(footprint(x, p.turn).along); n++;
     });
-    return total + (n > 1 ? (n - 1) * GAP : 0);
+    return (total + (n > 1 ? (n - 1) * tenths(GAP) : 0)) / 10;
   }
+  // Whether what's on a level takes more width than the bookcase has.
+  function overfull(c, level, byId) { return tenths(used(level, byId)) > tenths(c.w); }
 
   // Can set x go on level li of bookcase c (leaving out where it already is)? Returns the way it fits
   // ({turn}) or why not ({why}). Facing out is preferred; side-on only when facing out won't fit. Only a shelf
@@ -37,13 +43,13 @@
     var level = c.levels[li];
     if (x.size.h > level.h) return { why: 'Too tall (' + x.size.h + ' cm, the shelf has ' + level.h + ')' };
     var u = used(level, byId, x.id), others = level.sets.filter(function (p) { return p.id !== x.id && byId[p.id] && hasSize(byId[p.id]); }).length;
-    var room = c.w - u - (others ? GAP : 0);
+    var room = tenths(c.w) - tenths(u) - (others ? tenths(GAP) : 0); // in tenths of a cm
     var ways = preferTurn ? [true, false] : [false, true], deep = 0, wide = 0;
     for (var i = 0; i < 2; i++) {
       var f = footprint(x, ways[i]);
       if (f.deep > c.d) { deep++; continue; }
       if (f.along > c.w) { wide++; continue; }
-      if (f.along > room) continue;
+      if (tenths(f.along) > room) continue;
       return { turn: ways[i] };
     }
     var least = Math.min(x.size.w, x.size.d);
@@ -147,7 +153,7 @@
         c.levels.forEach(function (l, li) {
           var f = fits(c, li, x, byId);
           if (f.why) return;
-          var spare = l.h - x.size.h, rest = c.w - used(l, byId) - footprint(x, f.turn).along;
+          var spare = l.h - x.size.h, rest = tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along);
           if (!best || spare < best.spare || (spare === best.spare && rest < best.rest)) best = { c: c, l: l, turn: f.turn, spare: spare, rest: rest };
         });
       });
@@ -220,7 +226,7 @@
     });
   }
 
-  var api = { GAP: GAP, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, fits: fits, whyNot: whyNot, placements: placements, sort: sort, dedupe: dedupe,
+  var api = { GAP: GAP, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, placements: placements, sort: sort, dedupe: dedupe,
     fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.ShelfCore = api;
 })(this);

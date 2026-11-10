@@ -82,6 +82,32 @@ const galaxy = set('galaxy', 51, 25, 33), billy = { id: 'b', name: 'Billy', w: 7
 eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 'too tall for one bookcase and too big for the other');
 eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
 
+// Sets that fill a shelf exactly fit. Sizes are kept to 0.1 cm, and sums of those aren't exact in a computer's
+// arithmetic (76 - 11.4 - 1 is 63.599999999999994), so 11.4 + 1 + 63.6 on a 76 cm shelf was "Not enough room".
+{
+  const a = set('a', 11.4, 10, 10), b = set('b', 63.6, 10, 10), k76 = { id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }] };
+  eq(S.fits(k76, 0, b, ids([a, b])), { turn: false }, '11.4 + 1 + 63.6 fits a 76 cm shelf');
+  eq(S.fits(k76, 0, set('b2', 63.7, 26, 10), ids([a])).why, 'Not enough room left on this shelf', 'and 0.1 cm more does not');
+  const three = [set('p', 20.1, 10, 10), set('q', 20.2, 10, 10), set('r', 33.7, 10, 10)], k3s = { id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'p' }, { id: 'q' }] }] };
+  eq(S.fits(k3s, 0, three[2], ids(three)), { turn: false }, '20.1 + 20.2 + 33.7 and two gaps fit 76');
+  k3s.levels[0].sets.push({ id: 'r' });
+  eq(S.used(k3s.levels[0], ids(three)), 76, 'and use exactly 76');
+  // Every pair and every three of 0.1 cm widths that fill a shelf exactly, for a few shelf widths.
+  let refused = 0, tried = 0;
+  for (const w of [76, 36, 33, 80.5, 59.7]) {
+    for (let i = 1; i < (w - 1) * 10; i += 7) {
+      const x = set('x', i / 10, 5, 5), y = set('y', Math.round((w - 1) * 10 - i) / 10, 5, 5), kw = { id: 'k', name: 'K', w, d: 26, levels: [{ h: 32, sets: [{ id: 'x' }] }] };
+      tried++; if (S.fits(kw, 0, y, ids([x, y])).why) refused++;
+      for (let j = 1; j < (w - 2) * 10 - i; j += 53) {
+        const y2 = set('y', j / 10, 5, 5), z = set('z', Math.round((w - 2) * 10 - i - j) / 10, 5, 5), k2 = { id: 'k', name: 'K', w, d: 26, levels: [{ h: 32, sets: [{ id: 'x' }, { id: 'y' }] }] };
+        tried++; if (S.fits(k2, 0, z, ids([x, y2, z])).why) refused++;
+      }
+    }
+  }
+  eq([refused, tried > 2000], [0, true], 'no exact fit is refused');
+  const full = S.fill([{ id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 32, sets: [] }] }], [a, b]);
+  eq([full.cases[0].levels[0].sets.length, full.left.length], [2, 0], 'Fit puts both on the shelf');
+}
 // A set that stops belonging on its shelf. One whose size was cleared is still placed, and is listed under Needs a
 // size too (it isn't drawn, and was in neither list). One taken apart since stays placed, for the page to flag, and
 // Fit leaves it where it is.
