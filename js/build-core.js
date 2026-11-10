@@ -175,13 +175,16 @@
         if (lone.length) problems.push({ kind: 'order', step: s, parts: lone, text: 'Step ' + s + ' has parts with nothing to join to yet' });
       });
     }
-    // Worth knowing: a part pushed on from below, under something already built.
+    // Worth knowing: a part pushed on from below, under something already built. One note for each step that has
+    // any, in step order, with every such part of the step in the order they're listed.
+    var under = {};
     edges.forEach(function (e) {
       var below = byIndex[e[0]], above = byIndex[e[1]];
-      if (below.s > above.s) notes.push({ kind: 'under', step: below.s, parts: [below.i], text: 'Step ' + below.s + ' pushes a part on from underneath' });
+      if (below.s > above.s) (under[below.s] = under[below.s] || {})[below.i] = 1;
     });
-    var seen = {};
-    notes = notes.filter(function (n) { var k = n.kind + n.step; if (seen[k]) return false; seen[k] = 1; return true; });
+    Object.keys(under).map(Number).sort(function (a, b) { return a - b; }).forEach(function (s) {
+      notes.push({ kind: 'under', step: s, parts: Object.keys(under[s]).map(Number).sort(function (a, b) { return a - b; }), text: 'Step ' + s + ' pushes a part on from underneath' });
+    });
 
     var count = ok.length;
     var size = { w: 0, d: 0, h: 0 };

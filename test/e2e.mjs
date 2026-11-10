@@ -1681,12 +1681,13 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x + 195, y: s.y + 380 }] });
   for (let k = 1; k <= 12; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x + 195, y: s.y + 380 - k * 25 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await p.waitForTimeout(600);
+  await p.waitForFunction(() => window.BrickyardBuild.inView().moved);
+  await p.waitForTimeout(600); // the turn eases out
   v = await p.evaluate(() => window.BrickyardBuild.inView());
   assert.ok(v.moved && v.polar > 0.45 && v.polar <= 0.5201, 'a long drag up stops just under the horizon, not underneath: ' + v.polar.toFixed(3));
   assert.equal(await p.isVisible('#stage-reset'), true, 'Reset view shows once the picture has been moved');
   await p.tap('#stage-reset');
-  await p.waitForTimeout(300);
+  await p.waitForFunction(() => document.getElementById('stage-reset').hidden);
   v = await p.evaluate(() => window.BrickyardBuild.inView());
   assert.deepEqual([v.box.map(n => n.toFixed(3)), v.moved, await p.isHidden('#stage-reset')], [first.box.map(n => n.toFixed(3)), false, true], 'Reset view puts the picture back as it opened');
   await c.close();
@@ -1721,12 +1722,15 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
     await p.waitForFunction(n => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === n, model.name);
   };
   const toEnd = () => p.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+  // Waits for the picture to come to rest: nothing drawn for half a second.
+  const rest = async () => { for (let last = -1, n = (await gl()).clears; n !== last; last = n, n = (await gl()).clears) await p.waitForTimeout(500); };
   const tower = (name, n) => ({ name, parts: Array.from({ length: n }, (_, i) => ['3003', i % 2 ? 4 : 15, 0, i * 3, 0, 0, i + 1]) });
   await p.reload(); // so the page has the counters from its start
   await p.goto(base + '#model-x-cottage');
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
   await toEnd();
-  await p.waitForTimeout(800);
+  await p.waitForFunction(() => window.__gl.clears > 0);
+  await rest();
   let a = await gl();
   assert.ok(a.clears > 0, 'the picture is drawn in this browser, and its calls are counted');
   await p.waitForTimeout(2000);
@@ -1735,14 +1739,14 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   // Two more models opened over the cottage, without passing through the list; then a step's drop is drawn once
   // for each frame the browser gives, not once for each model opened.
   await open(tower('Tower A', 6)); await open(tower('Tower B', 8));
-  await p.waitForTimeout(500);
+  await rest();
   const drop = await p.evaluate(() => new Promise(done => {
     const from = window.__gl.clears, t0 = performance.now(); let frames = 0;
     document.getElementById('step-next').click();
     requestAnimationFrame(function tick() { frames++; if (performance.now() - t0 < 600) requestAnimationFrame(tick); else done({ frames, clears: window.__gl.clears - from }); });
   }));
   assert.ok(drop.clears >= 3 && drop.clears <= drop.frames + 1, 'a step dropping in is drawn once a frame, by one loop: ' + JSON.stringify(drop));
-  await p.waitForTimeout(400);
+  await rest();
   a = await gl(); await p.waitForTimeout(1000); b = await gl();
   assert.equal(b.clears - a.clears, 0, 'and once it has landed, nothing more is drawn');
   // Ten models of the same pieces, opened in turn through the list: what the graphics card holds stays level.
@@ -1750,7 +1754,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   for (let i = 0; i < 10; i++) {
     await open(tower('Tower ' + i, 10 + i));
     await toEnd();
-    await p.waitForTimeout(250);
+    await rest();
     held.push((await gl()).buffers);
     await p.goto(base + '#build');
     await p.waitForSelector('#build-list:not([hidden]) .list');
@@ -1758,10 +1762,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.ok(held[9] > 0 && held[9] === held[2], 'ten models opened in turn hold no more than three did: ' + held);
   // A 16x16 plate, studs and all, is a few things to draw.
   await open({ name: 'Big plate', parts: [['91405', 2, 0, 0, 0, 0, 1]] });
-  await p.waitForTimeout(500);
+  await rest();
   a = await gl();
   await toEnd();
-  await p.waitForTimeout(500);
+  await p.waitForFunction(n => window.__gl.clears > n, a.clears);
+  await rest();
   b = await gl();
   assert.ok(b.clears > a.clears && (b.draws - a.draws) / (b.clears - a.clears) < 10, 'a 16x16 plate is under 10 things to draw: ' + (b.draws - a.draws) + ' in ' + (b.clears - a.clears));
   // The picture taken away (a phone short of memory): the stage says so, and says nothing once it is back.
@@ -1771,9 +1776,55 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   a = await gl();
   await p.evaluate(() => window.__lose.restoreContext());
   await p.waitForFunction(() => /Drag to turn/.test(document.getElementById('stage-hint').textContent));
-  await p.waitForTimeout(500);
-  b = await gl();
-  assert.ok(b.clears > a.clears, 'and it is drawn again when it comes back');
+  await p.waitForFunction(n => window.__gl.clears > n, a.clears); // and it is drawn again when it comes back
+  await c.close();
+}
+
+// What a model's page says when it can't be built: which piece, by colour and name, in which step as the page
+// counts them, each kind of problem once (it repeated itself, gave grid positions, and never named a piece). A
+// model with pieces the builder can't draw says how many; one with nothing it can draw shows the message alone.
+{
+  const { c, p } = await withSets({ sets: {}, loose: { tub: { id: 'tub', t: 1, name: 'Red tub', parts: [['3001', 4, 1], ['3003', 15, 9], ['3020', 2, 4], ['3659', 4, 2], ['3023', 1, 2]] }, wheels: { id: 'wheels', t: 1, name: 'Wheels', parts: [['2780', 0, 40], ['3622', 4, 2]] } } });
+  const open = async model => {
+    await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model })).toString('base64url'));
+    await p.waitForFunction(n => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === n, model.name);
+    return p.$$eval('#model-check > *', els => els.map(e => e.textContent));
+  };
+  const broken = { name: 'Broken bridge', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 1, 2, 0, 0, 0, 1], ['4081b', 15, 0, 3, 0, 0, 2], ['3003', 15, 20, 0, 0, 0, 3], ['3003', 14, 30, 0, 0, 0, 4], ['3001', 14, 0, 3, 0, 0, 2]] };
+  assert.deepEqual(await open(broken), ['This model can’t be built as it is. It uses a piece the builder can’t draw (4081b). A red 2x4 brick and a blue 2x4 brick are in the same place, in step 1. ' +
+    '2 pieces aren’t joined to the rest of the model: a white 2x2 brick in step 3 and a yellow 2x2 brick in step 4. Ask Claude to fix it.',
+    'You’re short: 1 × Blue brick 2x4, 1 × Yellow brick 2x4, 1 × Yellow brick 2x2. Swap colours where it doesn’t matter, or ask Claude for another version.',
+    '6 pieces, 1 the builder can’t draw · 4 steps · about 25.6 × 1.6 cm, 1.9 cm tall'], 'a broken model names its pieces and counts the ones it can’t draw');
+  // A piece under an arch: the check treats an arch as solid, and the message says which piece is inside which.
+  const arch = { name: 'Arch', parts: [['3020', 2, 0, 0, 0, 0, 1], ['3659', 4, 0, 1, 0, 0, 2], ['3023b', 1, 1, 1, 0, 0, 2]] };
+  assert.equal((await open(arch))[0], 'This model can’t be built as it is. A blue 1x2 plate is inside a red 1x4 arch, in step 2. Ask Claude to fix it.', 'a piece under an arch');
+  // Steps numbered 1, 2, 5, 9: the step with nothing to join to is the page's step 3, not the model's 5.
+  const gaps = { name: 'Gaps', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 15, -2, 3, 0, 0, 2], ['3001', 1, 4, 0, 0, 0, 5], ['3001', 14, 2, 3, 0, 0, 9]] };
+  assert.equal((await open(gaps))[0], 'This model can’t be built as it is. Step 3 adds pieces with nothing to join to yet. Ask Claude to fix it.', 'a step is named as the page counts them');
+  await p.tap('#step-next'); await p.tap('#step-next');
+  assert.equal(await p.textContent('.stepnum'), 'Step 3 of 4');
+  // A piece that goes on from underneath says so on its step.
+  const under = { name: 'Under', parts: [['3001', 4, 0, 3, 0, 0, 1], ['3003', 15, 0, 0, 0, 0, 2], ['3003', 15, 0, 6, 0, 0, 3], ['3003', 15, 2, 0, 0, 0, 3]] };
+  await open(under);
+  assert.equal(await p.locator('#step-parts .under').count(), 0, 'nothing about underneath on a step that builds upwards');
+  await p.tap('#step-next');
+  assert.equal(await p.textContent('#step-parts .under'), 'This one goes on from underneath.');
+  await p.tap('#step-next');
+  assert.deepEqual([await p.textContent('#step-parts .under'), await p.textContent('#step-parts li small')], ['1 of these goes on from underneath.', 'White · 1 from underneath'], 'a step of two, one of them from underneath');
+  // Nothing the builder can draw: the message on its own, with no empty picture, no steps and no "0 pieces".
+  const none = { name: 'Odd parts', about: 'Made of parts the builder has no shape for.', parts: [['zz9', 4, 0, 0, 0, 0, 1], ['zz9', 4, 0, 3, 0, 0, 2], ['qq1', 1, 0, 6, 0, 0, 3]] };
+  assert.deepEqual(await open(none), ['Brickyard can’t show this model. None of its 3 pieces are among the ones the builder can draw (zz9, qq1). Ask Claude to design it from the pieces in Copy my pieces for Claude.']);
+  assert.deepEqual(await Promise.all(['.stage', '.stepbar', '#step-range', '#step-parts'].map(s => p.isVisible(s))), [false, false, false, false], 'no picture and no steps for it');
+  assert.equal(await p.isVisible('#model-about'), true);
+  // The line that says you have every piece names only where this model's pieces come from: not the lot of wheels.
+  const plain = { name: 'Plain', parts: [['3020', 2, 0, 0, 0, 0, 1], ['3003', 15, 0, 1, 0, 0, 2]] };
+  assert.equal((await open(plain))[0], '✓ You have every piece for this, from loose pieces (Red tub).', 'only the lot that holds its pieces is named');
+  assert.equal(await p.isVisible('.stage'), true, 'and a model that can be drawn has its picture back');
+  // The list: a broken model that is also short says both, and counts all its pieces.
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list:not([hidden]) .list');
+  const row = async name => (await p.textContent('#build-list .list .item:has-text("' + name + '")')).replace(name, '');
+  assert.deepEqual([await row('Broken bridge'), await row('Odd parts'), await row('Plain')], ['6 pieces · 4 stepsNeeds fixing · 3 short', '3 piecesNeeds fixing', '2 pieces · 2 stepsCan build']);
   await c.close();
 }
 

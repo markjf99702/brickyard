@@ -81,6 +81,9 @@ eq(told([['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 1], ['3001', 1, 4, 
 eq(kinds(B.check(M([['3001', 1, 0, 0, 0, 0, 1], ['3001', 1, 0, 3, 0, 0, 1]]), shapes, {})), ['count'], 'no pieces, short');
 eq(kinds(B.check(M([['zzz', 1, 0, 0, 0, 0, 1]]), shapes, null)), ['part'], 'unknown part');
 eq(B.check(M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), shapes, null).notes.map(n => n.kind), ['under'], 'pushed on from underneath');
+// Every part a step pushes on from below is named, one note a step, in step order.
+const UNDER = [['3001', 4, 0, 6, 0, 0, 1], ['3003', 1, 2, 3, 0, 0, 3], ['3003', 14, 0, 3, 0, 0, 3], ['3003', 15, 0, 9, 0, 0, 3], ['3003', 2, 0, 0, 0, 0, 2 + 2], ['3003', 2, 2, 0, 0, 0, 2]];
+eq(B.check(M(UNDER), shapes, null).notes.map(n => [n.step, n.parts]), [[3, [1, 2]], [4, [4]]], 'each step’s parts that go on from underneath');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 3, 0], ['3001', 1, 0, 0, 0]] }).parts.map(q => q[6]), [2, 1], 'no steps: one per height');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 0, 0, 45]] }), null, 'turns are whole quarter turns');
 check(B.cleanModel({ model: { parts: [{ p: '3001.dat', c: '1', x: 0, y: 0, z: 0 }] } }).parts[0][0] === '3001', 'objects and .dat names work');
@@ -190,7 +193,7 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     overlap: M([plate(0, 0, 1), ['3001', 4, 1, 0, 0, 0, 2]]),
     order: M([plate(0, 0, 1), plate(4, 0, 2), ['3001', 4, 2, 3, 0, 0, 3]]),
     turned: M([['3039', 4, 0, 0, 0, 90, 1], ['3004', 1, 1, 3, 0, 90, 2], ['3004', 1, 0, 3, 0, 0, 2]]),
-    under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]),
+    under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), 'under, several': M(UNDER),
     'floating, base first': M(FLOAT_A), 'floating, rows swapped': M(FLOAT_A2), 'a floating pair': M(FLOAT_B), 'a floating pair, backwards': M(FLOAT_B2), 'two towers': M(TOWERS),
   };
   // Everyday part numbers, as BrickLink and Rebrickable write them, are the pieces shapes.json has under LDraw's

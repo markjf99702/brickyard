@@ -64,6 +64,7 @@ function poolLots() {
 async function currentPool() {
   const on = poolSets().filter(s => s.on), lots = poolLots().filter(l => l.on);
   const invs = await Promise.all(on.map(s => get('parts/sets/' + s.num + '.json')));
+  on.forEach((s, i) => { s.parts = invs[i].parts || []; }); // so a model can say which sets its pieces come from
   return { sets: on, lots, any: on.length + lots.length > 0, pool: B.poolOf(invs.concat(lots)),
     pieces: on.reduce((n, s) => n + s.pieces, 0) + lots.reduce((n, l) => n + l.pieces, 0) };
 }
@@ -92,6 +93,13 @@ async function modelById(id) {
 }
 function colorOf(c) { const x = colors[String(c)]; return x ? { name: x[0], hex: x[1], alpha: x[2] } : { name: 'Colour ' + c, hex: '#999999' }; }
 function partName(p) { return shapes[p] ? shapes[p].n : 'Part ' + p; }
+// A piece in a sentence: "a white 2x2 brick", "an orange 1x4 arch".
+function aPiece(q) {
+  const m = /^(.*?) (\d+x\d+(?:x[\d⅓⅔]+)?)(.*)$/.exec(partName(q[0]));
+  const t = colorOf(q[1]).name.toLowerCase() + ' ' + (m ? m[2] + ' ' + m[1].toLowerCase() + m[3] : partName(q[0]).toLowerCase());
+  return (/^[aeiou]/.test(t) ? 'an ' : 'a ') + t;
+}
+function listed(a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0] || ''; }
 
 // ---------- screens ----------
 let current = null; // { id, model, res, steps, at }
@@ -162,10 +170,10 @@ async function renderList() {
     const shortBy = res.short.reduce((n, x) => n + (x.need - x.have), 0);
     const other = res.problems.filter(p => p.kind !== 'count').length;
     // With no pieces chosen there's nothing to count against, so only a broken model gets a badge.
-    const state = other ? '<span class="badge sealed">Needs fixing</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
+    const state = other ? '<span class="badge sealed">Needs fixing' + (any && shortBy ? ' · ' + shortBy + ' short' : '') + '</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
     return '<li><a class="item" href="#model-' + esc(r.id) + '">' + swatchStack(r.model) +
       '<div class="main"><div class="t">' + esc(r.model.name) + (r.example ? ' <span class="m" style="display:inline">· example</span>' : '') + '</div>' +
-      '<div class="m">' + plural(res.pieces, 'piece') + ' · ' + plural(res.steps.length, 'step') + '</div></div>' + state + '</a></li>';
+      '<div class="m">' + plural(r.model.parts.length, 'piece') + (res.steps.length ? ' · ' + plural(res.steps.length, 'step') : '') + '</div></div>' + state + '</a></li>';
   }).join('') + '</ul>' +
     '<div class="how" style="margin-top:14px"><b>Get a new model from Claude</b><ol><li>Tap <b>Copy my pieces for Claude</b>.</li><li>Paste it to Claude and say what you’d like: “a lighthouse”, “something for the new house”.</li>' +
     '<li>Claude designs it from those pieces only, checks it can really be built, and sends a link. Open it here.</li></ol></div>';
@@ -252,16 +260,56 @@ async function openModel(id) {
   $('model-about').textContent = model.about;
   $('step-range').max = String(current.steps.length);
   renderCheck();
+  // A model with nothing the builder can draw has no picture and no steps: the message says so on its own.
+  $('model-view').classList.toggle('bare', !res.pieces);
+  if (!res.pieces) { stopStage(); return; }
   startStage();
   buildScene(model);
   showStep(stepOf(id), false);
 }
 
+// What the check found, in words about the pieces: which piece, by its colour and name, and in which step as the
+// page counts them (the checker's own texts, which the page shares with check_model.py, give grid positions and
+// the model's step numbers, and repeat themselves).
+function stepNo(i) { return current.steps.indexOf(current.model.parts[i][6]) + 1; }
+function inStep(i) { return 'in step ' + stepNo(i); }
+function whatsWrong(fails) {
+  const { model, steps } = current, q = i => model.parts[i], of = kind => fails.filter(p => p.kind === kind), out = [];
+  const unknown = of('part');
+  if (unknown.length) {
+    const ids = unknown.map(p => q(p.parts[0])[0]).filter((v, i, a) => a.indexOf(v) === i);
+    out.push('It uses ' + (unknown.length === 1 ? 'a piece' : unknown.length + ' pieces') + ' the builder can’t draw (' + ids.slice(0, 4).join(', ') + (ids.length > 4 ? ' and ' + (ids.length - 4) + ' more' : '') + ')');
+  }
+  const clash = of('overlap');
+  clash.slice(0, 2).forEach(p => {
+    // An arch or a frame is solid to the check, though the picture shows it open: a piece under or through one
+    // is "inside" it.
+    const open = i => /^(arch|frame)$/.test(shapes[q(i)[0]].k);
+    const [a, b] = open(p.parts[0]) && !open(p.parts[1]) ? [p.parts[1], p.parts[0]] : p.parts, when = inStep(stepNo(a) > stepNo(b) ? a : b);
+    const A = aPiece(q(a)), B2 = aPiece(q(b));
+    out.push(open(b) && !open(a) ? A.charAt(0).toUpperCase() + A.slice(1) + ' is inside ' + B2 + ', ' + when
+      : A.charAt(0).toUpperCase() + A.slice(1) + ' and ' + (A === B2 ? 'another' : B2) + ' are in the same place, ' + when);
+  });
+  if (clash.length > 2) out.push(plural(clash.length - 2, 'more pair') + ' of pieces ' + (clash.length === 3 ? 'is' : 'are') + ' in the same place too');
+  const loose = [].concat(...of('loose').map(p => p.parts));
+  if (loose.length === 1) { const A = aPiece(q(loose[0])); out.push(A.charAt(0).toUpperCase() + A.slice(1) + ' ' + inStep(loose[0]) + ' isn’t joined to the rest of the model'); }
+  else if (loose.length) out.push(loose.length + ' pieces aren’t joined to the rest of the model: ' + listed(loose.slice(0, 2).map(i => aPiece(q(i)) + ' ' + inStep(i)).concat(loose.length > 2 ? [(loose.length - 2) + ' more'] : [])));
+  const order = of('order').map(p => steps.indexOf(p.step) + 1);
+  if (order.length) out.push((order.length === 1 ? 'Step ' + order[0] + ' adds' : 'Steps ' + listed(order.slice(0, 4).concat(order.length > 4 ? [(order.length - 4) + ' more'] : [])) + ' add') + ' pieces with nothing to join to yet');
+  return out;
+}
+
 function renderCheck() {
-  const { res, pool, sets, lots } = current;
+  const { res, pool, sets, lots, model } = current;
   let html = '';
-  const fails = res.problems.filter(p => p.kind !== 'count');
-  if (fails.length) html += '<div class="flag bad"><span><b>This model can’t be built as it is.</b> ' + fails.slice(0, 4).map(p => esc(p.text)).join('. ') + '. Ask Claude to fix it.</span></div>';
+  const fails = res.problems.filter(p => p.kind !== 'count'), left = model.parts.length - res.pieces;
+  if (!res.pieces) {
+    const ids = model.parts.map(q => q[0]).filter((v, i, a) => a.indexOf(v) === i);
+    $('model-check').innerHTML = '<div class="flag bad"><span><b>Brickyard can’t show this model.</b> ' + (left === 1 ? 'Its one piece isn’t' : 'None of its ' + left + ' pieces are') + ' among the ones the builder can draw (' +
+      esc(ids.slice(0, 4).join(', ')) + (ids.length > 4 ? ' and ' + (ids.length - 4) + ' more' : '') + '). Ask Claude to design it from the pieces in <b>Copy my pieces for Claude</b>.</span></div>';
+    return;
+  }
+  if (fails.length) html += '<div class="flag bad"><span><b>This model can’t be built as it is.</b> ' + esc(whatsWrong(fails).join('. ')) + '. Ask Claude to fix it.</span></div>';
   if (!pool) html += '<div class="flag"><span>Brickyard doesn’t know which pieces you have yet, so it can’t check you have enough. Choose them under Your pieces on the list of models.</span></div>';
   else if (res.short.length) {
     html += '<div class="flag"><span><b>You’re short:</b> ' + res.short.map(x => {
@@ -269,12 +317,14 @@ function renderCheck() {
       return (x.need - x.have) + ' × ' + esc(colorOf(c).name) + ' ' + esc(partName(p).toLowerCase());
     }).join(', ') + '. Swap colours where it doesn’t matter, or ask Claude for another version.</span></div>';
   } else if (!fails.length) {
-    // Named the way Copy my pieces for Claude names them: the sets, then each lot as "loose pieces (Red tub)".
-    const from = sets.map(s => s.name).concat(lots.map(l => 'loose pieces (' + l.name + ')'));
-    html += '<p class="note ok">✓ You have every piece for this, from ' + esc(from.length > 1 ? from.slice(0, -1).join(', ') + ' and ' + from[from.length - 1] : from[0]) + '.</p>';
+    // Named the way Copy my pieces for Claude names them: the sets, then each lot as "loose pieces (Red tub)". Only
+    // the ones that hold a piece this model uses (a lot of wheels isn't where a cottage's bricks came from).
+    const holds = src => src.parts.some(r => res.used[B.canon(String(r[0])) + '/' + r[1]]);
+    const from = sets.filter(holds).map(s => s.name).concat(lots.filter(holds).map(l => 'loose pieces (' + l.name + ')'));
+    html += '<p class="note ok">✓ You have every piece for this' + (from.length ? ', from ' + esc(listed(from)) : '') + '.</p>';
   }
   const cm = B.sizeCm(res.size);
-  html += '<p class="note">' + plural(res.pieces, 'piece') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + cm.w.toFixed(1).replace(/\.0$/, '') + ' × ' + cm.d.toFixed(1).replace(/\.0$/, '') + ' cm, ' + cm.h.toFixed(1).replace(/\.0$/, '') + ' cm tall</p>';
+  html += '<p class="note">' + plural(model.parts.length, 'piece') + (left ? ', ' + left + ' the builder can’t draw' : '') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + cm.w.toFixed(1).replace(/\.0$/, '') + ' × ' + cm.d.toFixed(1).replace(/\.0$/, '') + ' cm, ' + cm.h.toFixed(1).replace(/\.0$/, '') + ' cm tall</p>';
   $('model-check').innerHTML = html;
 }
 
@@ -294,17 +344,21 @@ function showStep(k, animate = true) {
   $('step-range').value = String(current.at);
   $('step-range').setAttribute('aria-valuetext', done ? 'Done, ' + plural(current.res.pieces, 'piece') : 'Step ' + (current.at + 1) + ' of ' + n);
 
-  const here = current.model.parts.map((q, i) => ({ q, i })).filter(x => x.q[6] === step);
+  // The step's pieces the builder draws (one it can't isn't in the picture, and the message above names it).
+  const here = current.model.parts.map((q, i) => ({ q, i })).filter(x => x.q[6] === step && shapes[x.q[0]]);
   const groups = {};
   here.forEach(({ q }) => { const k2 = q[0] + '/' + q[1]; groups[k2] = (groups[k2] || 0) + 1; });
   const shortKeys = new Set(current.res.short.map(x => x.key));
+  // Pieces that push on from below, under something already built (the checker notes them; nothing showed it).
+  const note = current.res.notes.find(x => x.kind === 'under' && x.step === step), under = {};
+  if (note) note.parts.forEach(i => { const k2 = current.model.parts[i][0] + '/' + current.model.parts[i][1]; under[k2] = (under[k2] || 0) + 1; });
   $('step-parts').innerHTML = done
     ? '<p class="note" style="margin:0">That’s the whole model. Drag it around to look it over.</p>'
     : '<div class="lbl">Find these</div><ul class="need">' + Object.keys(groups).map(k2 => {
       const [p, c] = k2.split('/'), col = colorOf(c);
       return '<li' + (shortKeys.has(k2) ? ' class="short"' : '') + '><i style="background:' + col.hex + (col.alpha ? ';opacity:.6' : '') + '"></i><span><b>' + groups[k2] + '×</b> ' +
-        esc(partName(p)) + '<small>' + esc(col.name) + '</small></span></li>';
-    }).join('') + '</ul>';
+        esc(partName(p)) + '<small>' + esc(col.name) + (under[k2] && note.parts.length < here.length ? ' · ' + (under[k2] < groups[k2] ? under[k2] + ' ' : '') + 'from underneath' : '') + '</small></span></li>';
+    }).join('') + '</ul>' + (note ? '<p class="note under">' + (here.length === 1 ? 'This one goes on from underneath.' : note.parts.length === here.length ? 'These go on from underneath.' : note.parts.length + ' of these ' + (note.parts.length === 1 ? 'goes' : 'go') + ' on from underneath.') + '</p>' : '');
   showUpTo(step, animate && !done);
 }
 

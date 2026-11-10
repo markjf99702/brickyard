@@ -249,12 +249,15 @@ def check(model, shapes, pool):
                     lone += grp
             if lone:
                 problems.append(dict(kind='order', step=s, parts=sorted(lone), text=f'Step {s} has parts with nothing to join to yet'))
-    seen = set()
+    # Worth knowing: a part pushed on from below, under something already built. One note for each step that has
+    # any, in step order, with every such part of the step in the order they're listed.
+    under = {}
     for a, b in edges:
         below, above = by_index[a], by_index[b]
-        if below['s'] > above['s'] and below['s'] not in seen:
-            seen.add(below['s'])
-            notes.append(dict(kind='under', step=below['s'], parts=[below['i']], text=f'Step {below["s"]} pushes a part on from underneath'))
+        if below['s'] > above['s']:
+            under.setdefault(below['s'], set()).add(below['i'])
+    for s in sorted(under):
+        notes.append(dict(kind='under', step=s, parts=sorted(under[s]), text=f'Step {s} pushes a part on from underneath'))
     size = dict(w=0, d=0, h=0)
     if ok:
         xs = [c[0] for q in ok for c in q['cells']['foot']]
