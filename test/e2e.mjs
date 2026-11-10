@@ -1508,6 +1508,34 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Everything tapped is at least 44 px each way on a phone (the least Apple's Human Interface Guidelines give for a
+// touch target): Back and the menu button, the filter chips, Group by, the small buttons in a sheet's header, the
+// State buttons, a tick-box's row, the step slider, the links at the foot. Group by is in 16 px type like every
+// other box (in 14 px, iOS zoomed the page when it opened). A button's words stay on one line: "It's right" beside
+// a Check note, and the two buttons at the bottom of My sets on a 320 px phone.
+{
+  const sets = { a: { id: 'a', t: 1, num: '42115-1', name: 'Lamborghini Sián FKP 37', state: 'built', check: 'box corner was blurry; could be 42083' }, b: { id: 'b', t: 1, name: 'Castle', state: 'sealed', missing: 'a flag' } };
+  const small = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].filter(e => e.getClientRects().length).map(e => { const r = e.getBoundingClientRect(); return [(e.textContent || e.getAttribute('aria-label') || e.id).trim().slice(0, 20), Math.round(r.width), Math.round(r.height)]; })
+    .filter(x => x[1] < 44 || x[2] < 44), sel);
+  const { c, p } = await withSets({ sets });
+  await p.goto(base + '#catalog');
+  await p.evaluate(() => { const s = document.querySelector('#catalog .sync-btn'); s.hidden = false; s.querySelector('span').textContent = 'Synced'; });
+  assert.deepEqual(await small(p, '#catalog .back, #catalog .icon-btn, #catalog .sync-btn, .chip, #group, #catalog .btn, .jd-foot a'), [], 'My sets: nothing to tap is under 44 px');
+  assert.ok(await p.evaluate(() => parseFloat(getComputedStyle(document.getElementById('group')).fontSize)) >= 16, 'Group by is in 16 px type');
+  await p.click('.item:has-text("Lamborghini")');
+  assert.deepEqual(await small(p, '.sheet .btn, .sheet .seg button, .sheet .check, .sheet input:not([type="checkbox"]), .sheet select'), [], 'a set’s sheet: nothing to tap is under 44 px');
+  assert.ok(await p.evaluate(() => document.getElementById('e-ok').getBoundingClientRect().height) < 50, '“It’s right” is on one line');
+  await p.click('[data-close]');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.deepEqual(await small(p, '#build .back, #build .icon-btn, #build .btn, #step-range'), [], 'a model: nothing to tap is under 44 px');
+  await p.setViewportSize({ width: 320, height: 640 });
+  await p.goto(base + '#catalog');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('#catalog .fab-row .btn')].map(b => { const r = b.getBoundingClientRect(); return r.height < 50 && r.left >= 0 && r.right <= innerWidth; }).concat(document.documentElement.scrollWidth <= innerWidth)),
+    [true, true, true], 'at 320 px the two bottom buttons are one line each, on the screen');
+  await c.close();
+}
+
 // On an iPhone a sheet stays inside what's visible: its height follows the browser's toolbar (dvh; plain vh is the
 // screen with the toolbar away, which pushed the title and Close off the top), and a sheet with no buttons along the
 // bottom ends clear of the home bar, as one with buttons does. Chromium has no toolbar to show, so the first half is
