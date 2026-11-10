@@ -32,7 +32,9 @@ let shapes = null, colors = null, index = null;
 // parts/aliases.json is other numbers for the same piece (3023 for 3023b). Without it (a copy of the page from
 // before it existed) every number is read as it's written, as it was.
 const ready = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), get('parts/index.json'), get('parts/aliases.json').catch(() => ({}))])
-  .then(([s, c, i, a]) => { shapes = s; colors = c; index = i; B.useAliases(a); });
+  // shapes holds its parts and nothing else (no "constructor" or "toString" from every object's own kit), so a part
+  // number is known only if it's in the file: a model with a part written "constructor" stopped the page opening it.
+  .then(([s, c, i, a]) => { shapes = Object.assign(Object.create(null), s); colors = c; index = i; B.useAliases(a); });
 
 // Sets in My sets that Brickyard has a parts list for. Taken-apart sets count by default; the toggles override.
 // `pieces` is the count My sets shows for the set, so the two screens agree (the parts list for 10698 adds up to

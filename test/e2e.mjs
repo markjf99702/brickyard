@@ -1819,6 +1819,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.deepEqual(await open(none), ['Brickyard can’t show this model. None of its 3 pieces are among the ones the builder can draw (zz9, qq1). Ask Claude to design it from the pieces in Copy my pieces for Claude.']);
   assert.deepEqual(await Promise.all(['.stage', '.stepbar', '#step-range', '#step-parts'].map(s => p.isVisible(s))), [false, false, false, false], 'no picture and no steps for it');
   assert.equal(await p.isVisible('#model-about'), true);
+  // A part number that every object answers to ("constructor") is as unknown as zz9. It was taken for a piece the
+  // builder knows, and the page stopped while opening the model, with the last model's words still showing.
+  const odd = { name: 'Odder parts', parts: [['3001', 4, 0, 0, 0, 0, 1], ['constructor', 4, 0, 3, 0, 0, 2]] };
+  assert.deepEqual([(await open(odd))[0].slice(0, 89), await p.textContent('#build-title')],
+    ['This model can’t be built as it is. It uses a piece the builder can’t draw (constructor).', 'Odder parts']);
   // The line that says you have every piece names only where this model's pieces come from: not the lot of wheels.
   const plain = { name: 'Plain', parts: [['3020', 2, 0, 0, 0, 0, 1], ['3003', 15, 0, 1, 0, 0, 2]] };
   assert.equal((await open(plain))[0], '✓ You have every piece for this, from loose pieces (Red tub).', 'only the lot that holds its pieces is named');

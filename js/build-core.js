@@ -96,7 +96,9 @@
   function check(model, shapes, pool) {
     var problems = [], notes = [], used = {};
     var parts = model.parts.map(function (q, i) {
-      var sh = shapes[q[0]];
+      // The part's own entry in shapes, not anything every object has: a part written "constructor" was found, and
+      // counted as a piece the builder knows (check_model.py said it wasn't).
+      var sh = Object.prototype.hasOwnProperty.call(shapes, q[0]) ? shapes[q[0]] : undefined;
       return { i: i, p: q[0], c: q[1], x: q[2], y: q[3], z: q[4], r: q[5], s: q[6], sh: sh };
     });
     parts.forEach(function (q) {

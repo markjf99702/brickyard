@@ -80,6 +80,9 @@ eq(told([['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 1], ['3001', 1, 4, 
   [['order', 1, [2]], ['order', 2, [4, 5]]], 'a first step in two lumps keeps the bigger; later steps may add to either, but not start a third');
 eq(kinds(B.check(M([['3001', 1, 0, 0, 0, 0, 1], ['3001', 1, 0, 3, 0, 0, 1]]), shapes, {})), ['count'], 'no pieces, short');
 eq(kinds(B.check(M([['zzz', 1, 0, 0, 0, 0, 1]]), shapes, null)), ['part'], 'unknown part');
+// A part number that every object answers to ("constructor") is as unknown as any other that isn't in shapes.json.
+eq(kinds(B.check(M([['constructor', 1, 0, 0, 0, 0, 1]]), shapes, null)), ['part'], 'a part written "constructor" is unknown too');
+eq(B.check(M([['constructor', 1, 0, 0, 0, 0, 1]]), shapes, null).pieces, 0, 'and isn’t counted as a piece the builder draws');
 eq(B.check(M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), shapes, null).notes.map(n => n.kind), ['under'], 'pushed on from underneath');
 // Every part a step pushes on from below is named, one note a step, in step order.
 const UNDER = [['3001', 4, 0, 6, 0, 0, 1], ['3003', 1, 2, 3, 0, 0, 3], ['3003', 14, 0, 3, 0, 0, 3], ['3003', 15, 0, 9, 0, 0, 3], ['3003', 2, 0, 0, 0, 0, 2 + 2], ['3003', 2, 2, 0, 0, 0, 2]];
@@ -194,6 +197,7 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     order: M([plate(0, 0, 1), plate(4, 0, 2), ['3001', 4, 2, 3, 0, 0, 3]]),
     turned: M([['3039', 4, 0, 0, 0, 90, 1], ['3004', 1, 1, 3, 0, 90, 2], ['3004', 1, 0, 3, 0, 0, 2]]),
     under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), 'under, several': M(UNDER),
+    'a part called constructor': M([plate(0, 0, 1), ['constructor', 4, 0, 1, 0, 0, 2]]),
     'floating, base first': M(FLOAT_A), 'floating, rows swapped': M(FLOAT_A2), 'a floating pair': M(FLOAT_B), 'a floating pair, backwards': M(FLOAT_B2), 'two towers': M(TOWERS),
   };
   // Everyday part numbers, as BrickLink and Rebrickable write them, are the pieces shapes.json has under LDraw's
