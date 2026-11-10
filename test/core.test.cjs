@@ -461,6 +461,24 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     eq([offCm.length, offCm.slice(0, 5)], [0, []], 'script and page give the same cm for all ' + cms.length.toLocaleString() + ' sizes');
     const pyN = callPy('mb.whole(v, 0, 20000)', counts), offN = counts.filter((v, i) => pyN[i] !== (C.cleanSet({ name: 'x', pieces: v }).pieces || 0));
     eq([offN.length, offN.slice(0, 5)], [0, []], 'and the same whole number for every half');
+    // A file the script can't use ends in its own words, not a Python traceback: one that is a bare string or number
+    // has no sets in it. A number too big to be one (1e999, which both Python and the page read as infinity) is 0
+    // to both, so the set comes through without it.
+    const runPy = (name, text) => {
+      const f = path.join(dir, name);
+      fs.writeFileSync(f, text);
+      const r = require('child_process').spawnSync('python3', ['-B', path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), f, '--out', dir, '--no-link'], { encoding: 'utf8' });
+      return [r.status, r.stderr.trim(), r.stdout];
+    };
+    for (const [name, text] of [['string.json', '""'], ['words.json', '"10698"'], ['number.json', '5'], ['null.json', 'null'], ['true.json', 'true'], ['batch.json', '{"batch":"10698"}']]) {
+      eq(runPy(name, text).slice(0, 2), [1, 'Expected {"sets": [...]} (or a plain list of sets).'], 'the script says what it expected of a file that is ' + text);
+    }
+    const huge = '{"name":"Huge","sets":[{"num":"1234567","pieces":-1e999,"year":1e999,"size":{"w":1e999,"d":5,"h":-1e999}},{"num":"10698","pieces":1e999}]}';
+    const hugeRun = runPy('huge.json', huge);
+    eq(hugeRun.slice(0, 2), [0, ''], 'a number too big to be one doesn’t stop the script');
+    const hugeSets = JSON.parse(fs.readFileSync(path.join(dir, 'huge.brickyard.json'), 'utf8')).batch.sets;
+    eq(hugeSets, [{ num: '1234567-1', size: { w: 0, d: 5, h: 0 } }, { num: '10698-1' }], 'it reads as 0, so it’s left out');
+    eq((await C.parseIncoming(huge)).batch.sets, hugeSets, 'as the page reads the same file');
     // And through a whole batch: "LEGO 10497" arrives as 10497-1, so it's found as a double.
     const lego = path.join(dir, 'lego.json');
     fs.writeFileSync(lego, JSON.stringify({ sets: [{ num: 'LEGO 10497', name: 'Galaxy Explorer' }, { num: 'LEGO® Set No. 21318-2', name: 'Tree House' }] }));

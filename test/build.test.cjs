@@ -277,6 +277,25 @@ print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/s
     check(lotOnly[0] === 1 && /you have 5\b/.test(lotOnly[1]), 'script: with no sets, a lot file is the whole budget');
     eq(run(['--no-sets', '--pieces', lotFile]).slice(0, 2), lotOnly.slice(0, 2), 'script: --no-sets is an empty --sets');
 
+    // The pasted list's first line names the sets and lots the pieces came from, and a name can look like a row:
+    // "Bricks 2/3 x 4" was counted as four of part 2 in colour 3. The rows are read from after that line, also when
+    // the text arrives as one line; a bare list with no such line is still read whole. In a lot file, a colour that
+    // isn't plain digits or a count too big to be a number is a row left out, not a traceback.
+    const readPieces = (name, text) => {
+      const f = path.join(dir, name);
+      fs.writeFileSync(f, text);
+      const r = require('child_process').spawnSync('python3', ['-B', '-c', `
+import json, sys, importlib.util
+spec = importlib.util.spec_from_file_location('cm', sys.argv[1]); cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
+print(json.dumps(cm.read_pieces(sys.argv[2])))`, script, f], { encoding: 'utf8' });
+      return r.status === 0 ? JSON.parse(r.stdout) : [r.status, r.stderr.trim().split('\n').pop()];
+    };
+    const named = 'My Brickyard pieces, from 10698-1 Bricks 2/3 x 4 + loose pieces (Tray 4/4 x2 (spares)) + loose pieces (Tub 2/3).\nPieces the builder knows, as LDraw part/colour ×count:\n3001/4 ×2, 3003/1 ×1\n';
+    eq(readPieces('named.txt', named), [{ '3001/4': 2, '3003/1': 1 }, 'text'], 'script: a name that looks like a row isn’t counted as pieces');
+    eq(readPieces('oneline.txt', '\n  ' + named.replace(/\n/g, ' ')), [{ '3001/4': 2, '3003/1': 1 }, 'text'], 'script: nor when the pasted text arrives as one line');
+    eq(readPieces('barelist.txt', '3001/4 x2, 3003/1 ×1 and 2/3 x 4\n'), [{ '3001/4': 2, '3003/1': 1, '2/3': 4 }, 'text'], 'script: a bare list with no first line is read whole');
+    eq(readPieces('oddlot.json', '{"brickyard":1,"loose":{"parts":[["3001","²",5],["3001",4,1e999],["3001",4,-1e999],["3003",123456,1],["3001",4,3]]}}'), [{ '3001/4': 3 }, 'lot'], 'script: a colour that isn’t plain digits, or a count too big to be one, is left out');
+
     // A lot counted under everyday part numbers pools with a model written under the builder's, and the other way
     // round, in the page and in the script, from a lot file or from a pasted list. The script says which numbers
     // it read as another, and the file it writes carries the builder's.

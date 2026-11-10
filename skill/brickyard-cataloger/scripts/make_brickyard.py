@@ -246,7 +246,8 @@ def main():
         return sizes_main(a, src['sizes'])
     if isinstance(src, list):
         src = {'sets': src}
-    src = src.get('batch', src)
+    if isinstance(src, dict):  # a file that is a bare number or string has no .get: it gets the line below, not a traceback
+        src = src.get('batch', src)
     if not isinstance(src, dict) or not isinstance(src.get('sets'), list):
         sys.exit('Expected {"sets": [...]} (or a plain list of sets).')
     warn = []

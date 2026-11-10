@@ -372,16 +372,29 @@ def read_pieces(path):
         if not isinstance(rows, list):
             sys.exit(f'{path}: no "parts" list of [part, colour, count] rows.')
         for r in rows:
-            if isinstance(r, list) and len(r) >= 3 and re.fullmatch(r'[0-9a-z]{1,24}', str(r[0]).lower()) and str(r[1]).isdigit():
+            # The colour is up to five plain digits ("²" is a digit to isdigit, and int() then refused it), and a
+            # count too big to be a number (1e999) is no count.
+            if isinstance(r, list) and len(r) >= 3 and re.fullmatch(r'[0-9a-z]{1,24}', str(r[0]).lower()) and re.fullmatch(r'[0-9]{1,5}', str(r[1])):
                 try:
                     n = int(r[2])
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     continue
                 if n > 0:
                     k = f'{canon(str(r[0]).lower())}/{int(r[1])}'
                     pool[k] = pool.get(k, 0) + n
         return pool, 'lot'
-    for p, c, n in re.findall(r'\b([0-9a-z]{1,24})/(\d{1,5})\s*[×x]\s*(\d+)', text):
+    # "My Brickyard pieces, from …" starts with the names of the sets and lots the pieces came from, and a name can
+    # look like a row: "Bricks 2/3 x 4" was counted as four of part 2 in colour 3. The rows are read from after that
+    # line: from "Pieces the builder knows", which the page always writes next (so it still works when the text
+    # arrives as one line), or else from the second line. Text that doesn't start that way is a bare list, read whole.
+    rows = text
+    if text.lstrip().startswith('My Brickyard pieces'):
+        at = text.find('Pieces the builder knows')
+        if at < 0:
+            at = text.find('\n', text.find('My Brickyard pieces'))
+        if at >= 0:
+            rows = text[at:]
+    for p, c, n in re.findall(r'\b([0-9a-z]{1,24})/([0-9]{1,5})\s*[×x]\s*([0-9]+)', rows):
         k = f'{canon(p)}/{int(c)}'
         pool[k] = pool.get(k, 0) + int(n)
     if not pool:
