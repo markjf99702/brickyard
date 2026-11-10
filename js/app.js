@@ -1007,6 +1007,8 @@
       '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets, sizes or a model from Claude</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-csv"><span>Download a spreadsheet<small>CSV, for Excel, Numbers or Google Sheets</small></span></button></li>') +
+      // A copy on a phone's home screen has no browser menu to print from. Not in the preview, which is a frame.
+      (FRAMED || !C.live(DOC).length ? '' : '<li><button type="button" id="m-print"><span>Print this list<small>What My sets is showing now: search for a box first to print its packing list</small></span></button></li>') +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'
         : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.') + '</p></div>');
@@ -1020,6 +1022,8 @@
       var sets = C.live(DOC).sort(function (a, b) { return C.natural(a.name || '', b.name || ''); });
       download('Brickyard sets ' + today() + '.csv', 'text/csv', '﻿' + C.toCsv(sets));
     };
+    // Once the sheet is off the screen and its place in history is gone: printing holds the page still meanwhile.
+    if ($('m-print')) $('m-print').onclick = function () { closeSheet(function () { setTimeout(function () { window.print(); }, 50); }); };
     if ($('m-pics')) $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
   }
 

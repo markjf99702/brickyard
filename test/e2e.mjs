@@ -2060,6 +2060,31 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// The menu prints the list: a copy on a phone's home screen has no browser menu to print from, and the page had no
+// print command of its own. The sheet is closed first, so the paper has the list and not the menu. Not in the
+// preview copy (a frame), and not with no sets.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', box: '2' }, b: { id: 'b', t: 1, num: '21318-1', name: 'Tree House', state: 'built', box: '3' } } });
+  await p.goto(base + '#catalog');
+  await p.evaluate(() => { window.__prints = []; window.print = () => window.__prints.push([document.querySelectorAll('.scrim').length, !!(history.state && history.state.sheet), [...document.querySelectorAll('#list-wrap .item .t')].map(e => e.textContent).join()]); });
+  await p.fill('#q', 'box 2');
+  await p.click('#menu-btn');
+  assert.equal(await p.textContent('#m-print'), 'Print this listWhat My sets is showing now: search for a box first to print its packing list');
+  await p.click('#m-print');
+  await p.waitForFunction(() => window.__prints.length);
+  assert.deepEqual(await p.evaluate(() => window.__prints), [[0, false, 'Bonsai Tree']], 'printed once, with the menu closed, the list as it was showing');
+  await p.setContent(`<iframe src="${base}#catalog" style="width:390px;height:800px"></iframe>`);
+  const f = await (await p.waitForSelector('iframe')).contentFrame();
+  await f.click('#menu-btn');
+  assert.deepEqual([await f.locator('#m-link').count(), await f.locator('#m-print').count()], [1, 0], 'the preview copy has no Print');
+  await c.close();
+  const e = await withSets({ sets: {} });
+  await e.p.goto(base + '#catalog');
+  await e.p.click('#menu-btn');
+  assert.deepEqual([await e.p.locator('#m-link').count(), await e.p.locator('#m-print').count()], [1, 0], 'nothing to print with no sets');
+  await e.c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
