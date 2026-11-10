@@ -281,6 +281,11 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .sv-box { stroke: rgba(0, 0, 0, .25); stroke-width: .25; }
 .sv-set:hover .sv-box, .sv-set:focus-visible .sv-box { stroke: var(--ink); stroke-width: .5; }
 .sv-hit { fill: transparent; }
+/* A set that's been taken apart or sealed since it was put on its shelf: pale and hatched, its name in ink. */
+.sv-set.off .sv-box { fill-opacity: .3; }
+.sv-set.off .sv-t { fill: var(--ink); }
+.sv-hatch { pointer-events: none; }
+.sv-stripe { fill: var(--ink); opacity: .22; }
 .sv-set:focus { outline: none; }
 .sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
 .sv-h { fill: var(--muted); font-size: 2.6px; pointer-events: none; }

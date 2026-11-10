@@ -1653,6 +1653,52 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A set that stops belonging on its shelf. One whose size was cleared isn't drawn, so it's listed under Needs a size
+// with the shelf it's on (it was in neither list, and still counted as on a shelf). One taken apart or sealed since
+// is drawn pale and hatched, and a line over the bookcase takes such sets off, with Undo.
+{
+  const set = (id, name, state, size) => ({ id, t: 1, name, state, ...(size ? { size: { w: size[0], d: size[1], h: size[2] } } : {}) });
+  const { c, p } = await withSets({ sets: { mc: set('mc', 'Medieval Castle', 'apart', [30, 20, 25]), bt: set('bt', 'Bonsai Tree', 'sealed', [20, 15, 18]), bs: set('bs', 'Bookshop', 'built'),
+    tw: set('tw', 'Typewriter', 'built', [27, 26, 11]) },
+    cases: { k: { id: 'k', t: 2, name: 'Billy narrow', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'bs' }, { id: 'tw' }, { id: 'mc' }] }, { h: 32, sets: [{ id: 'bt' }] }] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const seen = () => p.evaluate(() => ({ sum: document.querySelector('#shelves-body .sumline').textContent, head: document.querySelector('.case-hd .m').textContent, drawn: [...document.querySelectorAll('.sv-set')].map(g => g.dataset.set + (g.classList.contains('off') ? ' off' : '')),
+    rows: [...document.querySelectorAll('#shelves-body .list .item')].map(r => [...r.querySelectorAll('.t, .m')].map(e => e.textContent).join(' | ')), flag: [...document.querySelectorAll('.case .flag')].map(f => [f.querySelector('span').textContent, (f.querySelector('button') || {}).textContent || '']) }));
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await seen(), { sum: '3 of 4 sets on shelves', head: '76 × 26 cm inside · 2 shelves · 3 sets', drawn: ['tw', 'mc off', 'bt off'], rows: ['Bookshop | On Billy narrow, shelf 1'],
+    flag: [['2 sets here aren’t built now: Medieval Castle and Bonsai Tree.', 'Take them off']] }, 'a set with no size is listed with its shelf; taken-apart and sealed sets are hatched and flagged');
+  await p.click('[data-act="take-off"]');
+  assert.deepEqual([await toastSays(), (await seen()).drawn, (await seen()).flag], [['2 sets are off Billy narrow', 'Undo'], ['tw'], []], 'the button takes them off');
+  await p.click('.toast button');
+  assert.deepEqual([await toastSays(), (await seen()).drawn], [['Those 2 sets are back on their shelves', ''], ['tw', 'mc off', 'bt off']], 'and Undo puts them back');
+  await p.evaluate(() => { const d = window.brickyard.doc(); window.brickyard.putSet(Object.assign({}, d.sets.bt, { state: 'built' })); window.brickyard.refresh(); });
+  assert.deepEqual((await seen()).flag, [['Medieval Castle is taken apart now.', 'Take it off the shelf']]);
+  await c.close();
+}
+
+// Two devices can each save a bookcase with the same set on it, and syncing keeps both. The set is drawn once, on the
+// bookcase changed last; moving it leaves it in one place in what's saved, and the other bookcase is saved without it.
+{
+  const set = (id, name) => ({ id, t: 1, name, state: 'built', size: { w: 20, d: 15, h: 18 } });
+  const { c, p } = await withSets({ sets: { x: set('x', 'Bonsai Tree'), y: set('y', 'Orchid') },
+    cases: { k1: { id: 'k1', t: 12, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'x' }, { id: 'y' }] }, { h: 32, sets: [] }] },
+      k2: { id: 'k2', t: 11, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [{ id: 'x' }] }] } } });
+  const saved = () => p.evaluate(() => Object.values(window.brickyard.doc().cases).map(k => k.id + ':' + k.levels.map(l => l.sets.map(q => q.id).join('+')).join('/')).sort().join(' '));
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual([await p.locator('.sv-set[data-set="x"]').count(), await p.locator('.sv-set').count(), await p.textContent('#shelves-body .sumline')], [1, 2, 'All 2 sets are on shelves'], 'a set on two bookcases is drawn once');
+  assert.match(await p.getAttribute('.sv-set[data-set="x"]', 'aria-label'), /Billy, shelf 1/, 'on the bookcase changed last');
+  await p.goto(base);
+  assert.equal(await p.textContent('#home-shelf-stat'), '2 bookcases · 2 sets on shelves', 'and counted once on the home screen');
+  await p.goto(base + '#shelves');
+  await p.click('.sv-set[data-set="x"]');
+  await p.selectOption('#z-where', 'k1:1');
+  await p.click('#z-save');
+  assert.equal(await saved(), 'k1:y/x k2:', 'moved, it is saved in one place');
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },

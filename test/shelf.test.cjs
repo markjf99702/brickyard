@@ -82,6 +82,40 @@ const galaxy = set('galaxy', 51, 25, 33), billy = { id: 'b', name: 'Billy', w: 7
 eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 'too tall for one bookcase and too big for the other');
 eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
 
+// A set that stops belonging on its shelf. One whose size was cleared is still placed, and is listed under Needs a
+// size too (it isn't drawn, and was in neither list). One taken apart since stays placed, for the page to flag, and
+// Fit leaves it where it is.
+{
+  const bare = { id: 'bare', name: 'Bookshop', state: 'built' }, gone = set('gone', 20, 10, 10, 'apart'), next = set('next', 20, 20, 10);
+  const kc = { id: 'kc', name: 'Billy narrow', w: 36, d: 26, levels: [{ h: 32, sets: [{ id: 'bare' }, { id: 'gone' }] }] };
+  const s2 = S.sort([bare, gone, next], [kc]);
+  eq([s2.placed.map(x => x.id), s2.waiting.map(x => x.id), s2.noSize.map(x => x.id)], [['bare', 'gone'], ['next'], ['bare']], 'a placed set with no size is under Needs a size as well');
+  eq(S.sort([{ id: 'bare', name: 'Bookshop', state: 'apart' }], [kc]).noSize, [], 'not one that has been taken apart');
+  const f2 = S.fill([kc], [bare, gone, next]);
+  eq(f2.cases[0].levels[0].sets.map(p => p.id), ['bare', 'gone'], 'Fit leaves a taken-apart set on its shelf, and the room it takes');
+  eq(f2.left.map(x => x.set.id), ['next'], 'so the next set has no room');
+}
+// Two devices: the phone moves X from k1 to k2 (both saved at t 11); the laptop, not yet synced, adds Y to k1
+// (t 12). Merged, X stood on both. It stays on the bookcase changed last, in either order, and a tie goes to the
+// later id.
+{
+  const mk = (id, t, on) => ({ id, t, name: id, w: 76, d: 26, levels: [{ h: 32, sets: on.map(i => ({ id: i })) }, { h: 32, sets: [] }] });
+  const phone = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 11, []), k2: mk('k2', 11, ['x']) } } });
+  const laptop = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 12, ['x', 'y']), k2: mk('k2', 5, []) } } });
+  const on = list => list.map(c => c.id + ':' + c.levels.map(l => l.sets.map(p => p.id).join('+')).join('/')).join(' ');
+  const merged = Object.values(C.mergeDocs(phone, laptop).cases);
+  eq(on(merged), 'k1:x+y/ k2:x/', 'merged, a set stands on two bookcases');
+  const once = S.dedupe(merged);
+  eq(on(once), 'k1:x+y/ k2:/', 'it stays on the bookcase changed last');
+  eq(on(S.dedupe(merged.slice().reverse()).reverse()), 'k1:x+y/ k2:/', 'whatever order the bookcases come in');
+  eq(on(merged), 'k1:x+y/ k2:x/', 'the bookcases given are not changed');
+  check(once[0] === merged[0] && once[1] !== merged[1], 'a bookcase that loses nothing comes back as it is');
+  eq(on(S.dedupe([mk('k1', 7, ['x']), mk('k2', 7, ['x', 'z'])])), 'k1:/ k2:x+z/', 'a tie goes to the later id');
+  const twice = mk('k3', 1, ['x']); twice.levels[1].sets.push({ id: 'x', turn: true });
+  eq(on(S.dedupe([twice])), 'k3:x/', 'and on one bookcase, to its first shelf');
+  eq(Object.keys(S.placements(once)), ['x', 'y'], 'each set is in one place');
+}
+
 // Sizes from Claude, and the cataloger script makes the same.
 const list = [{ num: '10497', w: '51', d: 33.04, h: 14, note: '  LEGO   says ' }, { num: '10497', w: 1, d: 1, h: 1 }, { num: 'nope', w: 1, d: 1, h: 1 },
   { num: 21318, w: 22, d: 22 }, { num: 'LEGO® Set No. 10281', w: 20, d: 15, h: 18 }];

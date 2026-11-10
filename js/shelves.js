@@ -14,11 +14,27 @@
   var COLOURS = ['#c8322b', '#1f5ba6', '#2f8a4e', '#e08a1e', '#6d4fa0', '#20817a', '#8a5a3c', '#5b6770'];
   function $(id) { return document.getElementById(id); }
 
+  // The bookcases, each set standing in one place (S.dedupe: two devices can each have saved it on a different
+  // one). A bookcase that had to lose a set comes back as a copy, and is saved that way the next time anything
+  // here saves a bookcase (put). So a bookcase is always taken from here (caseOf), never from the catalog as kept.
   function cases() {
     var d = app.doc().cases;
-    return Object.keys(d).map(function (k) { return d[k]; }).filter(function (c) { return !c.del; })
-      .sort(function (a, b) { return C.natural(a.room || '', b.room || '') || C.natural(a.name, b.name) || C.natural(a.id, b.id); });
+    return S.dedupe(Object.keys(d).map(function (k) { return d[k]; }).filter(function (c) { return !c.del; })
+      .sort(function (a, b) { return C.natural(a.room || '', b.room || '') || C.natural(a.name, b.name) || C.natural(a.id, b.id); }));
   }
+  function caseOf(id) { return cases().filter(function (c) { return c.id === id; })[0] || null; }
+  function tidy(but) { var d = app.doc().cases; cases().forEach(function (c) { if (c.id !== but && c !== d[c.id]) app.putCase(c); }); }
+  function put(c) { tidy(c.id); app.putCase(c); }
+  // Undo for a change to bookcases: each goes back as it was (copies kept from before). A set stood on another
+  // bookcase in the meantime stays there.
+  function putCasesBack(kept) {
+    var mine = {}; kept.forEach(function (k) { mine[k.id] = 1; });
+    var at = S.placements(cases().filter(function (c) { return !mine[c.id]; }));
+    kept.forEach(function (k) { k.levels.forEach(function (l) { l.sets = l.sets.filter(function (p) { return !at[p.id]; }); }); });
+    kept.forEach(function (k) { app.putBack('cases', k); });
+  }
+  function nameOf(x) { return x.name || 'Set ' + C.shortNum(x.num); }
+  function onShelf(x) { return S.ON_SHELVES.indexOf(x.state) >= 0; }
   function sets() { return C.live(app.doc()); }
   function byId() { var m = {}; sets().forEach(function (x) { m[x.id] = x; }); return m; }
   function copy(c) { return JSON.parse(JSON.stringify(c)); }
@@ -35,15 +51,16 @@
       html += '<div class="empty"><h2>Your bookcases go here</h2><p>Add each bookcase with its shelf heights, and Brickyard fits your built sets onto them, tallest first, so you know where everything goes before you unpack.</p>' +
         '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div></div>';
     } else {
-      var placed = sorted.placed.length, total = placed + sorted.waiting.length + sorted.noSize.length;
+      // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
+      var placed = sorted.placed.filter(S.hasSize).length, total = placed + sorted.waiting.length + sorted.noSize.length;
       var fitting = sorted.waiting.filter(function (x) { return !S.whyNot(all, x, ids); }).length;
       // Nothing to count until there's a set the planner places (the note at the end says which those are).
       if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>';
       html += '<div class="acts-row">' + (fitting ? '<button class="btn" type="button" data-act="fill">Fit ' + (fitting === sorted.waiting.length ? plural(fitting, 'set') : 'the sets') + ' onto the shelves</button>' : '') +
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
-      all.forEach(function (c) { html += caseHtml(c, ids); });
-      if (placed) {
+      all.forEach(function (c, i) { html += caseHtml(c, ids, i); });
+      if (sorted.placed.length) {
         // The card says whether My sets is behind these shelves: after Fit moves a set, or a bookcase is renamed,
         // nothing else on the screen did.
         var apart = places(all, ids).filter(function (p) { return p.differs; }).length;
@@ -61,7 +78,10 @@
       html += '<h2 class="group"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
         '<p class="note">Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.</p>' +
         '<div class="acts-row"><button class="btn quiet" type="button" data-act="ask-sizes">Copy these for Claude</button><button class="btn quiet" type="button" data-act="open-sizes">Open sizes from Claude</button></div>' +
-        '<ul class="list">' + sorted.noSize.map(function (x) { return setRow(x, ''); }).join('') + '</ul>';
+        '<ul class="list">' + sorted.noSize.map(function (x) {
+          var at = S.placements(all)[x.id], c = at && all.filter(function (k) { return k.id === at.c; })[0];
+          return setRow(x, '', c ? 'On ' + shelfName(c, at.l) : '');
+        }).join('') + '</ul>';
     }
     if (!sorted.placed.length && !sorted.waiting.length && !sorted.noSize.length) {
       html += '<p class="note" style="margin-top:16px">The planner places sets marked <b>Built</b> or <b>Partly built</b> in My sets. You don’t have any yet. <a href="#catalog">Add or mark them in My sets.</a></p>';
@@ -69,10 +89,12 @@
     $('shelves-body').innerHTML = html;
   }
 
-  function setRow(x, why) {
-    var meta = x.size ? sizeText(x.size) : [C.shortNum(x.num), x.theme].filter(Boolean).join(' · ');
+  // `where` is for a set that needs a size but is on a shelf already (its size was cleared): it isn't in the drawing.
+  function setRow(x, why, where) {
+    var meta = S.hasSize(x) ? sizeText(x.size) : [C.shortNum(x.num), x.theme].filter(Boolean).join(' · ');
     return '<li><button class="item" type="button" data-set="' + esc(x.id) + '"><div class="pic none swatch" style="background:' + colourOf(x) + '"></div>' +
-      '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(meta) + '</div>' +
+      '<div class="main"><div class="t">' + esc(nameOf(x)) + '</div>' + (meta ? '<div class="m">' + esc(meta) + '</div>' : '') +
+      (where ? '<div class="m">' + esc(where) + '</div>' : '') +
       (why ? '<div class="m warn">' + esc(why) + '</div>' : '') + '</div><span></span></button></li>';
   }
 
@@ -81,11 +103,14 @@
   function whyNot(x, all, ids) { return all.length ? S.whyNot(all, x, ids) : ''; }
 
   // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
-  // above it (its size or the shelf's height changed after it was placed), is marked in red.
+  // above it (its size or the shelf's height changed after it was placed), is marked in red. A set that has been
+  // taken apart or sealed since it was placed is drawn pale and hatched, with a line above the drawing that takes
+  // it off: it still holds its room until then. `n` is the bookcase's place on the page, for the hatching's name.
   var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
-  function caseHtml(c, ids) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0;
+  function caseHtml(c, ids, n) {
+    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0, drawn = 0, gone = [];
     c.levels.forEach(function (l) { H += l.h + T; });
+    parts.push('<defs><pattern id="svh' + n + '" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.9" height="2.4" class="sv-stripe"/></pattern></defs>');
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
@@ -98,7 +123,10 @@
       tags.push('<rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + tag.h + '" rx="1.85" class="sv-tag"/>' +
         '<text x="' + (T + c.w - 1.2) + '" y="' + (y + 3.1) + '" class="sv-h" text-anchor="end">' + text + '</text>');
       l.sets.forEach(function (p) {
-        var x = ids[p.id]; if (!x || !S.hasSize(x)) return;
+        var x = ids[p.id]; if (!x) return;
+        if (!onShelf(x)) gone.push(x);
+        if (!S.hasSize(x)) return;
+        drawn++;
         if (x.size.h > l.h) tall++;
         var f = S.footprint(x, p.turn);
         row.push({ x: x, p: p, f: f, x0: x0 });
@@ -111,21 +139,26 @@
         var left = i ? r.x0 - S.GAP / 2 : T, right = next ? next.x0 - S.GAP / 2 : Math.max(T + c.w, r.x0 + f.along);
         var hw = Math.max(f.along, Math.min(HIT, right - left)), hx = Math.min(Math.max(left, r.x0 - (hw - f.along) / 2), right - hw);
         var hh = Math.max(f.h, Math.min(HIT, l.h)), hy = y + l.h - hh;
-        parts.push('<g class="sv-set" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
+        var off = !onShelf(x), box = 'x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8"';
+        parts.push('<g class="sv-set' + (off ? ' off' : '') + '" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
           '<rect x="' + hx.toFixed(2) + '" y="' + hy + '" width="' + hw.toFixed(2) + '" height="' + hh + '" class="sv-hit"/>' +
-          '<rect x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8" fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
+          '<rect ' + box + ' fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
+          (off ? '<rect ' + box + ' fill="url(#svh' + n + ')" class="sv-hatch"/>' : '') +
           label(x, r.x0, top, f, tag) + '</g>');
       });
       y += l.h; high += tall;
       parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (u > c.w + 0.01 || tall ? ' style="fill:var(--red)"' : '') + '/>');
       y += T;
     });
-    var n = c.levels.reduce(function (k, l) { return k + l.sets.filter(function (p) { return ids[p.id]; }).length; }, 0);
+    var names = gone.slice(0, 3).map(nameOf), more = gone.length - names.length;
+    var goneSays = !gone.length ? '' : gone.length === 1 ? names[0] + (gone[0].state === 'apart' ? ' is taken apart now.' : gone[0].state === 'sealed' ? ' is sealed now.' : ' isn’t built now.')
+      : gone.length.toLocaleString() + ' sets here aren’t built now: ' + (more ? names.join(', ') + ' and ' + more.toLocaleString() + ' more.' : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + '.');
     return '<section class="case">' +
-      '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(n, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
+      '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(drawn, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
       (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
       (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
+      (gone.length ? '<p class="flag bad"><span>' + esc(goneSays) + '</span><button class="btn sm quiet" type="button" data-act="take-off" data-k="' + esc(c.id) + '">' + (gone.length === 1 ? 'Take it off the shelf' : 'Take them off') + '</button></p>' : '') +
       '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
   }
 
@@ -190,11 +223,12 @@
     var a = e.target.closest('[data-act],[data-set],[data-case]');
     if (!a) return;
     if (a.dataset.set) return setSheet(a.dataset.set);
-    if (a.dataset.case) return caseSheet(app.doc().cases[a.dataset.case]);
+    if (a.dataset.case) return caseSheet(caseOf(a.dataset.case));
     var act = a.dataset.act;
     if (act === 'add-case') caseSheet(null);
     if (act === 'fill') fillAll();
     if (act === 'apply') applyPlaces();
+    if (act === 'take-off') takeOffGone(a.dataset.k);
     if (act === 'ask-sizes') askSizes();
     if (act === 'open-sizes') openSizes();
   });
@@ -205,10 +239,24 @@
 
   function fillAll() {
     var before = cases(), r = S.fill(before, sets()), moved = 0;
-    r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) { app.putCase(c); } });
+    r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) put(c); });
     moved = S.sort(sets(), r.cases).placed.length - S.sort(sets(), before).placed.length;
     render();
     toast(moved ? plural(moved, 'set') + ' placed' + (r.left.length ? '; ' + r.left.length + ' didn’t fit' : '') : 'Nothing else fits. See why under each set.');
+  }
+
+  // Takes off a bookcase every set on it that isn't built or partly built any more.
+  function takeOffGone(id) {
+    var c = caseOf(id), ids = byId(), names = []; if (!c) return;
+    var kept = copy(c), next = copy(c);
+    next.levels.forEach(function (l) {
+      l.sets = l.sets.filter(function (p) { var x = ids[p.id]; if (!x || onShelf(x)) return true; names.push(nameOf(x)); return false; });
+    });
+    if (!names.length) return;
+    put(next); render();
+    toast((names.length === 1 ? names[0] + ' is' : names.length.toLocaleString() + ' sets are') + ' off ' + c.name, false, { label: 'Undo', run: function () {
+      putCasesBack([kept]); toast(names.length === 1 ? names[0] + ' is back on its shelf' : 'Those ' + names.length.toLocaleString() + ' sets are back on their shelves');
+    } });
   }
 
   // Where the shelves put each set, against what My sets says: one entry for each set on a shelf (once, wherever
@@ -268,7 +316,7 @@
         return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here ? ' disabled' : '') + '>Shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (f.why && !here ? ' · ' + esc(f.why.replace(/ \(.*\)/, '').toLowerCase()) : '') + '</option>';
       }).join('') + '</optgroup>';
     }).join('');
-    var level = at ? app.doc().cases[at.c].levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
+    var level = at ? caseOf(at.c).levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<div class="three">' +
       '<label class="field"><span>Width, cm</span><input id="z-w" inputmode="decimal" value="' + esc(z.w || '') + '"></label>' +
@@ -285,8 +333,8 @@
     // My sets opens on this set (app.showSet), once this sheet has closed.
     $('z-cat').onclick = function (e) { e.preventDefault(); app.showSet(id); };
     function shift(by) {
-      var c = copy(app.doc().cases[at.c]), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
-      var p = l.sets.splice(i, 1)[0]; l.sets.splice(i + by, 0, p); app.putCase(c); app.closeSheet(); render();
+      var c = copy(caseOf(at.c)), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
+      var p = l.sets.splice(i, 1)[0]; l.sets.splice(i + by, 0, p); put(c); app.closeSheet(); render();
     }
     if ($('z-left')) { $('z-left').onclick = function () { shift(-1); }; $('z-right').onclick = function () { shift(1); }; }
     $('z-save').onclick = function () {
@@ -299,17 +347,17 @@
       var want = $('z-where') ? $('z-where').value : '', turn = $('z-turn') ? $('z-turn').checked : false;
       var now = at ? at.c + ':' + at.l : '';
       if (want !== now || (at && turn !== at.turn)) {
-        var ids2 = byId(), changed = {};
-        if (at) { var c0 = copy(app.doc().cases[at.c]); S.takeOff([c0], id); changed[c0.id] = c0; }
+        // Off every bookcase first, so it can only ever stand in the one place chosen here.
+        var ids2 = byId(), list = cases(), next = list.map(copy);
+        S.takeOff(next, id);
         if (want) {
-          var bits = want.split(':'), c1 = changed[bits[0]] || copy(app.doc().cases[bits[0]]), li = +bits[1];
+          var bits = want.split(':'), c1 = next.filter(function (k) { return k.id === bits[0]; })[0], li = +bits[1];
           var f = S.fits(c1, li, ids2[id], ids2, $('z-turn') ? turn : false);
           if (f.why) { toast(f.why); return; }
           var p = { id: id }; if (f.turn) p.turn = true;
           if (at && at.c === c1.id && at.l === li) c1.levels[li].sets.splice(pos, 0, p); else c1.levels[li].sets.push(p);
-          changed[c1.id] = c1;
         }
-        Object.keys(changed).forEach(function (k) { app.putCase(changed[k]); });
+        next.forEach(function (k, i) { if (JSON.stringify(k.levels) !== JSON.stringify(list[i].levels)) put(k); });
       }
       app.closeSheet(); render();
     };
@@ -356,17 +404,14 @@
         said.push({ id: x.id, spot: x.spot });
         var y = copy(x); delete y.spot; app.putSet(y);
       });
-      app.removeCase(c.id); app.closeSheet(); render();
+      tidy(c.id); app.removeCase(c.id); app.closeSheet(); render();
       toast('Removed ' + c.name + (n ? '. Its sets are back in Not on a shelf yet.' : '') +
         (said.length ? (n ? ' ' : '. ') + (said.length === 1 ? '1 set no longer says' : said.length.toLocaleString() + ' sets no longer say') + ' ' + c.name + ' in My sets.' : ''), false, { label: 'Undo', run: function () {
-        // A set stood on another bookcase in the meantime stays there.
-        var at = S.placements(cases());
-        kept.levels.forEach(function (l) { l.sets = l.sets.filter(function (p) { return !at[p.id]; }); });
         said.forEach(function (w) {
           var x = app.doc().sets[w.id];
           if (x && !x.del && !x.spot) { var y = copy(x); y.spot = w.spot; app.putSet(y); }
         });
-        app.putBack('cases', kept); toast(kept.name + ' is back');
+        putCasesBack([kept]); toast(kept.name + ' is back');
       } });
     };
     $('k-save').onclick = function () {
@@ -374,7 +419,7 @@
       var y = C.cleanCase({ id: c ? c.id : 'k' + app.newId().slice(1), name: $('k-name').value || 'Bookcase', room: $('k-room').value, w: $('k-w').value, d: $('k-d').value,
         levels: hs.map(function (h, i) { return { h: h, sets: c && c.levels[i] ? c.levels[i].sets : [] }; }) });
       if (!y) { toast('Give the width, depth and at least one shelf height'); return; }
-      app.putCase(y); app.closeSheet(); render();
+      put(y); app.closeSheet(); render();
     };
   }
 

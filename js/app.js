@@ -207,7 +207,8 @@
     } catch (e) { /* none saved */ }
     $('home-build-stat').textContent = [models ? plural(models, 'model') + ' from Claude' : '', loose ? plural(loose, 'loose piece') : ''].filter(Boolean).join(' · ') || 'Try the example cottage';
     var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
-    var on = Object.keys(window.ShelfCore.placements(cases)).filter(function (id) { return DOC.sets[id] && !DOC.sets[id].del; }).length;
+    // As the planner counts them: each set once, and only those it can draw (a set on a shelf with no size isn't).
+    var S = window.ShelfCore, on = S.sort(C.live(DOC), S.dedupe(cases)).placed.filter(S.hasSize).length;
     $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + plural(on, 'set') + ' on shelves' : 'Start with your bookcases';
   }
 
