@@ -253,6 +253,8 @@ a.item { color: inherit; text-decoration: none; }
 .stage canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .stage canvas:active { cursor: grabbing; }
 .stage-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 4px 10px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
+/* Shows once the picture has been turned or zoomed, and puts it back as it opened. */
+.stage-reset { position: absolute; right: 10px; top: 10px; min-height: 40px; background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); }
 .stepbar { display: flex; align-items: center; gap: 10px; padding: 12px 0 4px; }
 .stepnum { flex: 1; text-align: center; font-size: 17px; }
 .stepnum span { color: var(--muted); }

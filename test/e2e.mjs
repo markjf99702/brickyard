@@ -1536,8 +1536,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.equal(await step(), 'Step 1 of 7', 'and does nothing there');
   await p.tap('#step-next');
   assert.equal(await p.getAttribute('#step-prev', 'aria-disabled'), 'false');
-  const next = await box('#step-next'), prev = await box('#step-prev');
-  let range = await box('#step-range');
+  // Measured together, once the font is in (it changes the buttons' height, and the taps below go by these) and
+  // Next is no longer pressed (a pressed button sits 1 px lower).
+  await p.evaluate(() => document.fonts.ready);
+  await p.waitForFunction(() => !document.querySelector('#step-next:active'));
+  let [next, prev, range] = await p.evaluate(() => ['step-next', 'step-prev', 'step-range'].map(id => { const r = document.getElementById(id).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
   assert.ok(range.y - Math.max(next.y + next.height, prev.y + prev.height) >= 12, 'the slider’s tap area starts at least 12 px under the buttons');
   await p.touchscreen.tap(next.x + next.width / 2, next.y + next.height - 2);
   assert.equal(await step(), 'Step 3 of 7', 'a tap 2 px above Next’s bottom edge is one step');
@@ -1642,6 +1645,60 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
   assert.deepEqual([await p.locator('#model-check .flag.bad').count(), await p.textContent('#model-check .note.ok'), await p.textContent('#step-parts li')],
     [0, '✓ You have every piece for this, from loose pieces (Blue tub).', '1× Plate 1x2White'], 'a model written with everyday numbers opens and can be built');
+  await c.close();
+}
+
+// The picture fits the model, across as well as up and down: on a phone the stage is narrower than it is tall, and
+// a model 12 or 32 studs wide ran off both sides. It can't be turned to look from underneath (a blank slab), and
+// Reset view, which shows once the picture has been moved, puts it back as it opened.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const open = async model => {
+    await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model })).toString('base64url'));
+    await p.waitForFunction(n => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === n, model.name);
+    return p.evaluate(() => window.BrickyardBuild.inView());
+  };
+  const inside = v => v.box.every(n => n >= 0 && n <= 1), fills = v => Math.max(v.box[2] - v.box[0], v.box[3] - v.box[1]);
+  const wall = { name: 'Long wall', parts: Array.from({ length: 15 }, (_, i) => ['3001', i % 2 ? 4 : 15, i < 8 ? i * 4 : (i - 8) * 4 + 2, i < 8 ? 0 : 3, 0, 0, 1]) };
+  const plate = { name: 'Wide plate', parts: [['3028', 2, 0, 0, 0, 0, 1], ['3001', 4, 4, 1, 2, 0, 2]] };
+  const tower = { name: 'Tower', parts: Array.from({ length: 30 }, (_, i) => ['3003', i % 2 ? 4 : 15, 0, i * 3, 0, 0, i + 1]) };
+  for (const m of [plate, wall, tower]) {
+    const v = await open(m);
+    assert.ok(v, 'the 3D picture is drawn in this browser');
+    assert.ok(inside(v) && fills(v) > 0.8, m.name + ' fits inside the picture on a phone, and fills it: ' + v.box.map(n => n.toFixed(2)));
+  }
+  // Turned on its side, the phone gets the model fitted again; once the picture has been moved, it's left alone.
+  await p.setViewportSize({ width: 844, height: 390 });
+  await p.waitForFunction(() => { const c = document.getElementById('stage'); return c.width / c.height > 2; });
+  let v = await p.evaluate(() => window.BrickyardBuild.inView());
+  assert.ok(inside(v) && fills(v) > 0.8, 'the tower is fitted again when the phone is turned: ' + v.box.map(n => n.toFixed(2)));
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.waitForFunction(() => { const c = document.getElementById('stage'); return c.width / c.height < 1; });
+  // A long drag upwards stops just under the horizon.
+  const first = await open(plate), s = await p.locator('#stage').boundingBox();
+  assert.equal(await p.isHidden('#stage-reset'), true, 'no Reset view until the picture has been moved');
+  const cdp = await c.newCDPSession(p);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x + 195, y: s.y + 380 }] });
+  for (let k = 1; k <= 12; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x + 195, y: s.y + 380 - k * 25 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await p.waitForTimeout(600);
+  v = await p.evaluate(() => window.BrickyardBuild.inView());
+  assert.ok(v.moved && v.polar > 0.45 && v.polar <= 0.5201, 'a long drag up stops just under the horizon, not underneath: ' + v.polar.toFixed(3));
+  assert.equal(await p.isVisible('#stage-reset'), true, 'Reset view shows once the picture has been moved');
+  await p.tap('#stage-reset');
+  await p.waitForTimeout(300);
+  v = await p.evaluate(() => window.BrickyardBuild.inView());
+  assert.deepEqual([v.box.map(n => n.toFixed(3)), v.moved, await p.isHidden('#stage-reset')], [first.box.map(n => n.toFixed(3)), false, true], 'Reset view puts the picture back as it opened');
+  await c.close();
+}
+// On a laptop the stage is wide, and the cottage still fills its height.
+{
+  const { c, p } = await withSets({ sets: {} }, { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: false });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.waitForFunction(() => window.BrickyardBuild.inView());
+  const v = await p.evaluate(() => window.BrickyardBuild.inView());
+  assert.ok(v.box.every(n => n >= 0 && n <= 1) && v.box[3] - v.box[1] > 0.8, 'the cottage fills the stage’s height on a laptop: ' + v.box.map(n => n.toFixed(2)));
   await c.close();
 }
 

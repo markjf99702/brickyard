@@ -78,7 +78,8 @@ function saveModel(m) {
   return id;
 }
 // For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
-window.BrickyardBuild = { saveModel };
+// inView is for test/e2e.mjs: where the model's bounds fall on the picture.
+window.BrickyardBuild = { saveModel, inView: () => inView() };
 async function modelById(id) {
   if (id.startsWith('x-')) {
     const name = id.slice(2);
@@ -376,6 +377,9 @@ function partsSheet() {
 // ---------- 3D ----------
 const PLATE = 0.4; // a plate is 0.4 studs tall (3.2 mm against 8 mm)
 let renderer = null, scene, camera, controls, meshes = [], running = false, anims = [];
+let view = null; // { box, centre, radius: the model's bounds, moved: the person has turned or zoomed the picture }
+// Seen from the front right and a little above, like a set's instructions.
+const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize();
 const mats = {}, geos = {};
 
 function startStage() {
@@ -392,7 +396,17 @@ function startStage() {
     controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.enablePan = false;
-    controls.addEventListener('start', () => { $('stage-hint').hidden = true; });
+    controls.maxPolarAngle = Math.PI * 0.52; // stops just under the horizon: from below a model is a blank slab
+    controls.addEventListener('start', () => {
+      $('stage-hint').hidden = true;
+      if (view) { view.moved = true; $('stage-reset').hidden = false; }
+    });
+    $('stage-reset').onclick = () => {
+      // With damping off for one update, whatever was left of a flick is spent before the camera is put back.
+      controls.enableDamping = false; controls.update(); controls.enableDamping = true;
+      view.moved = false; $('stage-reset').hidden = true;
+      frame();
+    };
     new ResizeObserver(resize).observe(canvas);
   }
   running = true;
@@ -406,6 +420,7 @@ function resize() {
   if (!w || !h) return;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
+  if (view && !view.moved) frame(); // a turned phone or a resized window fits the model again, until it's been moved
 }
 function loop(t) {
   if (!running) return;
@@ -504,16 +519,52 @@ function buildScene(model) {
   meshes.forEach(m => scene.remove(m.obj));
   meshes = model.parts.map(q => shapes[q[0]] ? { q, obj: partObject(q) } : null).filter(Boolean);
   meshes.forEach(m => { m.obj.visible = false; m.y = m.obj.position.y; scene.add(m.obj); });
-  // Frame the whole model, seen from the front right and a little above, like a set's instructions.
-  const bounds = new THREE.Box3();
-  meshes.forEach(m => { m.obj.visible = true; bounds.expandByObject(m.obj); });
-  const centre = bounds.getCenter(new THREE.Vector3()), radius = bounds.getSize(new THREE.Vector3()).length() / 2 || 4;
-  const dist = radius / Math.sin((camera.fov * Math.PI / 180) / 2) * 1.02;
-  controls.target.copy(centre);
-  camera.position.copy(centre).add(new THREE.Vector3(0.62, 0.55, 0.85).normalize().multiplyScalar(dist));
-  controls.minDistance = radius * 0.8; controls.maxDistance = dist * 3;
+  const box = new THREE.Box3();
+  meshes.forEach(m => { m.obj.visible = true; box.expandByObject(m.obj); });
+  if (box.isEmpty()) box.set(new THREE.Vector3(-4, 0, -4), new THREE.Vector3(4, 4, 4)); // nothing to draw
+  view = { box, centre: box.getCenter(new THREE.Vector3()), radius: box.getSize(new THREE.Vector3()).length() / 2, moved: false };
+  $('stage-reset').hidden = true;
+  frame();
+}
+
+// The eight corners of the model's bounds.
+function corners() {
+  const { min, max } = view.box, out = [];
+  for (let i = 0; i < 8; i++) out.push(new THREE.Vector3(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z));
+  return out;
+}
+// Puts the camera where the whole model shows, as large as the stage allows: the nearest place along LOOK from
+// which every corner of its bounds is inside the picture, across as well as up and down. (It was fitted to the
+// picture's height alone, so on a phone, where the stage is narrower than it is tall, a wide model ran off both
+// sides.) FILL is the share of the picture the model may take, which leaves a margin round it.
+const FILL = 0.9;
+function frame() {
+  const right = new THREE.Vector3(0, 1, 0).cross(LOOK).normalize(), up = LOOK.clone().cross(right);
+  const tv = Math.tan(camera.fov * Math.PI / 360) * FILL, th = tv * camera.aspect;
+  let dist = 0;
+  corners().forEach(p => {
+    const v = p.sub(view.centre), along = v.dot(LOOK);
+    dist = Math.max(dist, along + Math.abs(v.dot(right)) / th, along + Math.abs(v.dot(up)) / tv);
+  });
+  controls.target.copy(view.centre);
+  camera.position.copy(view.centre).addScaledVector(LOOK, dist);
+  // No nearer than just outside the model, and no further than three times where it starts.
+  controls.minDistance = Math.min(view.radius * 1.2, dist * 0.6); controls.maxDistance = dist * 3;
   camera.near = dist / 100; camera.far = dist * 10; camera.updateProjectionMatrix();
   controls.update();
+}
+// Where the model's bounds fall on the picture, as [left, top, right, bottom] in shares of its width and height
+// (0 to 1 is inside), and how far round from straight above the camera is, in half turns.
+function inView() {
+  if (!renderer || !view) return null;
+  camera.updateMatrixWorld();
+  const r = [Infinity, Infinity, -Infinity, -Infinity];
+  corners().forEach(p => {
+    p.project(camera);
+    const x = (p.x + 1) / 2, y = (1 - p.y) / 2;
+    r[0] = Math.min(r[0], x); r[1] = Math.min(r[1], y); r[2] = Math.max(r[2], x); r[3] = Math.max(r[3], y);
+  });
+  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved };
 }
 
 function showUpTo(step, animate) {
