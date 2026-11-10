@@ -734,6 +734,68 @@ await page.keyboard.press('Escape');
 assert.equal(await page.evaluate(() => document.activeElement.id), 'menu-btn', 'focus goes back to the menu button');
 assert.equal(await page.evaluate(() => document.getElementById('catalog').inert), false, 'the page works again once the sheet is closed');
 
+// The keyboard's place is kept when a sheet closes or the list is redrawn. It used to be thrown back to the top of
+// the page: after Escape on the first sheet opened on a screen, after Save and Remove (the list is drawn again), and
+// after a press on a filter chip (the chips are too). Now it's on the set's row again, on the row that took a removed
+// set's place, and on the chip.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' }, b: { id: 'b', t: 1, name: 'Orchid', state: 'built', room: 'Hall' },
+    d: { id: 'd', t: 1, name: 'Typewriter', state: 'apart', room: 'Office' }, e: { id: 'e', t: 1, name: 'Wildflowers', state: 'built', room: 'Office' } } },
+  { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  const active = () => p.evaluate(() => { const a = document.activeElement; return a === document.body ? 'BODY' : a.dataset.id || a.dataset.f || a.id || a.tagName; });
+  // Closing a sheet goes back over its place in history, which the browser does a moment later.
+  const closed = async () => { await p.waitForFunction(() => !document.querySelector('.sheet') && !(history.state && history.state.sheet)); await p.waitForTimeout(100); };
+  await p.goto('about:blank'); // opened afresh on My sets: the case that lost the focus on the first close
+  await p.goto(base + '#catalog');
+  await p.focus('.item[data-id="a"]');
+  await p.keyboard.press('Enter');
+  await p.waitForSelector('.sheet');
+  await p.keyboard.press('Escape');
+  await closed();
+  assert.equal(await active(), 'a', 'after Escape on the first sheet, focus is on the set’s row');
+  await p.keyboard.press('Enter');
+  await p.fill('#e-notes', 'a gift');
+  await p.press('#e-year', 'Enter');
+  await closed();
+  assert.equal(await active(), 'a', 'after Save, on the row as it’s drawn again');
+  await p.keyboard.press('Enter');
+  await p.fill('#e-room', 'Study');
+  await p.click('#e-save');
+  await closed();
+  assert.deepEqual([await active(), await p.locator('.item .t').allTextContents()], ['a', ['Orchid', 'Typewriter', 'Wildflowers', 'Bonsai Tree']], 'and still on it when Save moved it down the list');
+  // Remove: the row that took its place (the last row, when it was the last).
+  await p.focus('.item[data-id="d"]');
+  await p.keyboard.press('Enter');
+  await p.focus('#e-del');
+  await p.keyboard.press('Enter'); await p.waitForTimeout(650); await p.keyboard.press('Enter');
+  await closed();
+  assert.equal(await active(), 'e', 'after Remove, on the row that took its place');
+  await p.keyboard.press('Control+z');
+  await p.waitForFunction(() => document.querySelectorAll('.item').length === 4);
+  assert.equal(await active(), 'e', 'and Undo leaves it there');
+  // A filter chip.
+  await p.focus('.chip[data-f="apart"]');
+  await p.keyboard.press('Space');
+  assert.deepEqual([await active(), await p.getAttribute('.chip[data-f="apart"]', 'aria-pressed')], ['apart', 'true'], 'a chip keeps the focus when it’s pressed');
+  await p.keyboard.press('Tab');
+  assert.equal(await active(), 'group', 'so Tab goes on from it, not from the top');
+  // A catalog arriving from sync, or another tab's save, redraws the list too.
+  await p.focus('.chip[data-f="all"]');
+  await p.keyboard.press('Enter');
+  await p.focus('.item[data-id="b"]');
+  await p.evaluate(() => window.brickyard.takeDoc(window.brickyard.doc()));
+  assert.equal(await active(), 'b', 'the list redrawn under you keeps your place');
+  // A set shown by a search that Save takes out of it: the next row has the focus.
+  await p.fill('#q', 'hall');
+  await p.focus('.item[data-id="b"]');
+  await p.keyboard.press('Enter');
+  await p.fill('#e-room', 'Attic');
+  await p.press('#e-room', 'Enter');
+  await closed();
+  assert.deepEqual([await p.locator('.item').count(), await active()], [0, 'H1'], 'with no row left, the screen’s heading has it');
+  await c.close();
+}
+
 // Open a file in My sets also takes the sizes and model files Claude hands over: sizes go on to the shelf planner's
 // Add sizes, a model into Build from your box, opened. A sizes link pasted into Add from photos goes on too.
 {

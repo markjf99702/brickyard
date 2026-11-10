@@ -215,7 +215,27 @@
     }
   }
 
+  // The keyboard's place survives the list being drawn again (Save, Remove, Undo, a filter chip, a catalog arriving
+  // from sync): a row or a chip is found again by its set or its filter, and where a removed set's row was, the row
+  // that took its place has it. The same for the row a sheet will give the focus back to when it closes. It used
+  // to be thrown back to the top of the page each time.
+  function allRows() { return [].slice.call(document.querySelectorAll('#list-wrap .item[data-id]')); }
+  function spot(el) {
+    if (!el || !el.dataset || !($('list-wrap').contains(el) || $('chips').contains(el))) return null;
+    return { id: el.dataset.id, f: el.dataset.f, at: allRows().indexOf(el) };
+  }
+  function found(s) {
+    if (s.f) return document.querySelector('#chips .chip[data-f="' + s.f + '"]') || document.querySelector('#chips .chip');
+    var rows = allRows();
+    return (s.id && rowOf(s.id)) || rows[Math.min(Math.max(s.at, 0), rows.length - 1)] || document.querySelector('#catalog h1');
+  }
   function renderCatalog() {
+    var had = spot(document.activeElement), from = spot(lastFocus);
+    drawCatalog();
+    if (from) lastFocus = found(from);
+    if (had && found(had)) found(had).focus({ preventScroll: true });
+  }
+  function drawCatalog() {
     var all = C.live(DOC), q = $('q').value.trim(), t = C.totals(all);
     $('cat-tools').hidden = !all.length;
     // With no sets yet the empty state has the same two buttons, so the row at the bottom would only repeat them.
@@ -371,6 +391,11 @@
     run.forEach(function (f) { f(); });
     // A sheet opened while Back was on its way had its place taken from under it.
     if (openScrim && !onEntry()) openScrim._placed = pushEntry();
+    // Going back over a sheet's place can take the focus off the page altogether (it does for the first sheet closed
+    // after Brickyard is opened on a screen), a moment after the closing sheet gave it back. Give it back again.
+    setTimeout(function () {
+      if (!openScrim && document.activeElement === document.body && lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
+    }, 0);
   }
   function goBack() {
     // If the browser never says it went back, carry on anyway rather than keep everything waiting.

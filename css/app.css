@@ -63,6 +63,7 @@ a { color: var(--blue); }
 .bar.scrolled { border-bottom-color: var(--line); }
 .bar .wrap { display: flex; align-items: center; gap: 10px; }
 .bar h1 { font-size: 22px; font-weight: 700; margin: 0; flex: 1; min-width: 0; letter-spacing: -.01em; }
+.bar h1:focus { outline: none; } /* it takes the focus when its screen opens, to be read out; there's nothing to press */
 /* Everything tapped is at least 44 px each way, the least Apple's Human Interface Guidelines give for a touch target. */
 .back { width: 44px; height: 44px; margin-left: -10px; border: 0; background: none; border-radius: 10px; cursor: pointer; display: grid; place-items: center; }
 .back:hover, .back:focus-visible { background: var(--soft); }
