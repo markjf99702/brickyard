@@ -1508,6 +1508,39 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// The dark look. A model's tile of colour swatches is as dark as the tiles round it (a set's picture keeps its light
+// ground, and the swatches had it too: a cream block in the list). The chosen State button is lighter than its track
+// (it was darker, and told apart only by its words). A sheet has a line along its top to tell it from the page. The
+// light look keeps its white picture tile, its card-coloured button and no line.
+{
+  const sets = { b: { id: 'b', t: 1, num: '10698-1', name: 'Large Creative Brick Box', state: 'apart' } };
+  const seen = p => p.evaluate(() => {
+    const rgb = c => (/^rgba?\(([^)]*)\)/.exec(c) || ['', '0,0,0,0'])[1].split(/[\s,/]+/).map(Number);
+    const lum = c => [0.2126, 0.7152, 0.0722].reduce((n, k, i) => { const v = rgb(c)[i] / 255; return n + k * (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); }, 0);
+    const bg = sel => getComputedStyle(document.querySelector(sel)).backgroundColor, sheet = getComputedStyle(document.querySelector('.sheet'));
+    const on = lum(bg('.seg button[aria-pressed="true"]')), track = lum(bg('.seg'));
+    return { on: +((Math.max(on, track) + 0.05) / (Math.min(on, track) + 0.05)).toFixed(2), lighter: on > track, edge: sheet.borderTopWidth + ' ' + (rgb(sheet.borderTopColor)[3] === 0 ? 'clear' : 'drawn') };
+  });
+  for (const colorScheme of ['dark', 'light']) {
+    const { c, p } = await withSets({ sets }, { colorScheme });
+    await p.goto(base + '#build');
+    await p.waitForSelector('a[href="#model-x-cottage"] .pic.swatches');
+    const tiles = await p.evaluate(() => {
+      document.querySelector('#build-list .how').insertAdjacentHTML('beforeend', '<div class="pic" id="shot"><img alt=""></div>');
+      const bg = sel => getComputedStyle(document.querySelector(sel)).backgroundColor, probe = document.body.appendChild(document.createElement('i'));
+      probe.style.background = 'var(--soft)';
+      return [bg('.pic.swatches') === getComputedStyle(probe).backgroundColor, bg('#shot')];
+    });
+    assert.deepEqual(tiles, [true, colorScheme === 'dark' ? 'rgb(244, 241, 234)' : 'rgb(255, 255, 255)'], colorScheme + ': the swatch tile is the soft colour, a picture’s tile light');
+    await p.goto(base + '#catalog');
+    await p.click('.item');
+    const s = await seen(p);
+    if (colorScheme === 'dark') assert.deepEqual([s.lighter, s.on >= 1.5, s.edge], [true, true, '1px drawn'], 'dark: the chosen State button stands out from its track (' + s.on + ':1) and the sheet has a top edge');
+    else assert.deepEqual([s.lighter, s.edge], [true, '1px clear'], 'light: as it was');
+    await c.close();
+  }
+}
+
 // Everything tapped is at least 44 px each way on a phone (the least Apple's Human Interface Guidelines give for a
 // touch target): Back and the menu button, the filter chips, Group by, the small buttons in a sheet's header, the
 // State buttons, a tick-box's row, the step slider, the links at the foot. Group by is in 16 px type like every
