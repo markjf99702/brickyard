@@ -214,6 +214,16 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
     const link = out.split('\n').find(l => l.includes('#z1z'));
     eq(await S.parseSizes(link), clean, 'script and page agree on sizes');
     check(!/NOTE: this link is long/.test(out), 'a short sizes link has no note about its length');
+    // Sizes that end in 5 hundredths (they come from inches: 2.5 in is 6.35 cm) are rounded the same way by both: a
+    // half goes up. The script made 12.25 x 0.15 x 6.35 cm 12.2 x 0.1 x 6.3 where the page has 12.3 x 0.2 x 6.4. A
+    // side that rounds to more than 500 is no size for both, and one inside the limits comes through as it is.
+    const halves = { brickyard: 1, sizes: [{ num: '10497', w: 12.25, d: 0.15, h: 6.35 }, { num: '21318', w: 19.05, d: 499.95, h: 500.04 }, { num: '10281', w: 500.05, d: 10, h: 10 },
+      { num: '42115', w: 60, d: 25.5, h: 13.4 }, { num: '21327', w: 2.675, d: 1.005, h: 8.345 }] };
+    eq(S.cleanSizes(halves).slice(0, 2), [{ num: '10497-1', w: 12.3, d: 0.2, h: 6.4 }, { num: '21318-1', w: 19.1, d: 500, h: 500 }], 'the page rounds a half up');
+    fs.writeFileSync(path.join(dir, 'halves.json'), JSON.stringify(halves));
+    const half = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(dir, 'halves.json'), '--out', dir]).toString();
+    eq(await S.parseSizes(half.split('\n').find(l => l.includes('#z1z'))), S.cleanSizes(halves), 'script and page agree on sizes that end in a half');
+    eq(S.cleanSizes(halves).find(z => z.num === '42115-1'), { num: '42115-1', w: 60, d: 25.5, h: 13.4 }, 'and a size inside its limits is kept as it is');
     // A long sizes link gets the same note as a long batch link: lead with the file.
     fs.writeFileSync(path.join(dir, 'many.json'), JSON.stringify({ sizes: Array.from({ length: 900 }, (_, i) => ({ num: String(10000 + i * 37), w: 10 + i % 41, d: 8 + i % 23, h: 5 + i % 31, note: 'estimate ' + (i * 7919 % 1000) })) }));
     const many = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(dir, 'many.json'), '--out', dir]).toString();

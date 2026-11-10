@@ -31,7 +31,7 @@ Sizes for the shelf planner, for sets already in Brickyard, go in a file of thei
 w is across the front, d front to back, h tall, in cm as built. Opening the link offers each size for the
 sets in My sets with that number, without adding any sets.
 """
-import argparse, base64, datetime, hashlib, json, re, sys, zlib
+import argparse, base64, datetime, hashlib, json, math, re, sys, zlib
 from pathlib import Path
 
 DEFAULT_BASE = 'https://brickyard.junkdrawer.works/'
@@ -58,11 +58,21 @@ def para(v, n):
     return re.sub(r'\n{3,}', '\n\n', v).strip()[:n]
 
 
+def js_round(x):
+    """Math.round in JavaScript, which the page rounds with: a half goes up (2.5 is 3, -2.5 is -2). Python's own
+    round sends a half to the even number, and works on the stored binary value, so 790.5 pieces came out as 790
+    here and 791 on the page, and 12.25 cm as 12.2 and 12.3."""
+    f = math.floor(x)
+    return f + 1 if x - f >= 0.5 else f
+
+
 def whole(v, lo, hi):
     if isinstance(v, bool):
         return 0
     if isinstance(v, (int, float)):
-        x = int(round(v))
+        if not math.isfinite(v):  # 1e999 in a file is read as infinity; the page makes it 0
+            return 0
+        x = js_round(v)
     else:
         m = re.search(r'-?\d+', str(v or '').replace(',', ''))
         x = int(m[0]) if m else 0
@@ -74,7 +84,9 @@ def measure(v):
         x = float(str(v).replace(',', '.'))
     except (TypeError, ValueError):
         return 0
-    return 0 if x <= 0 else min(500, round(x, 1))
+    if not math.isfinite(x) or x <= 0:
+        return 0
+    return min(500, js_round(x * 10) / 10)
 
 
 def set_num(v):
@@ -168,9 +180,9 @@ def side(v):
         x = float(str(v).replace(',', '.'))
     except (TypeError, ValueError):
         return 0
-    if x != x or x in (float('inf'), float('-inf')) or x <= 0:
+    if not math.isfinite(x) or x <= 0:
         return 0
-    return 0 if int(x * 10 + 0.5) / 10 > 500 else measure(v)
+    return 0 if js_round(x * 10) / 10 > 500 else measure(v)
 
 
 def clean_sizes(lst, warn):

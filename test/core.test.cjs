@@ -432,6 +432,35 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('mb', sys.argv[1]); mb = importlib.util.module_from_spec(spec); spec.loader.exec_module(mb)
 print(json.dumps([mb.set_num(v) for v in json.loads(sys.stdin.read())]))`, path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py')], { input: ascii(JSON.stringify(spellings)), encoding: 'utf8' }));
     eq(pyNums, spellings.map(C.setNum), 'script and page agree on set numbers');
+    // Numbers that end in a half: the script rounds them as the page does (Math.round: a half goes up). Python's
+    // round sent 790.5 pieces to 790 where the page has 791, dropped the year 1948.5 that the page keeps as 1949,
+    // and made 12.25 x 0.15 x 6.35 cm 12.2 x 0.1 x 6.3 where the page has 12.3 x 0.2 x 6.4. Sizes that end in 5
+    // hundredths come from inches (2.5 in is 6.35 cm).
+    const callPy = (expr, input) => JSON.parse(execFileSync('python3', ['-c', `
+import json, sys, importlib.util
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location('mb', sys.argv[1]); mb = importlib.util.module_from_spec(spec); spec.loader.exec_module(mb)
+print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py')], { input: JSON.stringify(input), encoding: 'utf8', maxBuffer: 1 << 26 }));
+    const halves = [
+      { num: '10698', pieces: 790.5, year: 1948.5, size: { w: 12.25, d: 0.15, h: 6.35 } },
+      { num: '10698', pieces: 2.5, year: 2014.5, size: { w: 19.05, d: 0.25, h: 499.95 } },
+      { num: '10698', pieces: 20000.5, year: 2100.5, size: { w: 500.05, d: 0.05, h: 0.04 } },
+      { num: '10698', pieces: 0.5, year: 1948.4, size: { w: 1.005, d: 2.675, h: 8.345 } },
+      { num: '10698', pieces: -0.5, year: -1948.5, size: { w: -0.05, d: 0, h: 3 } },
+      // A value inside its limits cleans to itself, on the page and in the script.
+      { num: '10698', pieces: 790, year: 2015, size: { w: 12.3, d: 0.2, h: 6.4 } },
+      { num: '10698', pieces: 20000, year: 1949, size: { w: 500, d: 0.1, h: 499.9 } },
+    ];
+    eq(C.cleanSet(halves[0]), { num: '10698-1', year: 1949, pieces: 791, size: { w: 12.3, d: 0.2, h: 6.4 } }, 'the page rounds a half up');
+    const pySets = callPy('mb.clean(v, 0, [])', halves);
+    halves.forEach((x, i) => check(C.sameDoc(pySets[i], C.cleanSet(x)), 'script and page agree on ' + JSON.stringify(x) + '\n    script ' + JSON.stringify(pySets[i]) + '\n    page   ' + JSON.stringify(C.cleanSet(x))));
+    for (const i of [5, 6]) check(C.sameDoc(pySets[i], Object.assign({}, halves[i], { num: '10698-1' })), 'a set inside its limits comes through the script as it went in: ' + JSON.stringify(pySets[i]));
+    // Every size from 0.01 to 500.10 cm by hundredths, and every half from 0.5 to 20,001.5 as a count.
+    const cms = Array.from({ length: 50010 }, (_, i) => (i + 1) / 100), counts = Array.from({ length: 20002 }, (_, i) => i + 0.5);
+    const pyCm = callPy('mb.measure(v)', cms), jsCm = cms.map(C.measure), offCm = cms.filter((v, i) => pyCm[i] !== jsCm[i]);
+    eq([offCm.length, offCm.slice(0, 5)], [0, []], 'script and page give the same cm for all ' + cms.length.toLocaleString() + ' sizes');
+    const pyN = callPy('mb.whole(v, 0, 20000)', counts), offN = counts.filter((v, i) => pyN[i] !== (C.cleanSet({ name: 'x', pieces: v }).pieces || 0));
+    eq([offN.length, offN.slice(0, 5)], [0, []], 'and the same whole number for every half');
     // And through a whole batch: "LEGO 10497" arrives as 10497-1, so it's found as a double.
     const lego = path.join(dir, 'lego.json');
     fs.writeFileSync(lego, JSON.stringify({ sets: [{ num: 'LEGO 10497', name: 'Galaxy Explorer' }, { num: 'LEGO® Set No. 21318-2', name: 'Tree House' }] }));
