@@ -69,14 +69,28 @@ async function currentPool() {
     pieces: on.reduce((n, s) => n + s.pieces, 0) + lots.reduce((n, l) => n + l.pieces, 0) };
 }
 
-// Models are kept in this browser, keyed by their content, so opening the same link twice keeps one copy.
+// Models are kept in this browser, keyed by their parts, so opening the same link twice keeps one copy. The same
+// parts are the same model whatever order they're listed in (sameParts), and the one that comes in is the one kept:
+// a model sent again under a better name, or with a new description, shows those (it used to keep the old ones, and
+// the same parts listed in another order made a second row). It keeps its place in the list (added).
 function hashOf(t) { let h = 2166136261 >>> 0; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
 function saved() { return read(MODELS, {}); }
+function sameParts(parts) { return parts.map(q => q.join(',')).sort().join(';'); }
 function saveModel(m) {
-  const id = 'm' + hashOf(JSON.stringify(m.parts));
-  const all = saved();
-  if (!all[id]) { all[id] = { model: m, added: Date.now() }; write(MODELS, all); }
+  const all = saved(), key = sameParts(m.parts);
+  // An entry saved before ids were made this way (from the parts in the order they were listed, under the part
+  // numbers they came with) keeps the id it has, so its #model- address still opens it.
+  const id = Object.keys(all).find(k => { const old = all[k] && all[k].model && B.cleanModel(all[k].model); return old && sameParts(old.parts) === key; }) || 'm' + hashOf(key);
+  if (!all[id] || JSON.stringify(all[id].model) !== JSON.stringify(m)) { all[id] = { model: m, added: (all[id] && all[id].added) || Date.now() }; write(MODELS, all); }
   return id;
+}
+// When a model was added, for the list: two with the same name can be told apart.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function addedOn(t) {
+  if (!t) return '';
+  const d = new Date(t), now = new Date(), day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(now) - day(d)) / 864e5);
+  return 'Added ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : d.getDate() + ' ' + MONTHS[d.getMonth()] + (d.getFullYear() === now.getFullYear() ? '' : ' ' + d.getFullYear()));
 }
 // For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
 // inView is for test/e2e.mjs: where the model's bounds fall on the picture.
@@ -162,7 +176,7 @@ async function renderList() {
 
   // A saved entry with no model in it (a damaged save) is skipped rather than stopping the whole list.
   const mine = Object.entries(saved()).filter(([, v]) => v && v.model).sort((a, b) => (b[1].added || 0) - (a[1].added || 0))
-    .map(([id, v]) => ({ id, model: B.cleanModel(v.model) })).filter(x => x.model);
+    .map(([id, v]) => ({ id, model: B.cleanModel(v.model), added: addedOn(v.added) })).filter(x => x.model);
   const examples = await Promise.all(EXAMPLES.map(async n => ({ id: 'x-' + n, model: await modelById('x-' + n), example: true })));
   const rows = mine.concat(examples);
   html += '<h2 class="group" aria-label="Models, ' + rows.length + '"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {
@@ -173,7 +187,8 @@ async function renderList() {
     const state = other ? '<span class="badge sealed">Needs fixing' + (any && shortBy ? ' · ' + shortBy + ' short' : '') + '</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
     return '<li><a class="item" href="#model-' + esc(r.id) + '">' + swatchStack(r.model) +
       '<div class="main"><div class="t">' + esc(r.model.name) + (r.example ? ' <span class="m" style="display:inline">· example</span>' : '') + '</div>' +
-      '<div class="m">' + plural(r.model.parts.length, 'piece') + (res.steps.length ? ' · ' + plural(res.steps.length, 'step') : '') + '</div></div>' + state + '</a></li>';
+      '<div class="m"><span>' + plural(r.model.parts.length, 'piece') + '</span>' + (res.steps.length ? ' · <span>' + plural(res.steps.length, 'step') + '</span>' : '') + '</div>' +
+      (r.added ? '<div class="m">' + r.added + '</div>' : '') + '</div>' + state + '</a></li>';
   }).join('') + '</ul>' +
     '<div class="how" style="margin-top:14px"><b>Get a new model from Claude</b><ol><li>Tap <b>Copy my pieces for Claude</b>.</li><li>Paste it to Claude and say what you’d like: “a lighthouse”, “something for the new house”.</li>' +
     '<li>Claude designs it from those pieces only, checks it can really be built, and sends a link. Open it here.</li></ol></div>';

@@ -242,6 +242,9 @@ a.item { color: inherit; text-decoration: none; }
 .acts-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
 .acts-row .btn { flex: 1 1 auto; justify-content: center; }
 .btn[disabled] { opacity: .5; cursor: default; }
+/* A model's line (pieces, steps) wraps between the two beside a wide badge, where it was cut off with "…". */
+#build-list .item .m { white-space: normal; }
+#build-list .item .m span { white-space: nowrap; }
 .pic.swatches { background: var(--soft); display: block; }
 .pic.swatches i { position: absolute; width: 26px; height: 16px; border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .12); }
 .flag.bad { background: color-mix(in srgb, var(--red) 12%, var(--card)); border-color: color-mix(in srgb, var(--red) 45%, transparent); }

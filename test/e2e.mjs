@@ -1824,7 +1824,41 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.goto(base + '#build');
   await p.waitForSelector('#build-list:not([hidden]) .list');
   const row = async name => (await p.textContent('#build-list .list .item:has-text("' + name + '")')).replace(name, '');
-  assert.deepEqual([await row('Broken bridge'), await row('Odd parts'), await row('Plain')], ['6 pieces · 4 stepsNeeds fixing · 3 short', '3 piecesNeeds fixing', '2 pieces · 2 stepsCan build']);
+  assert.deepEqual([await row('Broken bridge'), await row('Odd parts'), await row('Plain')], ['6 pieces · 4 stepsAdded todayNeeds fixing · 3 short', '3 piecesAdded todayNeeds fixing', '2 pieces · 2 stepsAdded todayCan build']);
+  await c.close();
+}
+
+// A model sent again: the same parts under a new name or description show the new ones (it kept the old), the same
+// parts listed in another order are the same model (they made a second row), and each row says when it was added.
+// A model saved under an id made the old way keeps that id, so its address still opens.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const parts = [['3001', 4, 0, 0, 0, 0, 1], ['3001', 15, 2, 3, 0, 0, 2], ['3023b', 1, 0, 3, 0, 0, 2], ['3003', 14, 2, 6, 0, 0, 3]];
+  const open = async (model, name) => {
+    await p.goto(base + '#build');
+    await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model })).toString('base64url'));
+    await p.waitForFunction(n => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === n, name || model.name);
+    return p.evaluate(() => location.hash);
+  };
+  const kept = () => p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.models')));
+  const rows = async () => { await p.goto(base + '#build'); await p.waitForSelector('#build-list:not([hidden]) .list'); return p.locator('#build-list .list .item .main').allTextContents(); };
+  const first = await open({ name: 'Wide', about: 'The first go.', parts });
+  // As if it was added on 3 November last year.
+  await p.evaluate(([id, t]) => { const all = JSON.parse(localStorage.getItem('brickyard.models')); all[id].added = t; localStorage.setItem('brickyard.models', JSON.stringify(all)); }, [first.slice(7), new Date(new Date().getFullYear() - 1, 10, 3, 12).getTime()]);
+  const again = await open({ name: 'Renamed', about: 'A better name and a new description.', parts });
+  assert.deepEqual([again, await p.textContent('#build-title'), await p.textContent('#model-about')], [first, 'Renamed', 'A better name and a new description.'], 'the same parts under a new name show the new name');
+  const turned = await open({ name: 'Renamed', about: 'A better name and a new description.', parts: parts.slice().reverse() });
+  assert.deepEqual([turned, Object.keys(await kept()).length], [first, 1], 'the same parts listed in another order are the same model');
+  await open({ name: 'Other', parts: parts.slice(0, 3) });
+  assert.deepEqual(await rows(), ['Other3 pieces · 2 stepsAdded today', 'Renamed4 pieces · 3 stepsAdded 3 Nov ' + (new Date().getFullYear() - 1), 'Cottage · example40 pieces · 7 steps'], 'each row says when it was added, and a model sent again keeps its place');
+  // An id made the old way (any id at all), with the parts under the numbers they came with.
+  await p.evaluate(m => localStorage.setItem('brickyard.models', JSON.stringify({ mold123: { model: m, added: Date.now() - 2 * 864e5 } })), { name: 'Old one', about: '', sets: [], parts: parts.map(q => [q[0] === '3023b' ? '3023' : q[0]].concat(q.slice(1))) });
+  await p.goto(base + '#build');
+  await p.goto(base + '#model-mold123');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Old one');
+  assert.equal(await p.textContent('.stepnum'), 'Step 1 of 3', 'a model saved under an old id still opens at its address');
+  assert.deepEqual([await open({ name: 'Old one, again', parts }), Object.keys(await kept())], ['#model-mold123', ['mold123']], 'and its link opens that one, not a second copy');
+  assert.match((await rows())[0], /^Old one, again4 pieces · 3 stepsAdded \d+ [A-Z][a-z]{2}( \d{4})?$/);
   await c.close();
 }
 
