@@ -93,7 +93,7 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - `skill/brickyard-cataloger/`, `skill/brickyard-designer/`: the Claude skills and their scripts.
 - `test/core.test.cjs`, `test/build.test.cjs`, `test/shelf.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
 - `fonts/`: Rubik (SIL Open Font License, `fonts/OFL.txt`), served from here so nothing loads from elsewhere.
-- `sw.js`: keeps a copy for using offline.
+- `sw.js`: keeps a copy for using offline, and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: change one and `npm test` says what to set it to, so a release never leaves the copy half old.
 
 ## License
 
