@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var C = window.BrickCore;
-  var KEY = 'brickyard.v1', PREFS = 'brickyard.prefs';
+  var KEY = 'brickyard.v1', PREFS = 'brickyard.prefs', TOOK = 'brickyard.took';
   var SITE = 'https://brickyard.junkdrawer.works/';
   var FRAMED = window.top !== window; // the Artifact copy: no downloads
 
@@ -613,12 +613,20 @@
     // A set that's in the list a second time is marked, and stays ticked: there may really be two, and only the
     // person looking at the shelf knows.
     var again = C.repeats(batch.sets);
-    var rows = batch.sets.map(function (x, i) { var dup = C.findDup(DOC, x); return { x: x, dup: dup, again: again[i], on: !dup }; });
+    // Which rows of this link were added from it before, on this device, and as which sets (tookFrom). A set
+    // already owned is found by its number or name, which misses one whose number was put right after it was
+    // added, or one removed since: opened again, the link had those ticked, one tap from coming back.
+    var before = tookFrom(batch.id);
+    var rows = batch.sets.map(function (x, i) {
+      var dup = C.findDup(DOC, x), was = before[i] ? DOC.sets[before[i]] || { del: 1 } : null;
+      return { x: x, dup: dup, was: dup ? null : was, again: again[i], on: !dup && !was };
+    });
     var seenAt = DOC.seen[batch.id];
     var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.x.check; }).length, na = rows.filter(function (r) { return r.again; }).length;
+    var nb = rows.filter(function (r) { return r.was; }).length;
     openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
-      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
-      (seenAt ? '<p class="flag"><span>You opened this link before. Sets you already have are unticked.</span></p>' : '') +
+      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nb ? ' · ' + nb + ' added before' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
+      (seenAt || nb ? '<p class="flag"><span>You opened this link before. ' + (nb ? 'The sets you added from it then are unticked, and so are any others you already have.' : 'Sets you already have are unticked.') + '</span></p>' : '') +
       '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
       '<span class="note" style="margin:0">Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.</span></div>' +
@@ -627,6 +635,7 @@
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
           '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(meta) + '</div>' +
           (r.dup ? '<div class="w">You already have this one' + (C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '') + '</div>' : '') +
+          (r.was ? '<div class="w">Added from this link before' + (r.was.del ? ', and removed since' : ', now ' + esc(nowCalled(x, r.was))) + '</div>' : '') +
           (r.again ? '<div class="w">Also above in this list.' + (r.on ? ' Untick it unless you have two.' : '') + '</div>' : '') +
           (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
@@ -648,7 +657,8 @@
     $('rv').onclick = tickRow;
     $('rv-add').onclick = function () {
       var room = $('rv-room').value.trim(), spot = $('rv-spot').value.trim(), box = $('rv-box').value.trim(), n = 0, day = today();
-      rows.forEach(function (r) {
+      var took = Object.assign({}, before);
+      rows.forEach(function (r, i) {
         if (!r.on) return;
         var y = Object.assign({}, r.x);
         if (room && room !== batch.room) { y.room = room; y.spot = spot; }
@@ -659,13 +669,33 @@
         else if (!box && batch.box && C.natural(C.boxName(y.box), C.boxName(batch.box)) === 0) delete y.box;
         y = C.cleanSet(Object.assign(y, { added: day }));
         if (!y) return;
-        y.id = newId(); putSet(y); n++;
+        y.id = newId(); putSet(y); n++; took[i] = y.id;
       });
       DOC.seen[batch.id] = Date.now();
+      tookFrom(batch.id, took);
       save(); closeSheet(); renderCatalog();
       toast('Added ' + plural(n, 'set'));
     };
     count();
+  }
+
+  // What this device has added from each link of sets: { batch id: { row in the link: the set's id here } }, kept
+  // beside the catalog and not in it (it isn't synced, and a backup doesn't hold it). On a device without it a
+  // link opened again is told by the sets' numbers and names alone, as before. With `rows` it saves them; with
+  // null it forgets the link.
+  function tookFrom(batchId, rows) {
+    var all = read(TOOK);
+    if (!all || typeof all !== 'object' || Array.isArray(all)) all = {};
+    if (rows === undefined) { var got = all[batchId]; return got && typeof got === 'object' ? got : {}; }
+    if (rows && Object.keys(rows).length) all[batchId] = rows; else delete all[batchId];
+    write(TOOK, all);
+  }
+  // What a set added before is now, when it no longer matches its row in the link: its name if that changed, and
+  // its number.
+  function nowCalled(x, y) {
+    var num = C.shortNum(y.num), name = y.name || '';
+    if (name && name !== (x.name || '')) return name + (num ? ' ' + num : '');
+    return num ? 'set ' + num : name || 'changed';
   }
 
   // A lot of loose pieces, from a scanner or from Claude. Opening the same lot again replaces it, so nothing is

@@ -206,6 +206,55 @@ assert.match(await page.textContent('.sheet'), /opened this link before/);
 assert.equal(await page.locator('.rv li.off').count(), 7);
 await page.click('[data-close]');
 
+// A link from Claude opened a second time doesn't offer the sets that were added from it the first time, whatever has
+// happened to them since. A set already owned is found by its number or name, so one whose number was put right after
+// it was added, and one removed (sold) since, came back ticked: "2 of 3 ticked", one tap from being added again. This
+// device now remembers which rows of each link it added, and those start unticked and say why. A row left unticked
+// the first time is still offered; a device without the memory (a catalog that came by sync) behaves as before.
+{
+  const batch = { brickyard: 1, batch: { name: 'Hall shelf', sets: [{ num: '10334', name: 'Retro Radio', check: 'could be 10340' }, { num: '10497', name: 'Galaxy Explorer' },
+    { num: '10331', name: 'Kingfisher Bird' }, { num: '21318', name: 'Tree House' }] } };
+  const { c, p } = await withSets({ sets: { o: { id: 'o', t: 1, name: 'Orchid', state: 'built' } } });
+  const link = base + '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url');
+  const rows = () => p.$$eval('.rv li', ls => ls.map(l => [l.querySelector('input').checked, [...l.querySelectorAll('.w')].map(w => w.textContent).join(' | ')]));
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  await p.click('.rv li >> nth=3 >> .t'); // Tree House isn't here: left for another day
+  await p.click('#rv-add');
+  assert.equal(await p.locator('.item').count(), 4);
+  // The radio's number is put right, and the kingfisher is sold.
+  await p.click('.item:has-text("Retro Radio")');
+  await p.fill('#e-num', '10340');
+  await p.click('#e-save');
+  await p.click('.item:has-text("Kingfisher")');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  assert.equal(await p.locator('.item').count(), 3);
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual(await rows(), [[false, 'Added from this link before, now set 10340 | Check: could be 10340'], [false, 'You already have this one'],
+    [false, 'Added from this link before, and removed since'], [true, '']], 'the sets added before are unticked, and say what became of them');
+  assert.deepEqual([await p.textContent('#rv-n'), await p.textContent('#rv-add'), await p.textContent('.sheet .flag'), await p.textContent('.sheet .lede')],
+    ['1 of 4 ticked', 'Add 1 set', 'You opened this link before. The sets you added from it then are unticked, and so are any others you already have.',
+      'Hall shelf · 4 sets · 1 you already have · 2 added before · 1 to check']);
+  await p.click('#rv-add');
+  assert.equal(await p.locator('.item').count(), 4, 'the one left out the first time is added');
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([(await rows()).map(r => r[0]), await p.isDisabled('#rv-add'), await p.textContent('#rv-n')], [[false, false, false, false], true, '0 of 4 ticked'], 'and the third time nothing is ticked');
+  // The sold one can still be ticked, if it comes home again.
+  await p.click('.rv li >> nth=2 >> .t');
+  assert.equal(await p.textContent('#rv-add'), 'Add 1 set');
+  await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]');
+  // Without the memory (another device, with the same catalog from sync) it's told by number and name, as before.
+  await p.evaluate(() => localStorage.removeItem('brickyard.took'));
+  await p.goto(base + '#catalog');
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([(await rows()).map(r => r[0]), await p.textContent('.sheet .flag')], [[true, false, true, false], 'You opened this link before. Sets you already have are unticked.']);
+  assert.deepEqual(Object.keys(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog).sort(), ['cases', 'loose', 'seen', 'sets'], 'the catalog holds nothing new');
+  await c.close();
+}
+
 // Filter, search and group.
 await page.click('.chip[data-f="sealed"]');
 assert.equal(await page.locator('.item').count(), 1);
