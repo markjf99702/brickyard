@@ -257,8 +257,10 @@ a.item { color: inherit; text-decoration: none; }
 .stepnum { flex: 1; text-align: center; font-size: 17px; }
 .stepnum span { color: var(--muted); }
 .stepbar .btn { min-width: 112px; justify-content: center; }
-.stepbar .icon-btn[disabled] { opacity: .4; cursor: default; }
-#step-range { display: block; width: 100%; height: 44px; accent-color: var(--red); margin: -8px 0 -1px; }
+.stepbar .icon-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
+/* The slider's 44 px tap area starts 12 px under the buttons (it used to reach up into them, and a tap that landed
+   a little low on Next jumped the model to its last step). */
+#step-range { display: block; width: 100%; height: 44px; accent-color: var(--red); margin: 8px 0 -1px; }
 .callout { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
 .callout .lbl { margin-bottom: 6px; }
 ul.need { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }

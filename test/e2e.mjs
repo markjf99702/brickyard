@@ -1515,6 +1515,110 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
+// is one step (it jumped to the end), a tap or a swipe that starts on the track leaves the step alone, and
+// dragging the knob still works. A screen reader hears the step, not a bare number one behind.
+{
+  const { c, p } = await withSets({ sets: {} });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  const step = () => p.textContent('.stepnum'), box = sel => p.locator(sel).boundingBox();
+  const said = () => p.$eval('#step-range', e => [e.value, e.getAttribute('aria-valuetext')]);
+  assert.deepEqual([await step(), await said()], ['Step 1 of 7', ['0', 'Step 1 of 7']], 'the slider says the step it is on');
+  assert.deepEqual(await p.$eval('.stepnum', e => [e.getAttribute('aria-live'), e.getAttribute('aria-atomic')]), ['polite', 'true'], 'a step change is read out');
+  // Previous at the first step is off without being disabled, so it keeps the focus it has.
+  await p.tap('#step-next');
+  await p.focus('#step-prev');
+  await p.keyboard.press('Enter');
+  assert.deepEqual([await step(), await p.evaluate(() => document.activeElement.id), await p.getAttribute('#step-prev', 'aria-disabled'), await p.$eval('#step-prev', e => e.disabled)],
+    ['Step 1 of 7', 'step-prev', 'true', false], 'Previous keeps the focus at the first step');
+  await p.keyboard.press('Enter');
+  assert.equal(await step(), 'Step 1 of 7', 'and does nothing there');
+  await p.tap('#step-next');
+  assert.equal(await p.getAttribute('#step-prev', 'aria-disabled'), 'false');
+  const next = await box('#step-next'), prev = await box('#step-prev');
+  let range = await box('#step-range');
+  assert.ok(range.y - Math.max(next.y + next.height, prev.y + prev.height) >= 12, 'the slider’s tap area starts at least 12 px under the buttons');
+  await p.touchscreen.tap(next.x + next.width / 2, next.y + next.height - 2);
+  assert.equal(await step(), 'Step 3 of 7', 'a tap 2 px above Next’s bottom edge is one step');
+  await p.touchscreen.tap(prev.x + prev.width / 2, prev.y + prev.height - 2);
+  assert.equal(await step(), 'Step 2 of 7', 'and the same on Previous');
+  await p.touchscreen.tap(next.x + next.width / 2, next.y + next.height + 8);
+  assert.equal(await step(), 'Step 2 of 7', 'a tap just under Next does nothing');
+  await p.touchscreen.tap(range.x + range.width - 40, range.y + range.height / 2);
+  await p.waitForTimeout(150);
+  assert.deepEqual([await step(), await said()], ['Step 2 of 7', ['1', 'Step 2 of 7']], 'a tap on the track away from the knob leaves the step alone');
+  const cdp = await c.newCDPSession(p);
+  const touch = async (x0, y0, x1, y1) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y: y0 }] });
+    for (let k = 1; k <= 8; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * k / 8, y: y0 + (y1 - y0) * k / 8 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await p.waitForTimeout(400);
+  };
+  // A scroll that starts on the slider scrolls the page and leaves the step.
+  await touch(range.x + 300, range.y + 22, range.x + 300, range.y - 230);
+  assert.deepEqual([await step(), await p.evaluate(() => scrollY > 8)], ['Step 2 of 7', true], 'a swipe that starts on the slider scrolls the page and leaves the step');
+  await p.evaluate(() => scrollTo(0, 0));
+  await p.waitForTimeout(700); // past the moment the last touch still counts
+  // Dragging the knob moves it: from step 2 (1 of 7 along) to the far end.
+  range = await box('#step-range');
+  const knob = range.x + 8 + (1 / 7) * (range.width - 16);
+  await touch(knob, range.y + 22, range.x + range.width - 2, range.y + 22);
+  assert.deepEqual([await step(), await said()], ['Done · 40 pieces', ['7', 'Done, 40 pieces']], 'dragging the knob to the end shows the finished model');
+  assert.deepEqual(await p.$eval('#step-next', e => [e.textContent, e.classList.contains('quiet')]), ['From the start', true], 'at the end, From the start is a quiet button');
+  await p.tap('#step-next');
+  assert.deepEqual([await step(), await p.$eval('#step-next', e => e.classList.contains('quiet'))], ['Step 1 of 7', false]);
+  // Arrow keys with Alt, Ctrl or the command key are the browser's (Alt+Left is Back), not a step.
+  await p.tap('#step-next'); await p.tap('#step-next');
+  await p.evaluate(() => document.activeElement.blur());
+  for (const k of ['Alt', 'Control', 'Meta']) await p.evaluate(k => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: k === 'Alt', ctrlKey: k === 'Control', metaKey: k === 'Meta', bubbles: true })), k);
+  assert.equal(await step(), 'Step 3 of 7', 'Alt, Ctrl or the command key with an arrow doesn’t move the step');
+  await p.keyboard.press('ArrowLeft');
+  assert.equal(await step(), 'Step 2 of 7');
+  await c.close();
+}
+// On a laptop a click along the slider's track still jumps to that step.
+{
+  const { c, p } = await withSets({ sets: {} }, { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: false });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  const range = await p.locator('#step-range').boundingBox();
+  await p.mouse.click(range.x + range.width - 3, range.y + range.height / 2);
+  assert.equal(await p.textContent('.stepnum'), 'Done · 40 pieces', 'a mouse click at the end of the track goes to the end');
+  await c.close();
+}
+// Your pieces: the headings say what their numbers count, a tick keeps the focus when the list is redrawn, and
+// removing a lot moves the focus to the next lot (or the heading), not nowhere. The icons in buttons are hidden
+// from a screen reader, which reads the button's own name.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', parts: [['3001', 4, 20]] }, bag: { id: 'bag', t: 1, name: 'Red bag', parts: [['3001', 4, 6]] } } },
+  { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: false });
+  await p.goto(base + '#build');
+  await p.waitForSelector('li.lot');
+  assert.deepEqual(await p.$$eval('#build-list h2.group', hs => hs.map(h => h.getAttribute('aria-label'))), ['Your pieces, 816 pieces', 'Models, 1']);
+  assert.equal(await p.$$eval('a svg, button svg, label svg', s => s.filter(x => x.getAttribute('aria-hidden') !== 'true').length), 0, 'every icon in a link, button or label is hidden from a screen reader');
+  const focus = () => p.evaluate(() => { const e = document.activeElement; return e.dataset.pool || e.tagName + ' ' + e.textContent; });
+  await p.focus('[data-pool="tub"]');
+  await p.keyboard.press('Space');
+  await p.waitForFunction(() => /796/.test(document.querySelector('.pieces .group').textContent));
+  assert.equal(await focus(), 'tub', 'a tick keeps the focus when it is changed');
+  await p.keyboard.press('Space');
+  await p.waitForFunction(() => /816/.test(document.querySelector('.pieces .group').textContent));
+  assert.equal(await focus(), 'tub');
+  await p.click('[data-lot="tub"]');
+  await p.click('#lot-drop');
+  await p.waitForFunction(() => document.querySelectorAll('li.lot').length === 1);
+  await p.waitForFunction(() => document.activeElement !== document.body);
+  assert.equal(await focus(), 'bag', 'removing a lot moves the focus to the next one');
+  await p.click('[data-lot="bag"]');
+  await p.click('#lot-drop');
+  await p.waitForFunction(() => !document.querySelector('li.lot'));
+  await p.waitForFunction(() => document.activeElement !== document.body);
+  assert.equal(await focus(), 'H2 Your pieces790', 'and with none left, to the heading');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

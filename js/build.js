@@ -128,7 +128,8 @@ async function renderList() {
   const sets = poolSets(), on = sets.filter(s => s.on), none = missingLists(), lots = poolLots();
   const { pool, pieces, any } = await currentPool();
 
-  let html = '<section class="pieces"><h2 class="group"><span>Your pieces</span><span>' + (pieces ? pieces.toLocaleString() : '') + '</span></h2>';
+  // The headings are read out as "Your pieces, 816 pieces" and "Models, 2" (they were a bare "Your pieces 816").
+  let html = '<section class="pieces"><h2 class="group" tabindex="-1"' + (pieces ? ' aria-label="Your pieces, ' + plural(pieces, 'piece') + '"' : '') + '><span>Your pieces</span><span>' + (pieces ? pieces.toLocaleString() : '') + '</span></h2>';
   if (!sets.length && !lots.length) {
     html += '<div class="how"><p style="margin:0 0 10px">Brickyard builds from sets that are taken apart and that it has a parts list for. So far that is the Large Creative Brick Box (10698). Have one? Add it.</p>' +
       '<button class="btn" type="button" id="add-box">Add the Large Creative Brick Box</button></div>';
@@ -153,7 +154,7 @@ async function renderList() {
     .map(([id, v]) => ({ id, model: B.cleanModel(v.model) })).filter(x => x.model);
   const examples = await Promise.all(EXAMPLES.map(async n => ({ id: 'x-' + n, model: await modelById('x-' + n), example: true })));
   const rows = mine.concat(examples);
-  html += '<h2 class="group"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {
+  html += '<h2 class="group" aria-label="Models, ' + rows.length + '"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {
     const res = B.check(r.model, shapes, any ? pool : null);
     const shortBy = res.short.reduce((n, x) => n + (x.need - x.have), 0);
     const other = res.problems.filter(p => p.kind !== 'count').length;
@@ -169,12 +170,14 @@ async function renderList() {
 
   if ($('add-box')) $('add-box').onclick = () => { app.addSet(BOX); toast('Added to My sets as taken apart'); renderList(); };
   $('build-list').querySelectorAll('[data-pool]').forEach(cb => cb.onchange = () => {
-    const prefs = read(POOL, {}); prefs[cb.dataset.pool] = cb.checked; write(POOL, prefs); renderList();
+    const prefs = read(POOL, {}); prefs[cb.dataset.pool] = cb.checked; write(POOL, prefs);
+    renderList().then(() => focusIn('[data-pool="' + CSS.escape(cb.dataset.pool) + '"]')); // the list is redrawn: the tick keeps the focus
   });
   $('build-list').querySelectorAll('[data-lot]').forEach(b => b.onclick = () => dropLot(lots.find(l => l.id === b.dataset.lot)));
   $('copy-pool').onclick = copyPool;
   $('open-model').onclick = openSheet;
 }
+function focusIn(sel) { const el = $('build-list').querySelector(sel); if (el) el.focus({ preventScroll: true }); return !!el; }
 document.addEventListener('brickyard:changed', () => { if (!$('build').hidden && !$('build-list').hidden) renderList(); });
 
 function dropLot(l) {
@@ -183,8 +186,11 @@ function dropLot(l) {
     '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening the lot’s link or file again brings it back.</p></div>' +
     '<div class="ft"><span></span><button class="btn" type="button" id="lot-drop">Remove</button></div>');
   $('lot-drop').onclick = () => {
-    const kept = app.doc().loose[l.id];
-    app.removeLot(l.id); app.closeSheet(); renderList();
+    const kept = app.doc().loose[l.id], ids = poolLots().map(x => x.id), at = ids.indexOf(l.id);
+    app.removeLot(l.id); app.closeSheet();
+    // The focus goes to the lot that took this one's place, or the one before it, or the heading: the button it
+    // was on has gone with the lot.
+    renderList().then(() => { [ids[at + 1], ids[at - 1]].some(id => id && focusIn('[data-pool="' + CSS.escape(id) + '"]')) || focusIn('.pieces h2'); });
     toast('Removed ' + l.name, false, { label: 'Undo', run: () => { app.putBack('loose', kept); toast(l.name + ' is back'); } });
   };
 }
@@ -277,9 +283,13 @@ function showStep(k, animate = true) {
   const done = current.at === n, step = done ? Infinity : current.steps[current.at];
   $('step-n').textContent = done ? 'Done' : 'Step ' + (current.at + 1);
   $('step-of').textContent = done ? ' · ' + plural(current.res.pieces, 'piece') : ' of ' + n;
-  $('step-prev').disabled = current.at === 0;
+  // Previous stays in the Tab order at the first step (a disabled button drops the focus it has), and says it's off.
+  $('step-prev').setAttribute('aria-disabled', String(current.at === 0));
+  // At the end the button in Next's place starts again: quiet, so one more tap out of habit isn't asked for.
   $('step-next').textContent = done ? 'From the start' : current.at === n - 1 ? 'Finish' : 'Next';
+  $('step-next').classList.toggle('quiet', done);
   $('step-range').value = String(current.at);
+  $('step-range').setAttribute('aria-valuetext', done ? 'Done, ' + plural(current.res.pieces, 'piece') : 'Step ' + (current.at + 1) + ' of ' + n);
 
   const here = current.model.parts.map((q, i) => ({ q, i })).filter(x => x.q[6] === step);
   const groups = {};
@@ -295,11 +305,36 @@ function showStep(k, animate = true) {
   showUpTo(step, animate && !done);
 }
 
-$('step-prev').onclick = () => showStep(current.at - 1);
+$('step-prev').onclick = () => { if (current.at > 0) showStep(current.at - 1); };
 $('step-next').onclick = () => showStep(current.at === current.steps.length ? 0 : current.at + 1);
-$('step-range').oninput = e => showStep(+e.target.value, false);
+// The slider. A finger moves it only by its knob: a tap or a swipe that starts anywhere else on it leaves the step
+// alone (the strip under the buttons is where a thumb lands low, and where it starts a scroll), and so does a drag
+// of the knob that turned into a scroll of the page. A mouse still clicks along the track, and arrow keys move it.
+const range = $('step-range');
+let grab = null; // { at: the step when the finger went down, knob: it went down on the knob, y: the page's scroll then }
+function knobX() {
+  const r = range.getBoundingClientRect(), w = 20; // about a knob's width; it travels the track less that
+  return r.left + w / 2 + (current.at / (+range.max || 1)) * (r.width - w);
+}
+range.addEventListener('pointerdown', e => {
+  grab = !current || e.pointerType === 'mouse' ? null : { at: current.at, knob: Math.abs(e.clientX - knobX()) <= 24, y: window.scrollY };
+});
+range.oninput = () => {
+  // What the browser does with a touch can come a moment after the finger lifts, so the rule outlasts it a little.
+  if (grab && grab.up && performance.now() - grab.up > 600) grab = null;
+  if (grab && !grab.knob) { range.value = String(grab.at); return; }
+  showStep(+range.value, false);
+};
+function letGo(e) {
+  if (!grab || grab.up) return;
+  grab.up = performance.now();
+  if (grab.knob && (e.type === 'pointercancel' || Math.abs(window.scrollY - grab.y) > 8)) { grab.knob = false; if (current) showStep(grab.at, false); }
+}
+range.addEventListener('pointerup', letGo);
+range.addEventListener('pointercancel', letGo);
 document.addEventListener('keydown', e => {
   if (!current || $('model-view').hidden || document.querySelector('.scrim')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return; // Alt+Left is the browser's Back
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return; // the step slider moves itself
   if (e.key === 'ArrowRight') showStep(current.at + 1);
   if (e.key === 'ArrowLeft') showStep(current.at - 1);
