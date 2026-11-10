@@ -147,9 +147,8 @@
       box.innerHTML = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
     }
   }, true);
-  function metaLine(x) {
-    return [C.shortNum(x.num), x.year, x.pieces ? plural(x.pieces, 'piece') : ''].filter(Boolean).join(' · ');
-  }
+  function metaBits(x) { return [C.shortNum(x.num), x.year, x.pieces ? plural(x.pieces, 'piece') : ''].filter(Boolean); }
+  function metaLine(x) { return metaBits(x).join(' · '); }
   function download(name, type, text) {
     if (FRAMED) { toast('Downloads don’t work in this preview. Open Brickyard at its own address.'); return; }
     var a = document.createElement('a');
@@ -363,7 +362,9 @@
     var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
     var why = q ? foundBy(x, q, labels) : {}, note = firstLine(x.notes);
     return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
-      '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
+      '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div>' +
+      // Number, year and pieces wrap between the three beside a wide badge, where the line ended "3,854 piec…".
+      '<div class="m meta">' + metaBits(x).map(function (b) { return '<span>' + esc(b) + '</span>'; }).join(' · ') + '</div>' +
       (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
       (x.missing ? '<div class="m warn">Missing: ' + esc(oneLine(x.missing)) + '</div>' : '') +
       (x.check ? '<div class="m warn"><span aria-hidden="true">Check: </span><span class="vh">To check: </span>' + esc(x.check) + '</div>' : '') +

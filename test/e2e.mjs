@@ -2228,6 +2228,22 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await n.c.close();
 }
 
+// A row's line of number, year and pieces is never cut short: beside the widest badges it ended "3,854 piec…" on
+// one row in eight. It wraps between the three instead, with the piece count kept whole.
+{
+  const sets = { a: { id: 'a', t: 1, num: '42131-1', name: 'Cat D11 Bulldozer', year: 2021, pieces: 3854, state: 'apart', room: 'Garage' },
+    b: { id: 'b', t: 1, num: '21327-1', name: 'Typewriter', year: 2021, pieces: 2079, state: 'partial', room: 'Garage' }, d: { id: 'd', t: 1, num: '10281-1', name: 'Bonsai Tree', year: 2021, pieces: 878, state: 'built', room: 'Garage' } };
+  for (const width of [390, 320]) {
+    const { c, p } = await withSets({ sets }, { viewport: { width, height: 700 } });
+    await p.goto(base + '#catalog');
+    await p.evaluate(() => document.fonts.ready);
+    const rows = await p.$$eval('.item .m.meta', ms => ms.map(m => [m.textContent, m.scrollWidth > m.clientWidth, [...m.children].every(s => s.getClientRects().length === 1), Math.round(m.getBoundingClientRect().height / parseFloat(getComputedStyle(m).lineHeight))]));
+    assert.deepEqual(rows.map(r => r.slice(0, 3)), [['10281 · 2021 · 878 pieces', false, true], ['42131 · 2021 · 3,854 pieces', false, true], ['21327 · 2021 · 2,079 pieces', false, true]], `nothing cut at ${width} px, and no number split from its word`);
+    if (width === 390) assert.equal(rows[0][3], 1, 'a line that fits is still one line');
+    await c.close();
+  }
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

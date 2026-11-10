@@ -153,6 +153,8 @@ a.item { color: inherit; text-decoration: none; }
 .pic.none { background: var(--soft); }
 .item .t { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .item .m { color: var(--muted); font-size: 13.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .m.meta { white-space: normal; }
+.item .m.meta span { white-space: nowrap; }
 .item .main { min-width: 0; }
 .badge { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 3px 7px; white-space: nowrap; background: var(--soft); color: var(--ink); }
 .badge.built { background: color-mix(in srgb, var(--green) 18%, transparent); color: color-mix(in srgb, var(--ink) 25%, var(--green)); }
