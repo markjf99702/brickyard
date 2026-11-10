@@ -45,19 +45,30 @@ async function open(viewport, deviceScaleFactor, hash = '', seed = true) {
   if (seed) await page.addInitScript(c => localStorage.setItem('brickyard.v1', JSON.stringify(c)), catalog);
   await page.goto(base + hash);
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(400);
+  await settled(page);
   return page;
+}
+// Before a shot: every set picture on the screen has loaded (and faded in) or failed, so none is caught halfway.
+// (It was a fixed 400 ms after the page opened, and no wait at all after the list was drawn again.) A picture
+// further down the page than the screen isn't asked for until it's scrolled to, and isn't in the shot.
+async function settled(page) {
+  await page.waitForFunction(() => [...document.querySelectorAll('.pic img')].every(i => {
+    const r = i.getBoundingClientRect();
+    return i.parentNode.classList.contains('in') || r.top >= innerHeight || r.bottom <= 0 || !r.width;
+  }) && (document.getElementById('home').hidden || document.getElementById('home-build-stat').textContent.trim() !== ''), // and the home screen's count is in
+  null, { timeout: 15000 });
+  await page.waitForTimeout(400);
 }
 
 const shots = [
   ['home', '', null],
   ['catalog', '#catalog', null],
   ['boxes', '#catalog', async p => { await p.selectOption('#group', 'box'); }],
-  ['set', '#catalog', async p => { await p.click('.item >> nth=1'); await p.waitForTimeout(400); }],
+  ['set', '#catalog', async p => { await p.click('.item >> nth=1'); }],
 ];
 for (const [name, hash, act] of shots) {
   const page = await open({ width: 390, height: 844 }, 2, hash);
-  if (act) await act(page);
+  if (act) { await act(page); await settled(page); }
   await page.screenshot({ path: join(root, `docs/phone-${name}.png`) });
   await page.context().close();
 }
@@ -77,7 +88,7 @@ for (const [name, hash, act] of shots) {
   const link = z.trim().split('\n').find(l => l.startsWith('https://'));
   const page = await open({ width: 390, height: 844 }, 2, link.slice(link.indexOf('#')), false);
   await page.waitForSelector('.rv');
-  await page.waitForTimeout(400);
+  await settled(page);
   await page.screenshot({ path: join(root, 'docs/phone-review.png') });
   await page.context().close();
 }

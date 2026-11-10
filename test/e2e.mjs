@@ -3666,12 +3666,12 @@ await page.click('[data-close]');
     await p.goto(base + '#build');
     await p.waitForSelector('a[href="#model-x-cottage"] .pic.swatches');
     const tiles = await p.evaluate(() => {
-      document.querySelector('#build-list .how').insertAdjacentHTML('beforeend', '<div class="pic" id="shot"><img alt=""></div>');
+      document.querySelector('#build-list .how').insertAdjacentHTML('beforeend', '<div class="pic in" id="shot"><img alt=""></div>');
       const bg = sel => getComputedStyle(document.querySelector(sel)).backgroundColor, probe = document.body.appendChild(document.createElement('i'));
       probe.style.background = 'var(--soft)';
       return [bg('.pic.swatches') === getComputedStyle(probe).backgroundColor, bg('#shot')];
     });
-    assert.deepEqual(tiles, [true, colorScheme === 'dark' ? 'rgb(244, 241, 234)' : 'rgb(255, 255, 255)'], colorScheme + ': the swatch tile is the soft colour, a picture’s tile light');
+    assert.deepEqual(tiles, [true, colorScheme === 'dark' ? 'rgb(244, 241, 234)' : 'rgb(255, 255, 255)'], colorScheme + ': the swatch tile is the soft colour, the tile of a picture that has loaded light');
     await p.goto(base + '#catalog');
     await p.click('.item');
     const s = await seen(p);
@@ -3860,6 +3860,63 @@ await page.click('[data-close]');
   assert.equal(await card(), '1 model from Claude', 'with nothing ticked, the models alone');
   await p.evaluate(() => localStorage.removeItem('brickyard.models'));
   assert.equal(await card(), 'Try the example cottage', 'and with neither, the example');
+  await c.close();
+}
+
+// A set's picture on its way is the plain brick on the soft ground, in the list and at the top of the set's sheet;
+// once it has loaded it fades in over white and the brick goes (the picture is multiplied onto its tile, so a brick
+// left there would show through). A picture that fails late, with the sheet open, leaves the tile where it is with
+// the brick in it: it used to go, and every box in the sheet moved up 184 px under the finger. The next time, the
+// sheet opens without the tile.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House' } } });
+  let small, large;
+  const waits = [new Promise(r => { small = r; }), new Promise(r => { large = r; })];
+  await c.route('https://cdn.rebrickable.com/**', async r => {
+    const big = /1000x800p/.test(r.request().url());
+    await waits[big ? 1 : 0];
+    return big ? r.fulfill({ status: 404 }) : r.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="250" height="250"><rect width="250" height="250" fill="#2f8a4e"/></svg>' });
+  });
+  const tile = sel => p.$eval(sel, el => {
+    const probe = document.body.appendChild(document.createElement('i')); probe.style.background = 'var(--soft)';
+    const soft = getComputedStyle(probe).backgroundColor; probe.remove();
+    const img = el.querySelector('img'), brick = el.querySelector('svg');
+    return { ground: getComputedStyle(el).backgroundColor === soft ? 'soft' : getComputedStyle(el).backgroundColor, picture: img ? getComputedStyle(img).opacity : 'none', brick: brick ? getComputedStyle(brick).opacity : 'none', tall: el.offsetHeight };
+  });
+  await p.goto(base + '#catalog');
+  await p.waitForSelector('.item .pic img');
+  assert.deepEqual(await tile('.item .pic'), { ground: 'soft', picture: '0', brick: '1', tall: 52 }, 'a picture on its way is the brick on the soft ground');
+  small();
+  await p.waitForFunction(() => getComputedStyle(document.querySelector('.item .pic img')).opacity === '1');
+  await p.waitForFunction(() => getComputedStyle(document.querySelector('.item .pic svg')).opacity === '0');
+  assert.deepEqual(await tile('.item .pic'), { ground: 'rgb(255, 255, 255)', picture: '1', brick: '0', tall: 52 }, 'once loaded it shows on white, and the brick is gone');
+  // Drawn again (a letter typed in the search), a picture that has arrived is there at once: no brick, no fade.
+  await p.fill('#q', 'tree');
+  assert.deepEqual(await tile('.item .pic'), { ground: 'rgb(255, 255, 255)', picture: '1', brick: 'none', tall: 52 }, 'the list drawn again shows it straight away');
+  await p.fill('#q', '');
+
+  await p.click('.item:has-text("Tree House")');
+  await p.waitForSelector('.sheet .head-pic img');
+  await p.waitForTimeout(350); // the sheet has slid up
+  const top = () => p.$eval('#e-num', e => Math.round(e.getBoundingClientRect().top));
+  const before = await top();
+  assert.deepEqual(await tile('.sheet .head-pic'), { ground: 'soft', picture: '0', brick: '1', tall: 170 }, 'the sheet’s picture on its way');
+  large(); // the big picture fails, a while after the sheet opened
+  await p.waitForFunction(() => !document.querySelector('.sheet .head-pic img'));
+  assert.deepEqual([await top(), await tile('.sheet .head-pic')], [before, { ground: 'soft', picture: 'none', brick: '1', tall: 170 }], 'a picture that fails late leaves the sheet where it was, with the brick in its tile');
+  await p.click('[data-close]');
+  await p.click('.item:has-text("Tree House")');
+  await p.waitForSelector('#e-num');
+  await p.waitForTimeout(350);
+  assert.deepEqual([await p.isVisible('.sheet .head-pic'), await top() < before - 150], [false, true], 'opened again, the sheet starts without the tile');
+  await c.close();
+}
+// With less motion asked for, nothing fades.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House' } } }, { reducedMotion: 'reduce' });
+  await p.goto(base + '#catalog');
+  await p.waitForSelector('.item .pic');
+  assert.deepEqual(await p.$eval('.item .pic', el => [getComputedStyle(el).transitionDuration, getComputedStyle(el.querySelector('svg')).transitionDuration]), ['0s', '0s'], 'no fade under prefers-reduced-motion');
   await c.close();
 }
 

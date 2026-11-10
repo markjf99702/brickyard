@@ -161,10 +161,32 @@
     }
     return Date.now() - first >= 600;
   }
+  // A set's picture, from Rebrickable by its number. Until it arrives the tile shows the plain brick on the soft
+  // ground (it was an empty white tile; in the dark look, the brightest thing on the screen); when it has loaded the
+  // tile is marked `in`, and the stylesheet fades the picture in over its white ground and the brick out.
+  // For this visit: `gotPic` is the pictures that have arrived, by address, which are drawn in at once the next
+  // time (the list is drawn again at every search letter, and would blink); `noPic` is the set numbers whose
+  // picture didn't, so the set's sheet opens without a tile for it. Back online, those are asked for again.
+  var BRICK = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
+  var gotPic = {}, noPic = {}, settling = 0;
+  window.addEventListener('online', function () { noPic = {}; });
   function picHtml(x, cls) {
-    var brick = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
-    if (!prefs.pics || !x.num) return '<div class="pic none ' + (cls || '') + '">' + brick + '</div>';
-    return '<div class="pic ' + (cls || '') + '"><img alt="" loading="lazy" src="https://cdn.rebrickable.com/media/thumbs/sets/' + esc(x.num) + '.jpg/' + (cls === 'head-pic' ? '1000x800p' : '250x250p') + '.jpg" data-fallback="1"></div>';
+    var head = cls === 'head-pic';
+    if (!prefs.pics || !x.num || (head && noPic[x.num])) return '<div class="pic none ' + (cls || '') + '">' + BRICK + '</div>';
+    var src = 'https://cdn.rebrickable.com/media/thumbs/sets/' + x.num + '.jpg/' + (head ? '1000x800p' : '250x250p') + '.jpg';
+    if (!settling) settling = setTimeout(settle, 0);
+    return '<div class="pic ' + (gotPic[src] ? 'in ' : '') + (cls || '') + '">' + (gotPic[src] ? '' : BRICK) +
+      '<img alt="" loading="lazy" src="' + esc(src) + '" data-fallback="1" data-num="' + esc(x.num) + '"></div>';
+  }
+  function arrived(img) { gotPic[img.getAttribute('src')] = 1; if (img.parentNode) img.parentNode.classList.add('in'); }
+  document.addEventListener('load', function (e) {
+    if (e.target && e.target.tagName === 'IMG' && e.target.dataset.fallback) arrived(e.target);
+  }, true);
+  // A picture the browser already has can be whole before it says so, or without saying so: nothing is left hidden
+  // waiting for a 'load' that doesn't come.
+  function settle() {
+    settling = 0;
+    [].forEach.call(document.querySelectorAll('.pic:not(.in) > img[data-fallback]'), function (img) { if (img.complete && img.naturalWidth) arrived(img); });
   }
   // Build from your box when one of its files didn't arrive: said in place of its list, with Try again (it was an
   // empty screen under the title). js/build.js calls this for a parts file; for the script itself, or three.js under
@@ -181,13 +203,18 @@
       Promise.resolve(retry()).then(function () { if (had && $('build-retry')) $('build-retry').focus({ preventScroll: true }); });
     };
   }
-  // A picture that doesn't exist turns back into the plain brick.
+  // A picture that doesn't exist leaves the plain brick.
   document.addEventListener('error', function (e) {
     var img = e.target;
     if (img && img.tagName === 'SCRIPT' && img.type === 'module') { lostBuilder(function () { location.reload(); }); return; }
-    if (img && img.tagName === 'IMG' && img.dataset.fallback) {
-      var box = img.parentNode; box.classList.add('none');
-      box.innerHTML = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
+    if (img && img.tagName === 'IMG' && img.dataset.fallback && img.parentNode) {
+      var box = img.parentNode;
+      noPic[img.dataset.num] = 1;
+      box.classList.remove('in'); box.innerHTML = BRICK;
+      // At the top of a set's sheet the tile stays, with the brick, until the sheet closes: it used to go, and on a
+      // slow connection that was a second or two after the sheet opened, moving every box under it up 184 px as a
+      // finger came down on one. The next time, the sheet opens without it (noPic).
+      if (!box.classList.contains('head-pic')) box.classList.add('none');
     }
   }, true);
   function metaBits(x) { return [C.shortNum(x.num), x.year, x.pieces ? plural(x.pieces, 'piece') : ''].filter(Boolean); }
@@ -757,6 +784,7 @@
       var pic = panel.querySelector('.head-pic'), num = C.setNum(this.value.trim()), d = document.createElement('div');
       if (!pic || pic.dataset.num === num) return;
       d.innerHTML = picHtml({ num: num }, 'head-pic'); d.firstChild.dataset.num = num;
+      if (!pic.classList.contains('none')) d.firstChild.classList.remove('none'); // a tile that's showing stays, with the brick if there's no picture
       pic.parentNode.replaceChild(d.firstChild, pic);
     });
     // A different number is a different question: the button that was asking about a set you already have goes
