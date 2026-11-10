@@ -229,6 +229,49 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     }
   }
 
+  // Why something couldn't be read, so the page can say what to do. One of Brickyard's links that doesn't unpack
+  // is 'cut' (cut short, or a character changed on the way); a link of a later format than this page knows is
+  // 'newer'; anything else isn't a Brickyard link, and has no `why`.
+  {
+    const why = async t => { try { await C.parseIncoming(t); return 'opened'; } catch (e) { return e.why || 'not Brickyard'; } };
+    const pack = o => zlib.deflateRawSync(Buffer.from(JSON.stringify(o))).toString('base64url');
+    const site = 'https://brickyard.junkdrawer.works/';
+    // Cut anywhere, a link says it's cut: every length of the compressed link, and of the others.
+    for (const [link, what] of [[z, '#b1z'], [j, '#b1j'], ['#batch=' + encodeURIComponent(text), '#batch=']]) {
+      const got = {};
+      for (let n = what.length + 1; n < link.length; n++) { const w = await why(site + link.slice(0, n)); (got[w] = got[w] || []).push(n); }
+      eq(Object.keys(got), ['cut'], 'a ' + what + ' link cut at any length is cut' + (got.cut && Object.keys(got).length === 1 ? '' : ': ' + JSON.stringify(got).slice(0, 200)));
+      eq(await why(site + link), 'opened', 'and whole, it opens');
+    }
+    const kinds = { '#l1z': { brickyard: 1, loose: { name: 'Tub', parts: [['3001', 4, 12]] } }, '#z1z': { brickyard: 1, sizes: [{ num: '10497', w: 52, d: 32, h: 13 }] }, '#d1z': { brickyard: 1, model: { parts: [['3001', 4, 0, 0, 0, 0, 1]] } } };
+    for (const p in kinds) {
+      const link = site + p + pack(kinds[p]);
+      eq([await why(link), await why(link.slice(0, link.length - 6)), await why('Here: ' + link.slice(0, 60) + '. Open it.')], ['opened', 'cut', 'cut'], 'a ' + p + ' link whole, cut at the end, and cut in a sentence');
+    }
+    eq(await why(site + z.slice(0, 30) + '!' + z.slice(31)), 'cut', 'a link with a character that can’t be in one');
+    eq(await why(site + '#batch=%7B%22sets%22%3A%5B%7B%22num%22%3A%2210698%22%7D%5D%7D').then(w => w), 'opened', 'a hand-written link opens');
+    eq(await why(site + '#batch=%7B%22sets%22%3A%5B%7B%22num%E0%A4%A'), 'cut', 'a hand-written link cut inside a %-escape');
+    let lt = null; try { await C.linkText(z.slice(0, z.length - 4)); } catch (e) { lt = e; }
+    eq(lt && lt.why, 'cut', 'linkText says cut too');
+    // A later format: # then a letter, a number above 1, and z or j, with a link's worth of data after it.
+    for (const t of [site + '#b2z' + z.slice(4), '#q7j' + j.slice(4), 'Open this: ' + site + '#d3z' + pack(kinds['#d1z']) + '.']) {
+      eq([await why(t), C.newerLink(t)], ['newer', true], 'a link of a newer format: ' + t.slice(0, 50));
+    }
+    // Not Brickyard's at all, or whole but holding nothing: no `why`, so the page keeps its plain words.
+    for (const t of ['not json', 'see {this}', 'https://example.com/page#top', 'https://example.com/#a2z-list', 'tag #b2z', '{"brickyard": 1, "batch": {"sets": [{"num"',
+      '{"brickyard": 1, "batch": {"sets": []}}', site + '#b1z' + pack({ brickyard: 1, batch: { sets: [] } }), site + '#l1z' + pack({ brickyard: 1, loose: { parts: [] } })]) {
+      eq([await why(t), C.newerLink(t)], ['not Brickyard', false], 'no reason given for: ' + t.slice(0, 60));
+    }
+    // A model with or without its wrapper is a model, wherever it's pasted; a batch is still a batch.
+    const bare = { name: 'T', sets: ['10698-1'], parts: [['3001', 4, 0, 0, 0, 0, 1]] };
+    for (const [t, what] of [[JSON.stringify(bare), 'the model file as the designer skill writes it'], [JSON.stringify({ brickyard: 1, model: bare }), 'a wrapped model'],
+      [site + '#d1z' + pack({ brickyard: 1, model: bare }), 'a model link'], ['```json\n' + JSON.stringify(bare, null, 1) + '\n```', 'a model in fences']]) {
+      const r = await C.parseIncoming(t).catch(() => null);
+      eq(r && [r.kind, (r.doc.model || r.doc).parts.length], ['model', 1], what + ' is a model');
+    }
+    eq((await C.parseIncoming(JSON.stringify({ sets: [{ num: '10698', parts: 790 }] }))).kind, 'batch', 'sets with a piece count under "parts" are still a batch');
+  }
+
   let py = true; try { execFileSync('python3', ['--version']); } catch (e) { py = false; }
   if (py) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickyard-'));

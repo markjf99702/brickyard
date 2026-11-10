@@ -38,12 +38,19 @@
   function plural(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
   var toastTimer, heldUntil = 0, toastStays = false;
   // A held message stays up for longer, and nothing else replaces it meanwhile. One with an action ({ label, run },
-  // such as Undo) carries a button and stays as long, but the next message takes its place.
+  // such as Undo) carries a button and stays as long, but the next message takes its place; so does a 'long' one
+  // (hold is 'long'), which is a couple of sentences that need the time to be read.
   function toast(msg, hold, action) {
-    var now = Date.now();
+    var now = Date.now(), stay = hold === 'long';
+    hold = hold === true;
     if (!hold && now < heldUntil) return;
     var el = document.querySelector('.toast');
-    if (!el) { el = document.createElement('div'); el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    if (!el) {
+      el = document.createElement('div'); el.setAttribute('role', 'status'); document.body.appendChild(el);
+      // A tap on a message puts it away: a long one can sit over the box you want to type in next. Not a held one
+      // (it's the only sign something went wrong), and not by a tap on its button.
+      el.addEventListener('click', function (e) { if (!heldUntil && !e.target.closest('button')) hideToast(); });
+    }
     el.className = action ? 'toast act' : 'toast';
     el.textContent = '';
     el.appendChild(document.createElement('span')).textContent = msg;
@@ -53,9 +60,9 @@
       b.onclick = function () { hideToast(); action.run(); };
     }
     el.hidden = false;
-    var ms = hold || action ? 6000 : 3200;
+    var ms = hold || stay || action ? 6000 : 3200;
     heldUntil = hold ? now + ms : 0;
-    toastStays = !!(hold || action);
+    toastStays = !!(hold || stay || action);
     clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, ms);
   }
   function hideToast() {
@@ -477,24 +484,44 @@
       '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>' +
       '</div><div class="ft"><button class="btn quiet" type="button" id="p-file">Open a file</button><button class="btn" type="button" id="p-go">Open</button></div>');
     $('p-file').onclick = function () { $('file').click(); };
-    $('p-go').onclick = function () {
-      var t = $('paste').value; if (!t.trim()) { $('paste').focus(); return; }
-      takeIncoming(C.parseIncoming(t), /^\s*[{[]/.test(t) ? 'file' : 'link'); // a file's text starts with a bracket
-    };
+    $('p-go').onclick = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file'); };
+  }
+  // What's in a sheet's paste box, read as whatever it is. Open a model (js/build.js) and Sizes from Claude
+  // (js/shelves.js) use it too, so every paste box takes every kind of Brickyard link or file.
+  function takePasted(box, plain) {
+    var t = box.value; if (!t.trim()) { box.focus(); return; }
+    takeIncoming(C.parseIncoming(t), /^\s*[{[]/.test(t) ? 'file' : 'link', plain); // a file's text starts with a bracket
   }
 
-  // from is where it came from, 'link' or 'file', for the words on the sheet.
-  function takeIncoming(p, from) {
-    return p.then(function (r) {
-      if (r.kind === 'catalog') catalogSheet(r.doc, from);
-      else if (r.kind === 'loose') looseSheet(r.lot);
-      else if (r.kind === 'sizes') takeSizes(r.doc);
-      else if (r.kind === 'model') takeModel(r.doc);
-      else reviewSheet(r.batch);
-    }).catch(function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That doesn’t look like sets from Claude or a Brickyard file'); });
+  // Something that couldn't be read. A Brickyard link that doesn't unpack, or one of a later format, says so and
+  // what to do (C.parseIncoming marks which); anything else gets `plain`, the words for where it was tried.
+  function unread(e, plain) {
+    if (e && e.why === 'cut') toast('That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file Claude sent.', 'long');
+    else if (e && e.why === 'newer') toast('That link needs a newer Brickyard. Reload the page, then open it again.', 'long');
+    else toast(e && /browser/.test(e.message) ? e.message : plain);
   }
-  // Sizes and models from Claude belong to the other screens, so a file or text opened here goes on there: sizes to
-  // the shelf planner's Add sizes (js/shelves.js), a model into Build from your box (js/build.js), opened.
+
+  // Whatever arrives (an opened link, a pasted link or file text, a file) goes to the review for its kind, on the
+  // screen that kind belongs to, wherever it was opened from: sets pasted into Open a model are reviewed, and
+  // added, in My sets. from is where it came from, 'link' or 'file', for the words on the sheet; plain is what
+  // to say when it isn't anything of Brickyard's.
+  function takeIncoming(p, from, plain) {
+    return p.then(function (r) {
+      if (r.kind === 'sizes') takeSizes(r.doc);
+      else if (r.kind === 'model') takeModel(r.doc);
+      else if (r.kind === 'loose') onScreen('#build', function () { looseSheet(r.lot); });
+      else if (r.kind === 'catalog') onScreen('#catalog', function () { catalogSheet(r.doc, from); });
+      else onScreen('#catalog', function () { reviewSheet(r.batch); });
+    }).catch(function (e) { unread(e, plain || 'That doesn’t look like sets from Claude or a Brickyard file'); });
+  }
+  // Opens a sheet on the screen it belongs to. Already there, it takes the place of any sheet that's open. From
+  // another screen, the open sheet closes first: moving on has to wait for its place in history to be gone.
+  function onScreen(to, open) {
+    if (location.hash === to) { open(); return; }
+    closeSheet(function () { location.hash = to; open(); });
+  }
+  // Sizes go to the shelf planner's Add sizes (js/shelves.js), and a model into Build from your box (js/build.js),
+  // opened.
   function takeSizes(doc) {
     var z = window.ShelfCore.cleanSizes(doc);
     if (!z || !window.BrickyardShelves) throw new Error('empty');
@@ -508,11 +535,18 @@
   }
   function checkLink() {
     var h = location.hash;
+    // A link of a format this copy of the page doesn't know (an old copy kept for offline, say) used to land on
+    // the home screen without a word.
+    if (/^#[a-z][2-9][zj]/.test(h) && C.newerLink(h)) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+      route(); unread({ why: 'newer' });
+      return true;
+    }
     if (!/^#([bl]1[zj]|batch=)/.test(h)) return false;
     var to = h.charAt(1) === 'l' ? '#build' : '#catalog'; // loose pieces belong to Build from your box
     try { history.replaceState(null, '', location.pathname + location.search + to); } catch (e) { location.hash = to; }
     route();
-    takeIncoming(C.linkText(h).then(function (t) { if (!t) throw new Error('empty'); return C.parseIncoming(t); }), 'link');
+    takeIncoming(C.parseIncoming(h), 'link');
     return true;
   }
   $('file').addEventListener('change', function () {
@@ -677,12 +711,20 @@
       : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return '#b1z' + b64(new Uint8Array(b)); });
     made.then(function (h) {
       var link = SITE + h;
+      // Chat apps, notes and some browsers cut a very long link off, and what's left won't open. The preview copy
+      // can't download a backup, so there the link is all there is.
+      var lengthy = link.length > 8000 && !FRAMED;
       var show = function () {
         openSheet('<div class="hd"><h2 id="sheetTitle">Your catalog as a link</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
-          '<div class="bd"><p class="note">Copy this and open it on the other device. It adds what that device doesn’t have.</p><textarea class="paste" id="all-link" readonly style="min-height:160px">' + esc(link) + '</textarea></div>');
-            $('all-link').select();
+          '<div class="bd"><p class="note">Copy this and open it on the other device. It adds what that device doesn’t have.' +
+          (lengthy ? ' It’s a long link; if it won’t open, use Download a backup instead.' : '') + '</p><textarea class="paste" id="all-link" readonly style="min-height:160px">' + esc(link) + '</textarea></div>');
+        $('all-link').select();
       };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function () { closeSheet(); toast('Copied. Open the link on your other device.'); }, show);
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(function () {
+        closeSheet();
+        if (lengthy) toast('Copied. It’s a long link; if it won’t open, use Download a backup instead.', 'long');
+        else toast('Copied. Open the link on your other device.');
+      }, show);
       else show();
     });
   }
@@ -715,6 +757,9 @@
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
     newId: newId, takeDoc: takeDoc,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
+    // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
+    // and what can't be read says why (unread).
+    takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
     toast: toast, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));

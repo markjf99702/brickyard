@@ -274,13 +274,15 @@
       '<div class="bd"><p class="note">Copy this and paste it to Claude.</p><textarea class="paste" id="z-text" readonly style="min-height:200px">' + esc(text) + '</textarea></div>');
     $('z-text').select();
   }
+  // Whatever is pasted or opened here goes where it belongs (app.takeIncoming): sizes to Add sizes below, and sets,
+  // loose pieces or a model to their own screens.
   function openSizes() {
     app.openSheet('<div class="hd"><h2 id="sheetTitle">Sizes from Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
-      '<p class="note">Paste the link or the file Claude sent.</p><textarea class="paste" id="z-paste" aria-label="Paste a sizes link or file" placeholder="https://brickyard.junkdrawer.works/#z1z…"></textarea></div>' +
-      '<div class="ft"><span></span><button class="btn" type="button" id="z-go">Open</button></div>');
-    $('z-go').onclick = function () {
-      S.parseSizes($('z-paste').value).then(function (z) { app.closeSheet(function () { reviewSizes(z); }); }, function () { toast('That doesn’t look like sizes from Claude'); });
-    };
+      '<p class="note">Paste the link Claude sent, or open its file.</p>' +
+      '<textarea class="paste" id="z-paste" aria-label="Paste a Brickyard link or file" placeholder="Paste a Brickyard link or file"></textarea></div>' +
+      '<div class="ft"><button class="btn quiet" type="button" id="z-file">Open a file</button><button class="btn" type="button" id="z-go">Open</button></div>');
+    $('z-file').onclick = app.openFile;
+    $('z-go').onclick = function () { app.takePasted($('z-paste'), 'That doesn’t look like sizes from Claude'); };
   }
   function reviewSizes(list) {
     var rows = [], unknown = 0;
@@ -289,7 +291,13 @@
       if (!mine.length) unknown++;
       mine.forEach(function (x) { rows.push({ x: x, z: z, on: !S.hasSize(x) }); });
     });
-    if (!rows.length) { toast('None of those sets are in My sets'); return; }
+    // Sizes never add sets, so a list for sets that aren't here has nothing to fill in: say what it held and why
+    // nothing happened, with the way to My sets.
+    if (!rows.length) {
+      toast((list.length === 1 ? 'That size is for a set that isn’t' : 'Those ' + list.length.toLocaleString() + ' sizes are for sets that aren’t') +
+        ' in My sets. Sizes only fill in sets you’ve already added.', false, { label: 'My sets', run: function () { location.hash = '#catalog'; } });
+      return;
+    }
     app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
@@ -320,7 +328,8 @@
     if (/^#z1[zj]/.test(h)) {
       history.replaceState(null, '', location.pathname + location.search + '#shelves');
       render();
-      S.parseSizes(h).then(reviewSizes, function (e) { toast(e && /browser/.test(e.message) ? e.message : 'That link doesn’t hold sizes Brickyard can read'); });
+      // Read as whatever it is (sizes, by its prefix); a link cut short or of a newer format says so.
+      app.takeIncoming(C.parseIncoming(h), 'link', 'That link doesn’t hold sizes Brickyard can read');
       return;
     }
     render();

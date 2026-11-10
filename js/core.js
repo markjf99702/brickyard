@@ -342,6 +342,13 @@
   // JSON for writing by hand. #l1z… / #l1j… carry a lot of loose pieces the same way, and so do the other screens'
   // links, read here when one is pasted: sizes (#z1z…, js/shelf-core.js) and models (#d1z…, js/build-core.js).
   // The part after # never reaches a server.
+  //
+  // A link that can't be read says why, in the error's `why`, so the page can say what to do about it:
+  // 'cut' when it is one of Brickyard's but doesn't unpack (a chat app cut it short, or a character changed on the
+  // way); 'newer' when it looks like a Brickyard link of a later format (# then a letter, a number above 1, and z
+  // or j) that this copy of the page doesn't know yet. Anything else isn't a Brickyard link at all.
+  function fault(why) { var e = new Error(why === 'cut' ? 'This Brickyard link doesn’t unpack' : 'This link is for a newer Brickyard'); e.why = why; return e; }
+  function newerLink(t) { return /#[a-z][2-9][zj][A-Za-z0-9_-]{12,}/.test(String(t || '')); }
   function linkText(h) {
     h = String(h || '');
     var m = /#([bldz]1[zj])([A-Za-z0-9_-]+)/.exec(h);
@@ -349,7 +356,7 @@
       var b = /#batch=(\S+)/.exec(h);
       if (!b) return Promise.resolve('');
       // A full stop or bracket after the link in a sentence isn't part of it; the JSON in it ends with } (or %7D).
-      try { return Promise.resolve(decodeURIComponent(b[1].replace(/[.,;:!?)\]>"'’”»…—–]+$/, ''))); } catch (e) { return Promise.reject(e); }
+      try { return Promise.resolve(decodeURIComponent(b[1].replace(/[.,;:!?)\]>"'’”»…—–]+$/, ''))); } catch (e) { return Promise.reject(fault('cut')); }
     }
     // Inside the promise, so a link cut short (which atob refuses) is turned down like any bad link instead of
     // throwing while the page starts.
@@ -359,7 +366,7 @@
       if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
       if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.');
       return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
-    });
+    }).catch(function (e) { throw e && /browser/.test(e.message) ? e : fault('cut'); });
   }
 
   // The JSON in what was pasted: from the first { to the last }, so ```json fences or a line above it don't matter.
@@ -374,27 +381,35 @@
   // Build from your box come back as they are (kind 'sizes' or 'model', doc), for those screens to read.
   function parseIncoming(t) {
     t = String(t || '').trim();
-    var c = t.charAt(0);
-    if (c !== '{' && /#([bldz]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(parseIncoming);
-    return Promise.resolve().then(function () {
-      var o = JSON.parse(jsonPart(t));
-      if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
-      if (o && o.loose && !o.sets && !o.batch) {
-        var lot = cleanLot(o.loose);
-        if (!lot || lot.del) throw new Error('empty');
-        return { kind: 'loose', lot: lot };
-      }
-      var sizes = o && (o.sizes || (o.batch && o.batch.sizes)), sets = o && (o.sets || (o.batch && o.batch.sets));
-      if (Array.isArray(sizes) && sizes.length && !sets) return { kind: 'sizes', doc: o };
-      if (o && o.model && typeof o.model === 'object' && Array.isArray(o.model.parts)) return { kind: 'model', doc: o };
-      var b = cleanBatch(o);
-      if (!b || !b.sets.length) throw new Error('empty');
-      return { kind: 'batch', batch: b };
-    });
+    if (t.charAt(0) !== '{') {
+      if (/#([bldz]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(function (text) {
+        var o;
+        try { o = JSON.parse(jsonPart(text)); } catch (e) { throw fault('cut'); } // it unpacked, into something that isn't whole
+        return sortOut(o);
+      });
+      if (newerLink(t)) return Promise.reject(fault('newer'));
+    }
+    return Promise.resolve().then(function () { return sortOut(JSON.parse(jsonPart(t))); });
+  }
+  // What the JSON holds. A model may come without its {"brickyard": 1, "model": …} wrapper (the file the designer
+  // skill checks is the model itself), so anything with a list of parts at the top is a model.
+  function sortOut(o) {
+    if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
+    if (o && o.loose && !o.sets && !o.batch) {
+      var lot = cleanLot(o.loose);
+      if (!lot || lot.del) throw new Error('empty');
+      return { kind: 'loose', lot: lot };
+    }
+    var sizes = o && (o.sizes || (o.batch && o.batch.sizes)), sets = o && (o.sets || (o.batch && o.batch.sets));
+    if (Array.isArray(sizes) && sizes.length && !sets) return { kind: 'sizes', doc: o };
+    if (o && ((o.model && typeof o.model === 'object' && Array.isArray(o.model.parts)) || (Array.isArray(o.parts) && !o.batch))) return { kind: 'model', doc: o };
+    var b = cleanBatch(o);
+    if (!b || !b.sets.length) throw new Error('empty');
+    return { kind: 'batch', batch: b };
   }
 
   var api = {
-    linkText: linkText, parseIncoming: parseIncoming,
+    linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,

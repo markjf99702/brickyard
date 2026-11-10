@@ -91,12 +91,14 @@ async function route() {
   await ready;
   if (/^#d1[zj]/.test(h)) {
     try {
-      const m = await B.parseModel(h);
+      const r = await window.BrickCore.parseIncoming(h);
+      const m = r.kind === 'model' ? B.cleanModel(r.doc) : null;
+      if (!m) throw new Error('empty');
       const id = saveModel(m);
       history.replaceState(null, '', location.pathname + location.search + '#model-' + id);
       return openModel(id);
     } catch (e) {
-      toast(e && /browser/.test(e.message) ? e.message : 'That link doesn’t hold a model Brickyard can read');
+      app.unread(e, 'That link doesn’t hold a model Brickyard can read'); // cut short and newer links say so
       history.replaceState(null, '', location.pathname + location.search + '#build');
     }
   }
@@ -196,16 +198,15 @@ async function copyPool() {
   }
 }
 
+// Whatever is pasted or opened here goes where it belongs (app.takeIncoming): a model opens, and loose pieces, sets
+// or sizes go to their own review, so there's no wrong box to paste a Brickyard link into.
 function openSheet() {
   app.openSheet('<div class="hd"><h2 id="sheetTitle">Open a model</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
-    '<p class="note">Paste the link or the file Claude sent.</p><textarea class="paste" id="model-paste" aria-label="Paste a model link or file" placeholder="https://brickyard.junkdrawer.works/#d1z…"></textarea></div>' +
-    '<div class="ft"><span></span><button class="btn" type="button" id="model-go">Open</button></div>');
-  $('model-go').onclick = async () => {
-    try {
-      const m = await B.parseModel($('model-paste').value);
-      const id = saveModel(m); app.closeSheet(() => { location.hash = '#model-' + id; });
-    } catch (e) { toast('That doesn’t look like a model from Claude'); }
-  };
+    '<p class="note">Paste the link Claude sent, or open its file. A loose-pieces link, from Stud Finder say, opens here too.</p>' +
+    '<textarea class="paste" id="model-paste" aria-label="Paste a Brickyard link or file" placeholder="Paste a Brickyard link or file"></textarea></div>' +
+    '<div class="ft"><button class="btn quiet" type="button" id="model-file">Open a file</button><button class="btn" type="button" id="model-go">Open</button></div>');
+  $('model-file').onclick = app.openFile;
+  $('model-go').onclick = () => app.takePasted($('model-paste'), 'That doesn’t look like a model from Claude');
 }
 
 // ---------- one model ----------
@@ -214,7 +215,7 @@ async function openModel(id) {
   // The list takes this address's place in history rather than a new one after it. Back can land here on a model
   // that was removed, with no tap since, and Chrome's Back then skips every place a page adds: the next Back would
   // leave Brickyard.
-  if (!model) { toast('That model isn’t here any more'); location.replace('#build'); return; }
+  if (!model) { toast('That model isn’t saved on this device. Open Claude’s link to it here.', 'long'); location.replace('#build'); return; }
   const { pool, sets, lots, any } = await currentPool();
   const res = B.check(model, shapes, any ? pool : null);
   current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots };

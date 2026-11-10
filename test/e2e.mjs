@@ -54,16 +54,32 @@ await page.goto(base);
 await page.evaluate(() => document.fonts.ready);
 assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
 
-// A link cut short (as a chat app can leave it) says so when Brickyard opens on it, and everything else still works.
+// A link cut short (as a chat app can leave it) says so when Brickyard opens on it, with what to do, on the screen
+// that kind of link belongs to; so does a link of a newer format than this copy of the page knows. Everything else
+// still works.
+const CUT = 'That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file Claude sent.';
+const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it again.';
 {
   const p = await ctx.newPage();
   p.on('pageerror', e => problems.push(e.message));
-  for (const [h, says] of [['#b1zAAAAA', 'doesn’t look like sets'], ['#l1zA', 'doesn’t look like sets'], ['#z1zA', 'doesn’t hold sizes']]) {
+  const packed = o => deflateRawSync(JSON.stringify(o)).toString('base64url');
+  const whole = '#b1z' + packed({ brickyard: 1, batch: { sets: Array.from({ length: 12 }, (_, i) => ({ num: String(21300 + i), name: 'Set number ' + i, room: 'Office' })) } });
+  const plain = '#b1j' + Buffer.from(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10698', name: 'Large Creative Brick Box' }] } })).toString('base64url');
+  const screen = () => p.evaluate(() => ['home', 'catalog', 'build', 'shelves'].filter(id => !document.getElementById(id).hidden).join());
+  for (const [h, says, on] of [['#b1zAAAAA', CUT, 'catalog'], ['#l1zA', CUT, 'build'], ['#z1zA', CUT, 'shelves'], ['#d1zA', CUT, 'build'],
+    [whole.slice(0, whole.length - 9), CUT, 'catalog'], [whole.slice(0, 60), CUT, 'catalog'], [plain.slice(0, 80), CUT, 'catalog'], ['#batch=%7B%22sets%22%3A%5B%7B%22num', CUT, 'catalog'],
+    ['#b2z' + whole.slice(4), NEWER, 'home'], ['#q7j' + plain.slice(4), NEWER, 'home']]) {
     await p.goto('about:blank');
     await p.goto(base + h);
-    await p.waitForFunction(w => (document.querySelector('.toast') || {}).textContent?.includes(w), says, { timeout: 10000 });
+    await p.waitForFunction(() => { const t = document.querySelector('.toast'); return t && !t.hidden; }, null, { timeout: 10000 });
+    assert.deepEqual([await p.textContent('.toast'), await screen()], [says, on], 'what a link that can’t be opened says: ' + h.slice(0, 24));
     assert.equal(await p.evaluate(() => typeof window.brickyard), 'object', 'Brickyard started after a cut-off ' + h);
+    assert.ok(!/[bldzq]\d[zj]/.test(await p.evaluate(() => location.hash)), 'and the link is gone from the address');
   }
+  // It stays up long enough to read (6 seconds, where a short message gets 3), and then goes.
+  await p.waitForTimeout(4000);
+  assert.equal(await p.isVisible('.toast'), true, 'the message is still there after 4 seconds');
+  await p.waitForFunction(() => document.querySelector('.toast').hidden, null, { timeout: 4000 });
   await p.goto(base + '#build');
   await p.waitForSelector('#build-list .group');
   await p.close();
@@ -86,6 +102,8 @@ assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
   assert.match(await p.textContent('.toast'), /wouldn’t save. Download a backup/, 'the save warning shows, not Added');
   await p.evaluate(() => window.brickyard.toast('Something else'));
   assert.match(await p.textContent('.toast'), /wouldn’t save/, 'the warning stays up');
+  await p.click('.toast');
+  assert.equal(await p.isVisible('.toast'), true, 'and a tap doesn’t put a held warning away');
   // The preview copy (in a frame) can't download a backup, so it points at the link instead.
   await p.setContent(`<iframe src="${base}#catalog" style="width:390px;height:800px"></iframe>`);
   const f = await (await p.waitForSelector('iframe')).contentFrame();
@@ -518,6 +536,130 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Every paste box takes every kind of Brickyard link or file and sends it to its own review, on the screen it
+// belongs to: sets pasted into Open a model end up in My sets, and so on round. Each box has Open a file too.
+{
+  const { c, p } = await withSets({ sets: { g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } } });
+  const packed = o => deflateRawSync(JSON.stringify(o)).toString('base64url');
+  const at = () => p.evaluate(() => [location.hash, (document.getElementById('sheetTitle') || {}).textContent || '', ['home', 'catalog', 'build', 'shelves'].filter(id => !document.getElementById(id).hidden).join()]);
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.querySelector('span').textContent : ''; });
+  const setsDoc = { brickyard: 1, batch: { name: 'From the other box', sets: [{ num: '21318', name: 'Tree House' }] } };
+  const setsLink = base + '#b1z' + packed(setsDoc);
+  const lotLink = 'Your tub: ' + base + '#l1z' + packed({ brickyard: 1, loose: { id: 'tub', name: 'Blue tub', parts: [['3001', 4, 40]] } }) + '.';
+  const sizesLink = base + '#z1z' + packed({ brickyard: 1, sizes: [{ num: '10497', w: 52, d: 32, h: 13 }] });
+  const wall = { name: 'Wall', parts: Array.from({ length: 4 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) };
+  const paste = async (open, box, go, text) => { await p.click(open); await p.fill(box, text); await p.click(go); };
+  const model = t => paste('#open-model', '#model-paste', '#model-go', t), sizes = t => paste('[data-act="open-sizes"]', '#z-paste', '#z-go', t);
+
+  // Open a model, in Build from your box.
+  await p.goto(base + '#build');
+  await p.click('#open-model');
+  assert.deepEqual(await p.$eval('#model-paste', e => [e.placeholder, e.getAttribute('aria-label')]), ['Paste a Brickyard link or file', 'Paste a Brickyard link or file']);
+  assert.deepEqual(await p.$$eval('.sheet .ft button', bs => bs.map(b => b.textContent)), ['Open a file', 'Open'], 'Open a model has Open a file');
+  await p.click('[data-close]');
+  await model(setsLink);
+  await p.waitForSelector('#rv-add');
+  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
+  assert.deepEqual(await at(), ['#catalog', 'Add sets from Claude', 'catalog'], 'a sets link pasted into Open a model is reviewed in My sets');
+  await p.click('#rv-add');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.deepEqual([await at(), await says(), await p.locator('#catalog .item').count()], [['#catalog', '', 'catalog'], 'Added 1 set', 2], 'and added there, with the list showing it');
+  await p.goBack();
+  await p.waitForSelector('#build-list:not([hidden]) #open-model');
+  assert.deepEqual(await at(), ['#build', '', 'build'], 'Back from there is Build from your box, with no sheet left over');
+  await model(lotLink);
+  await p.waitForSelector('#ls-add');
+  assert.deepEqual(await at(), ['#build', 'Add loose pieces', 'build'], 'a loose-pieces link pasted into Open a model is reviewed where it is');
+  await p.click('#ls-add');
+  await p.waitForSelector('li.lot');
+  await model(sizesLink);
+  await p.waitForSelector('#zr-go');
+  await p.waitForFunction(() => !document.getElementById('shelves').hidden);
+  assert.deepEqual(await at(), ['#shelves', 'Add sizes', 'shelves'], 'a sizes link pasted into Open a model goes to the shelf planner');
+  await p.click('[data-close]');
+  // Open a file, from Open a model: a sets file is reviewed in My sets.
+  await p.goto(base + '#build');
+  await p.click('#open-model');
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('#model-file')]);
+  await chooser.setFiles({ name: 'more.brickyard.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setsDoc, null, 1)) });
+  await p.waitForSelector('#rv-add');
+  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
+  assert.deepEqual([await at(), await p.textContent('#rv .w')], [['#catalog', 'Add sets from Claude', 'catalog'], 'You already have this one'], 'a sets file opened from Open a model is reviewed in My sets');
+  await p.click('[data-close]');
+  // Things that aren't Brickyard's keep the box's own words; a cut link says it's cut, and the sheet stays to try again.
+  await p.goto(base + '#build');
+  await model('hello there');
+  await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+  assert.deepEqual([await says(), (await at())[1]], ['That doesn’t look like a model from Claude', 'Open a model']);
+  await p.fill('#model-paste', setsLink.slice(0, setsLink.length - 7));
+  await p.click('#model-go');
+  await p.waitForFunction(w => document.querySelector('.toast span').textContent === w, CUT);
+  assert.equal((await at())[1], 'Open a model', 'the sheet is still there after a cut link');
+  // The message sits over the paste box for six seconds; a tap puts it away.
+  await p.click('.toast');
+  assert.deepEqual([await p.isHidden('.toast'), (await at())[1]], [true, 'Open a model'], 'a tap on the message puts it away, and nothing else');
+  await p.fill('#model-paste', base + '#d2z' + packed({ brickyard: 2, model: wall }));
+  await p.click('#model-go');
+  await p.waitForFunction(w => document.querySelector('.toast span').textContent === w, NEWER);
+  await p.click('[data-close]');
+
+  // Sizes from Claude, in the shelf planner.
+  await p.goto(base + '#shelves');
+  await p.click('[data-act="open-sizes"]');
+  assert.deepEqual(await p.$eval('#z-paste', e => [e.placeholder, e.getAttribute('aria-label')]), ['Paste a Brickyard link or file', 'Paste a Brickyard link or file']);
+  assert.deepEqual(await p.$$eval('.sheet .ft button', bs => bs.map(b => b.textContent)), ['Open a file', 'Open'], 'Sizes from Claude has Open a file');
+  await p.click('[data-close]');
+  await sizes(setsLink);
+  await p.waitForSelector('#rv-add');
+  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
+  assert.deepEqual(await at(), ['#catalog', 'Add sets from Claude', 'catalog'], 'a sets link pasted into Sizes from Claude is reviewed in My sets');
+  await p.click('[data-close]');
+  await p.goto(base + '#shelves');
+  await sizes('```json\n' + JSON.stringify(wall) + '\n```'); // the model as the designer skill writes it, without a wrapper
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  assert.equal(await p.textContent('#build-title'), 'Wall', 'a model pasted into Sizes from Claude opens in Build from your box');
+  await p.goto(base + '#shelves');
+  await sizes(sizesLink);
+  await p.waitForSelector('#zr-go');
+  assert.deepEqual([await at(), await p.textContent('#zr .m')], [['#shelves', 'Add sizes', 'shelves'], '52 × 32 × 13 cm'], 'and sizes are still sizes');
+  await p.click('#zr-go');
+  await p.goto(base + '#shelves');
+  await p.evaluate(() => { const d = window.brickyard.doc().sets.g; delete d.size; window.brickyard.putSet(d); });
+  await p.reload();
+  await sizes('not sizes');
+  await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+  assert.equal(await says(), 'That doesn’t look like sizes from Claude');
+  await p.click('[data-close]');
+  // Sizes for sets that aren't in My sets: it says how many it held and why nothing came of them, with the way there.
+  for (const [list, text] of [[[{ num: '99901', w: 10, d: 10, h: 10 }, { num: '99902', w: 10, d: 10, h: 10 }, { num: '99903', w: 10, d: 10, h: 10 }], 'Those 3 sizes are for sets that aren’t in My sets. Sizes only fill in sets you’ve already added.'],
+    [[{ num: '99901', w: 10, d: 10, h: 10 }], 'That size is for a set that isn’t in My sets. Sizes only fill in sets you’ve already added.']]) {
+    await p.goto('about:blank');
+    await p.goto(base + '#z1z' + packed({ brickyard: 1, sizes: list }));
+    await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+    assert.deepEqual([await says(), await p.textContent('.toast button'), await at()], [text, 'My sets', ['#shelves', '', 'shelves']]);
+  }
+  await p.click('.toast button');
+  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
+  assert.equal((await at())[0], '#catalog', 'its button goes to My sets');
+  await c.close();
+}
+
+// Copy everything as a link warns when the link is long enough to be cut off on the way (over 8,000 characters).
+{
+  const few = { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box' } }, lots = {};
+  for (let i = 0; i < 400; i++) lots['s' + i] = { id: 's' + i, t: 1 + i, num: (20000 + i * 7) + '-1', name: 'Set ' + (i * 7919 % 1000) + ' of the ' + ['harbour', 'castle', 'garage', 'forest'][i % 4], room: 'Room ' + (i % 9) };
+  for (const [sets, says] of [[few, 'Copied. Open the link on your other device.'], [lots, 'Copied. It’s a long link; if it won’t open, use Download a backup instead.']]) {
+    const { c, p } = await withSets({ sets }, { permissions: ['clipboard-read', 'clipboard-write'] });
+    await p.goto(base + '#catalog');
+    await p.click('#menu-btn');
+    await p.click('#m-link');
+    await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+    const copied = await p.evaluate(() => navigator.clipboard.readText());
+    assert.deepEqual([await p.textContent('.toast'), copied.length > 8000], [says, sets === lots], 'what Copy everything as a link says for a link of ' + copied.length + ' characters');
+    await c.close();
+  }
+}
+
 // Back with a sheet open closes the sheet and stays on the screen, where it was scrolled to (it used to leave My sets
 // for the home screen). Back again goes on back. A sheet closed by its own buttons leaves nothing in the way.
 {
@@ -661,12 +803,12 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.waitForSelector('#build-list:not([hidden]) .list');
   assert.deepEqual(await at(), ['#build', 0, '', 'build', false], 'a removed model lands on the list of models');
   await back();
-  assert.deepEqual([await at(), await p.isVisible('#build-list'), await p.locator('.toast:not([hidden])', { hasText: 'isn’t here any more' }).count()], [['#build', 0, '', 'build', false], true, 0], 'and Back doesn’t come back to the model that’s gone');
+  assert.deepEqual([await at(), await p.isVisible('#build-list'), await p.locator('.toast:not([hidden])', { hasText: 'isn’t saved on this device' }).count()], [['#build', 0, '', 'build', false], true, 0], 'and Back doesn’t come back to the model that’s gone');
   // The address of a model that isn't kept here goes to the list, in its place in history: Back doesn't bounce off it.
   await p.goto(base + '#catalog');
   await p.evaluate(() => { location.hash = '#model-mgone'; });
   await p.waitForSelector('#build-list:not([hidden]) .list');
-  assert.deepEqual([await at(), await p.textContent('.toast')], [['#build', 0, '', 'build', false], 'That model isn’t here any more']);
+  assert.deepEqual([await at(), await p.textContent('.toast')], [['#build', 0, '', 'build', false], 'That model isn’t saved on this device. Open Claude’s link to it here.']);
   await back();
   assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back from the list is My sets, not the missing model again');
   // Loose pieces pasted in My sets land on Build from your box once added.
