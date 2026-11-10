@@ -50,7 +50,7 @@ https://brickyard.junkdrawer.works/#b1z<data>
 {"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "LEGO's measurements"}]}
 ```
 
-Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front to back, `h` tall, and an optional `note` (up to 200 characters). The link is `#z1z<data>` (`#z1j` uncompressed), made the same way as a batch link; `make_brickyard.py` makes it from a file like this. Opening it offers each size for the sets in My sets with that number, unticked where a set already has a size. It never adds sets.
+Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front to back, `h` tall, and an optional `note` (up to 200 characters). The link is `#z1z<data>` (`#z1j` uncompressed), made the same way as a batch link; `make_brickyard.py` makes it from a file like this. A row needs the set's number and all three sides; a side over 500 cm (a size written in mm, say) leaves its row out, in the script and in the page. Opening the link offers each size for the sets in My sets with that number, unticked where a set already has a size or where the size looks wrong for the set (a side under 1.5 cm or over 150 cm, or far too small or large for its piece count), with a line saying why. It never adds sets.
 
 ## A backup
 

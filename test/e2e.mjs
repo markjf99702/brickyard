@@ -973,7 +973,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.goto(base + '#shelves');
   await sizes(sizesLink);
   await p.waitForSelector('#zr-go');
-  assert.deepEqual([await at(), await p.textContent('#zr .m')], [['#shelves', 'Add sizes', 'shelves'], '52 × 32 × 13 cm'], 'and sizes are still sizes');
+  assert.deepEqual([await at(), await p.textContent('#zr .m')], [['#shelves', 'Add sizes', 'shelves'], '10497 · 52 × 32 × 13 cm'], 'and sizes are still sizes');
   await p.click('#zr-go');
   await p.goto(base + '#shelves');
   await p.evaluate(() => { const d = window.brickyard.doc().sets.g; delete d.size; window.brickyard.putSet(d); });
@@ -1916,6 +1916,25 @@ await page.click('[data-close]');
   await p.click('#k-preset [data-k="0"]');
   await p.click('#k-save');
   assert.deepEqual(await p.evaluate(() => Object.values(window.brickyard.doc().cases).map(k => [k.name, k.w, k.d, k.levels.map(l => l.h).join(' ')])), [['Billy', 76, 26, '30 30 30 30 30 30']]);
+  await c.close();
+}
+
+// A size from Claude that looks wrong for its set arrives unticked, with a line saying why: a 4,514-piece castle 3 cm
+// tall, inches sent as cm, a size nothing like the one the set has. One sent in mm (840 cm wide) is left out and
+// counted, where it used to be offered as 500 × 500 × 210 cm. Each row shows the set's number.
+{
+  const { c, p } = await withSets({ sets: { ge: { id: 'ge', t: 1, num: '10497-1', name: 'Galaxy Explorer', pieces: 1254, state: 'built' }, lk: { id: 'lk', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', pieces: 4514, state: 'built' },
+    mc: { id: 'mc', t: 1, num: '31120-1', name: 'Medieval Castle', pieces: 1426, state: 'built' }, mf: { id: 'mf', t: 1, num: '75192-1', name: 'Millennium Falcon', pieces: 7541, state: 'built' },
+    lb: { id: 'lb', t: 1, num: '10258-1', name: 'London Bus', pieces: 1686, state: 'built', size: { w: 34, d: 9, h: 18 } } } });
+  const sizes = [{ num: '10497', w: 52, d: 32, h: 13 }, { num: '10305', w: 44, d: 33, h: 3 }, { num: '31120', w: 12.6, d: 10.2, h: 8.7 }, { num: '75192', w: 840, d: 560, h: 210 }, { num: '10258', w: 68, d: 18, h: 36 }];
+  await p.goto(base + '#z1j' + Buffer.from(JSON.stringify({ brickyard: 1, sizes })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('#zr li')].map(li => [li.querySelector('input').checked ? 'ticked' : 'unticked', li.querySelector('.m').textContent, (li.querySelector('.w') || {}).textContent || ''].join(' | '))), [
+    'ticked | 10497 · 52 × 32 × 13 cm | ', 'unticked | 10305 · 44 × 33 × 3 cm | Check: 3 cm tall for 4,514 pieces?', 'unticked | 31120 · 12.6 × 10.2 × 8.7 cm | Check: 8.7 cm tall for 1,426 pieces?',
+    'unticked | 10258 · 68 × 18 × 36 cm · replaces 34 × 9 × 18 cm | Check: Very different from the size it has now.'], 'sizes that look wrong are unticked and say why');
+  assert.deepEqual([await p.textContent('.sheet .note'), await p.textContent('#zr-n')], ['Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it. 3 sizes look wrong and are unticked too: check them before you tick. One size in the list couldn’t be read.', '1 set']);
+  await p.click('#zr-go');
+  assert.deepEqual(await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => x.size).map(x => x.id).sort()), ['ge', 'lb'], 'only the ticked size is added');
   await c.close();
 }
 

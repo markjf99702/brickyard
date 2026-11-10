@@ -730,9 +730,9 @@
   // Sizes go to the shelf planner's Add sizes (js/shelves.js), and a model into Build from your box (js/build.js),
   // opened.
   function takeSizes(doc) {
-    var z = window.ShelfCore.cleanSizes(doc);
+    var tally = {}, z = window.ShelfCore.cleanSizes(doc, tally);
     if (!z || !window.BrickyardShelves) throw new Error('empty');
-    closeSheet(function () { location.hash = '#shelves'; window.BrickyardShelves.reviewSizes(z); });
+    closeSheet(function () { location.hash = '#shelves'; window.BrickyardShelves.reviewSizes(z, tally.dropped); });
   }
   function takeModel(doc) {
     var m = window.BuildCore && window.BuildCore.cleanModel(doc);

@@ -189,23 +189,51 @@
   }
 
   // A sizes list from Claude: {"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13}, ...]}.
-  function cleanSizes(o) {
+  // A row without a set number or one of its three sides is left out, and so is one with a side over 500 cm (it
+  // used to be made 500: a Millennium Falcon sent in mm arrived as 500 x 500 x 210 cm). `tally`, when given, gets
+  // how many rows were left out that way (tally.dropped), for the page to say so.
+  function cleanSizes(o, tally) {
     var list = o && (o.sizes || (o.batch && o.batch.sizes));
     if (!Array.isArray(list)) return null;
-    var out = [], seen = {};
+    var out = [], seen = {}, dropped = 0;
     list.slice(0, 2000).forEach(function (y) {
-      if (!y || typeof y !== 'object') return;
+      if (!y || typeof y !== 'object') { dropped++; return; }
       var num = setNumOf(y.num || y.set), w = measureOf(y.w), d = measureOf(y.d), h = measureOf(y.h);
-      if (!num || !w || !d || !h || seen[num]) return;
+      if (!num || !w || !d || !h) { dropped++; return; }
+      if (seen[num]) return;
       seen[num] = 1;
       var row = { num: num, w: w, d: d, h: h };
       var note = typeof y.note === 'string' ? y.note.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
       if (note) row.note = note;
       out.push(row);
     });
+    if (tally) tally.dropped = dropped;
     return out.length ? out : null;
   }
-  // Same rules as js/core.js (setNum, measure), repeated so this file stands on its own.
+
+  // Whether a size from Claude looks wrong for set x: '' or a few words saying why, for the page to show beside
+  // it and leave it unticked. Three checks: a side under 1.5 cm or over 150 cm; for a set with a piece count, less
+  // than 1 or more than 80 cubic cm of box per piece (real sets looked at ran from 1.2 for the flat World Map to 48
+  // for the Eiffel Tower; a 4,514-piece castle sent as 3 cm tall is 0.96, and inches sent as cm 0.78); and, where
+  // the set has a size already, a height or footprint more than half as big again or under half of it (the
+  // footprint's two sides are compared smaller to smaller, since a set can be measured either way round). These
+  // limits are an estimate made for this page from that handful of sets, not a published rule: they only untick
+  // a row and ask, they never stop a size being added.
+  function sizeDoubt(z, x) {
+    var sides = [[z.w, 'wide'], [z.d, 'deep'], [z.h, 'tall']].sort(function (a, b) { return a[0] - b[0]; }), least = sides[0], most = sides[2];
+    if (least[0] < 1.5) return 'Only ' + least[0] + ' cm ' + least[1] + '?';
+    if (most[0] > 150) return most[0] + ' cm ' + most[1] + '?';
+    var pieces = x && x.pieces > 0 ? x.pieces : 0, each = pieces ? z.w * z.d * z.h / pieces : 0;
+    if (pieces && each < 1) return least[0] + ' cm ' + least[1] + ' for ' + pieces.toLocaleString('en') + ' pieces?';
+    if (pieces && each > 80) return most[0] + ' cm ' + most[1] + ' for ' + pieces.toLocaleString('en') + (pieces === 1 ? ' piece?' : ' pieces?');
+    if (hasSize(x)) {
+      var far = function (a, b) { return a > b * 1.5 || a < b * 0.5; }, o = x.size;
+      if (far(z.h, o.h) || far(Math.min(z.w, z.d), Math.min(o.w, o.d)) || far(Math.max(z.w, z.d), Math.max(o.w, o.d))) return 'Very different from the size it has now.';
+    }
+    return '';
+  }
+  // Same rules as js/core.js (setNum, measure), repeated so this file stands on its own, but for one thing: a side
+  // over 500 cm is no size at all here (0), where measure makes it 500.
   function setNumOf(v) {
     var t = (typeof v === 'number' || typeof v === 'string' ? String(v) : '').replace(/\s+/g, ' ').trim().slice(0, 40).toLowerCase().replace(/^(?:lego[®™]?\s*)?(?:(?:set|no\.?|#)\s*)*/, '').replace(/\s+/g, '');
     var m = /^([0-9]{3,7}|[a-z]{1,8}[0-9]{2,7}[a-z]?)(?:-([0-9]{1,2}))?$/.exec(t);
@@ -214,7 +242,8 @@
   function measureOf(v) {
     var x = typeof v === 'number' ? v : parseFloat(String(v == null ? '' : v).replace(',', '.'));
     if (!isFinite(x) || x <= 0) return 0;
-    return Math.min(500, Math.round(x * 10) / 10);
+    x = Math.round(x * 10) / 10;
+    return x > 500 ? 0 : x;
   }
 
   // brickyard/#z1z… carries a sizes list as deflated JSON in base64url (#z1j… uncompressed).
@@ -246,6 +275,6 @@
   }
 
   var api = { GAP: GAP, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort, dedupe: dedupe,
-    fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
+    fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizeDoubt: sizeDoubt, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.ShelfCore = api;
 })(this);

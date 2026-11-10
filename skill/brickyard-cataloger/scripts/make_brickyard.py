@@ -162,15 +162,26 @@ def make_link(base, prefix, text):
     return base + prefix + base64.urlsafe_b64encode(data).decode().rstrip('=')
 
 
+def side(v):
+    """One side of a size, as measureOf in js/shelf-core.js: over 500 cm is no size (0), where measure makes it 500."""
+    try:
+        x = float(str(v).replace(',', '.'))
+    except (TypeError, ValueError):
+        return 0
+    if x != x or x in (float('inf'), float('-inf')) or x <= 0:
+        return 0
+    return 0 if int(x * 10 + 0.5) / 10 > 500 else measure(v)
+
+
 def clean_sizes(lst, warn):
     """The same as cleanSizes in js/shelf-core.js."""
     out, seen = [], set()
     for i, y in enumerate(lst[:2000]):
         if not isinstance(y, dict):
             continue
-        num, w, d, h = set_num(y.get('num') or y.get('set')), measure(y.get('w')), measure(y.get('d')), measure(y.get('h'))
+        num, w, d, h = set_num(y.get('num') or y.get('set')), side(y.get('w')), side(y.get('d')), side(y.get('h'))
         if not num or not w or not d or not h:
-            warn.append(f'Size #{i + 1} left out: needs a set number and all of w, d and h in cm ({y})')
+            warn.append(f'Size #{i + 1} left out: needs a set number and all of w, d and h in cm, each 500 at most ({y})')
             continue
         if num in seen:
             warn.append(f'{num} is in the sizes twice; kept the first.')

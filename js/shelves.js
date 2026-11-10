@@ -640,13 +640,17 @@
     $('z-file').onclick = app.openFile;
     $('z-go').onclick = function () { app.takePasted($('z-paste'), 'That doesn’t look like sizes from Claude'); };
   }
-  function reviewSizes(list) {
+  // `dropped` is how many sizes in the link or file couldn't be read at all (S.cleanSizes). A size that looks wrong
+  // for its set (S.sizeDoubt: 3 cm tall for 4,514 pieces, inches sent as cm) is shown with a Check line saying
+  // why, and left unticked: it used to arrive ticked like the rest.
+  function reviewSizes(list, dropped) {
     var rows = [], unknown = 0;
     list.forEach(function (z) {
       var mine = sets().filter(function (x) { return x.num === z.num; });
       if (!mine.length) unknown++;
-      mine.forEach(function (x) { rows.push({ x: x, z: z, on: !S.hasSize(x) }); });
+      mine.forEach(function (x) { var doubt = S.sizeDoubt(z, x); rows.push({ x: x, z: z, doubt: doubt, on: !S.hasSize(x) && !doubt }); });
     });
+    var doubts = rows.filter(function (r) { return r.doubt; }).length;
     // Sizes never add sets, so a list for sets that aren't here has nothing to fill in: say what it held and why
     // nothing happened, with the way to My sets.
     if (!rows.length) {
@@ -656,11 +660,14 @@
     }
     app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
+        (doubts ? ' ' + (doubts === 1 ? 'One size looks wrong and is' : doubts.toLocaleString() + ' sizes look wrong and are') + ' unticked too: check ' + (doubts === 1 ? 'it' : 'them') + ' before you tick.' : '') +
+        (dropped ? ' ' + (dropped === 1 ? 'One size in the list' : dropped.toLocaleString() + ' sizes in the list') + ' couldn’t be read.' : '') +
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
         return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add size for ' + esc(nameOf(r.x)) + '">' +
           '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div>' +
-          '<div class="m">' + sizeText(r.z) + (r.x.size ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') + '</div></li>';
+          '<div class="m">' + esc(C.shortNum(r.x.num)) + ' · ' + sizeText(r.z) + (S.hasSize(r.x) ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') +
+          (r.doubt ? '<div class="w">Check: ' + esc(r.doubt) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft"><span class="note" id="zr-n" style="margin:0"></span><button class="btn" type="button" id="zr-go">Add sizes</button></div>');
     function count() { $('zr-n').textContent = plural(rows.filter(function (r) { return r.on; }).length, 'set'); }

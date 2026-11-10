@@ -157,9 +157,27 @@ eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10
 
 // Sizes from Claude, and the cataloger script makes the same.
 const list = [{ num: '10497', w: '51', d: 33.04, h: 14, note: '  LEGO   says ' }, { num: '10497', w: 1, d: 1, h: 1 }, { num: 'nope', w: 1, d: 1, h: 1 },
-  { num: 21318, w: 22, d: 22 }, { num: 'LEGO® Set No. 10281', w: 20, d: 15, h: 18 }];
+  { num: 21318, w: 22, d: 22 }, { num: 'LEGO® Set No. 10281', w: 20, d: 15, h: 18 }, { num: '75192', w: 840, d: 560, h: 210 }, { num: '10294', w: 500.04, d: 500, h: '0,5' }, { num: '10307', w: 20, d: 20, h: 500.1 }];
 const clean = S.cleanSizes({ sizes: list });
-eq(clean, [{ num: '10497-1', w: 51, d: 33, h: 14, note: 'LEGO says' }, { num: '10281-1', w: 20, d: 15, h: 18 }], 'sizes cleaned');
+eq(clean, [{ num: '10497-1', w: 51, d: 33, h: 14, note: 'LEGO says' }, { num: '10281-1', w: 20, d: 15, h: 18 }, { num: '10294-1', w: 500, d: 500, h: 0.5 }], 'sizes cleaned: a side over 500 cm drops the row (sent in mm, it used to arrive as 500 cm)');
+{
+  const tally = {}; S.cleanSizes({ sizes: list.concat([null, 'x']) }, tally);
+  eq(tally.dropped, 6, 'and the rows left out are counted, but not a set that is in the list twice');
+}
+// A size that looks wrong is asked about, not ticked. The limits are this page's estimate, not a published rule.
+{
+  const castle = { id: 'c', name: 'Lion Knights’ Castle', pieces: 4514 }, plain = { id: 'p', name: 'No count' };
+  eq(S.sizeDoubt({ w: 44, d: 33, h: 3 }, castle), '3 cm tall for 4,514 pieces?', 'a 4,514-piece castle 3 cm tall');
+  eq(S.sizeDoubt({ w: 12.6, d: 10.2, h: 8.7 }, { pieces: 1426 }), '8.7 cm tall for 1,426 pieces?', 'inches sent as cm');
+  eq(S.sizeDoubt({ w: 60, d: 40, h: 40 }, { pieces: 120 }), '60 cm wide for 120 pieces?', 'far too big for its pieces');
+  eq(S.sizeDoubt({ w: 44, d: 33, h: 1.2 }, plain), 'Only 1.2 cm tall?', 'a side under 1.5 cm');
+  eq(S.sizeDoubt({ w: 44, d: 210, h: 30 }, plain), '210 cm deep?', 'a side over 150 cm');
+  eq(S.sizeDoubt({ w: 44, d: 33, h: 3 }, plain), '', 'with no piece count, a flat set passes');
+  eq([[52, 32, 13, 1254], [65, 104, 4, 11695], [34, 9, 18, 1686], [44, 33, 38, 4514], [26, 24, 39, 608], [58, 58, 149, 10001]].map(z => S.sizeDoubt({ w: z[0], d: z[1], h: z[2] }, { pieces: z[3] })), ['', '', '', '', '', ''], 'real sets pass: Galaxy Explorer, World Map, London Bus, Lion Knights’ Castle, Orchid, Eiffel Tower');
+  const sized = { pieces: 1254, size: { w: 52, d: 32, h: 13 } };
+  eq([S.sizeDoubt({ w: 32, d: 52, h: 13 }, sized), S.sizeDoubt({ w: 50, d: 30, h: 15 }, sized), S.sizeDoubt({ w: 52, d: 32, h: 26 }, sized), S.sizeDoubt({ w: 20, d: 12, h: 13 }, sized)],
+    ['', '', 'Very different from the size it has now.', 'Very different from the size it has now.'], 'against the size it has: the other way round is the same, half as big again is not');
+}
 eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
 // Sizes read set numbers the way My sets does (js/core.js setNum), "LEGO 10497" included.
 {
