@@ -166,9 +166,25 @@
     if (!prefs.pics || !x.num) return '<div class="pic none ' + (cls || '') + '">' + brick + '</div>';
     return '<div class="pic ' + (cls || '') + '"><img alt="" loading="lazy" src="https://cdn.rebrickable.com/media/thumbs/sets/' + esc(x.num) + '.jpg/' + (cls === 'head-pic' ? '1000x800p' : '250x250p') + '.jpg" data-fallback="1"></div>';
   }
+  // Build from your box when one of its files didn't arrive: said in place of its list, with Try again (it was an
+  // empty screen under the title). js/build.js calls this for a parts file; for the script itself, or three.js under
+  // it, the listener below does, since a script that didn't load can't say anything. That one can only be asked for
+  // again by loading the page again, which keeps the address, so a model link still opens.
+  function lostBuilder(retry) {
+    $('build-list').innerHTML = '<div class="how" role="alert"><p style="margin:0 0 10px">Couldn’t load the builder’s files. Check your connection.</p>' +
+      '<button class="btn" type="button" id="build-retry">Try again</button></div>';
+    $('build-retry').onclick = function () {
+      if (this.dataset.busy) return;
+      this.dataset.busy = '1'; this.textContent = 'Trying…';
+      var had = document.activeElement === this;
+      // Still no luck: the message is drawn again, and the keyboard stays on its button.
+      Promise.resolve(retry()).then(function () { if (had && $('build-retry')) $('build-retry').focus({ preventScroll: true }); });
+    };
+  }
   // A picture that doesn't exist turns back into the plain brick.
   document.addEventListener('error', function (e) {
     var img = e.target;
+    if (img && img.tagName === 'SCRIPT' && img.type === 'module') { lostBuilder(function () { location.reload(); }); return; }
     if (img && img.tagName === 'IMG' && img.dataset.fallback) {
       var box = img.parentNode; box.classList.add('none');
       box.innerHTML = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
@@ -1244,7 +1260,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, toastAfter: toastAfter, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, lostBuilder: lostBuilder, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

@@ -3778,6 +3778,59 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Build from your box when one of its files doesn't arrive.
+{
+  const cottage = (await readFile(join(root, 'models/cottage.json'), 'utf8')).trim();
+  const link = '#d1j' + Buffer.from(cottage).toString('base64url');
+  const LOST = 'Couldn’t load the builder’s files. Check your connection.';
+  const fresh = async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, serviceWorkers: 'block' });
+    const p = await c.newPage(), errors = [];
+    p.on('pageerror', e => errors.push(e.message));
+    return { c, p, errors };
+  };
+  {
+    const { c, p, errors } = await fresh();
+    let down = true, go;
+    const wait = new Promise(r => { go = r; });
+    await c.route('**/parts/shapes.json', async r => { await wait; return down ? r.abort() : r.continue(); });
+    await p.goto(base + '#build');
+    assert.equal(await p.textContent('#build-list'), 'Loading…', 'while its files are on their way, the builder says so');
+    go();
+    await p.waitForSelector('#build-retry');
+    assert.equal(await p.textContent('#build-list p'), LOST, 'Build from your box says its files didn’t load');
+    await p.click('#build-retry');
+    await p.waitForFunction(() => document.querySelector('#build-retry') && !document.querySelector('#build-retry').dataset.busy);
+    assert.equal(await p.evaluate(() => document.activeElement.id), 'build-retry', 'still no connection: it says so again, and the keyboard stays on Try again');
+    // Leaving and coming back asks again too.
+    await p.click('#build-back');
+    await p.click('#go-build');
+    await p.waitForSelector('#build-retry');
+    down = false;
+    await p.click('#build-retry');
+    await p.waitForSelector('#build-list .group');
+    assert.match(await p.textContent('#build-list'), /Cottage/, 'with the connection back, Try again shows the list');
+    assert.deepEqual(errors, [], 'and nothing went wrong in the page');
+    await c.close();
+  }
+  // A model link from Claude opened cold: its address is kept, so Try again opens the model.
+  for (const file of ['parts/shapes.json', 'models/cottage.json', 'js/vendor/three.core.js']) {
+    const { c, p, errors } = await fresh();
+    let down = true;
+    await c.route('**/' + file, r => (down ? r.abort() : r.continue()));
+    const to = file.startsWith('models/') ? '#model-x-cottage' : link;
+    await p.goto(base + to);
+    await p.waitForSelector('#build-retry');
+    assert.deepEqual([await p.textContent('#build-list p'), await p.evaluate(() => location.hash), await p.isHidden('#model-view')], [LOST, to, true], 'a model that couldn’t open says so and keeps its address: ' + file);
+    down = false;
+    await p.click('#build-retry'); // a script that didn't load is asked for again by loading the page again
+    await p.waitForSelector('#model-view:not([hidden])');
+    assert.equal(await p.textContent('#build-title'), 'Cottage', 'Try again opens the model: ' + file);
+    assert.deepEqual(errors, [], 'and nothing went wrong in the page: ' + file);
+    await c.close();
+  }
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

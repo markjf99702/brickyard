@@ -23,18 +23,52 @@ function keepStep(id, at) { try { sessionStorage.setItem(STEP + id, String(at));
 // The site fetches parts/…; the single-file preview carries the same files in window.BRICKYARD_DATA.
 const DATA = window.BRICKYARD_DATA || null;
 const cache = {};
+// A file that didn't arrive (no signal, or the offline copy answering with the page in its place) isn't kept: the
+// next ask goes to the network again. The failed ask used to be kept, so the builder stayed an empty screen until
+// the page was reloaded. `lost` marks the error as a file that didn't arrive, which gets a message and Try again
+// (orSay); anything else is a mistake in the page and is thrown on.
+function lost(e) { e.lost = true; return e; }
 function get(path) {
-  if (DATA) return DATA[path] ? Promise.resolve(DATA[path]) : Promise.reject(new Error('missing ' + path));
-  if (!cache[path]) cache[path] = fetch(path).then(r => { if (!r.ok) throw new Error(path + ' ' + r.status); return r.json(); });
+  if (DATA) return DATA[path] ? Promise.resolve(DATA[path]) : Promise.reject(lost(new Error('missing ' + path)));
+  if (!cache[path]) {
+    cache[path] = fetch(path).then(r => { if (!r.ok) throw new Error(path + ' ' + r.status); return r.json(); })
+      .catch(e => { delete cache[path]; throw lost(e); });
+  }
   return cache[path];
 }
-let shapes = null, colors = null, index = null;
+let shapes = null, colors = null, index = null, loading = null;
+// The files every screen here needs, asked for once; after a failure the next call asks again.
 // parts/aliases.json is other numbers for the same piece (3023 for 3023b). Without it (a copy of the page from
 // before it existed) every number is read as it's written, as it was.
-const ready = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), get('parts/index.json'), get('parts/aliases.json').catch(() => ({}))])
-  // shapes holds its parts and nothing else (no "constructor" or "toString" from every object's own kit), so a part
-  // number is known only if it's in the file: a model with a part written "constructor" stopped the page opening it.
-  .then(([s, c, i, a]) => { shapes = Object.assign(Object.create(null), s); colors = c; index = i; B.useAliases(a); });
+function load() {
+  if (!loading) {
+    loading = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), get('parts/index.json'), get('parts/aliases.json').catch(() => ({}))])
+      // shapes holds its parts and nothing else (no "constructor" or "toString" from every object's own kit), so a part
+      // number is known only if it's in the file: a model with a part written "constructor" stopped the page opening it.
+      .then(([s, c, i, a]) => { shapes = Object.assign(Object.create(null), s); colors = c; index = i; B.useAliases(a); })
+      .catch(e => { loading = null; throw e; });
+  }
+  return loading;
+}
+// A screen that couldn't get a file says so, with Try again, in place of the list (it was an empty screen under the
+// title, with nothing to press). Trying again runs route(), which reads the address as it still is: a model link
+// that didn't open is still there, and opens.
+const orSay = fn => async (...a) => {
+  try { return await fn(...a); }
+  catch (e) {
+    if (!e || !e.lost) throw e;
+    stopStage();
+    current = null;
+    $('build-title').textContent = 'Build from your box';
+    document.title = 'Build from your box · Brickyard';
+    $('build-back').setAttribute('href', '#');
+    $('model-menu').hidden = true;
+    $('model-view').hidden = true;
+    $('build-list').hidden = false;
+    app.lostBuilder(route);
+    app.heading();
+  }
+};
 
 // Sets in My sets that Brickyard has a parts list for. Taken-apart sets count by default; the toggles override.
 // `pieces` is the count My sets shows for the set, so the two screens agree (the parts list for 10698 adds up to
@@ -120,10 +154,10 @@ function listed(a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' +
 // ---------- screens ----------
 let current = null; // { id, model, res, steps, at }
 
-async function route() {
+const route = orSay(async () => {
   const h = location.hash;
   if ($('build').hidden) { stopStage(); return; }
-  await ready;
+  await load();
   if (/^#d1[zj]/.test(h)) {
     try {
       const r = await window.BrickCore.parseIncoming(h);
@@ -139,10 +173,11 @@ async function route() {
   }
   if (h.startsWith('#model-')) return openModel(h.slice(7));
   return renderList();
-}
+});
 document.addEventListener('brickyard:route', route);
 
-async function renderList() {
+const renderList = orSay(async () => {
+  await load();
   stopStage();
   current = null;
   $('build-title').textContent = 'Build from your box';
@@ -204,9 +239,10 @@ async function renderList() {
   $('build-list').querySelectorAll('[data-lot]').forEach(b => b.onclick = () => dropLot(lots.find(l => l.id === b.dataset.lot)));
   $('copy-pool').onclick = copyPool;
   $('open-model').onclick = openSheet;
-}
+});
 function focusIn(sel) { const el = $('build-list').querySelector(sel); if (el) el.focus({ preventScroll: true }); return !!el; }
-document.addEventListener('brickyard:changed', () => { if (!$('build').hidden && !$('build-list').hidden) renderList(); });
+// (With "Couldn't load" showing, the address may still be a model's: route() reads it again.)
+document.addEventListener('brickyard:changed', () => { if (!$('build').hidden && !$('build-list').hidden) ($('build-retry') ? route : renderList)(); });
 
 function dropLot(l) {
   if (!l) return;
@@ -258,7 +294,8 @@ function openSheet() {
 }
 
 // ---------- one model ----------
-async function openModel(id) {
+const openModel = orSay(async id => {
+  await load();
   const model = await modelById(id);
   // The list takes this address's place in history rather than a new one after it. Back can land here on a model
   // that was removed, with no tap since, and Chrome's Back then skips every place a page adds: the next Back would
@@ -283,7 +320,7 @@ async function openModel(id) {
   startStage();
   buildScene(model);
   showStep(stepOf(id), false);
-}
+});
 
 // What the check found, in words about the pieces: which piece, by its colour and name, and in which step as the
 // page counts them (the checker's own texts, which the page shares with check_model.py, give grid positions and
