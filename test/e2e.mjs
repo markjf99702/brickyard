@@ -805,7 +805,8 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual([await at(), await p.evaluate(() => window.brickyard.doc().sets.s3.missing)], [['#catalog', 0, '', 'catalog', false], 'a grey 1×2 plate'], 'Save after Back asked still saves, and stays');
   await back();
   assert.deepEqual(await at(), ['', 0, '', 'home', false]);
-  // The shelf planner: Back closes a set's sheet and stays; See in My sets goes there, and Back comes back.
+  // The shelf planner: Back closes a set's sheet and stays; See in My sets opens the set there; Back closes that and
+  // stays on My sets, and Back again is the planner.
   await p.click('#go-shelves');
   await p.click('.sv-set');
   await p.waitForSelector('#z-cat');
@@ -813,8 +814,10 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual(await at(), ['#shelves', 0, '', 'shelves', false], 'Back from a set’s sheet in the shelf planner stays there');
   await p.click('.sv-set');
   await p.click('#z-cat');
-  await p.waitForFunction(() => !document.getElementById('catalog').hidden);
-  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'See in My sets goes to My sets');
+  await p.waitForSelector('#e-save');
+  assert.deepEqual([await at(), await p.textContent('#sheetTitle')], [['#catalog', 1, 'hidden', 'catalog', true], 'Set 00'], 'See in My sets opens the set in My sets');
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back closes the set and stays on My sets');
   await back();
   assert.deepEqual(await at(), ['#shelves', 0, '', 'shelves', false], 'and Back from there is the shelf planner, without the sheet');
   // A sizes link pasted into Add from photos goes on to the shelf planner's Add sizes: Back closes that and stays there.
@@ -1349,6 +1352,33 @@ await page.click('[data-close]');
     for (const [what, r] of Object.entries(got)) assert.ok(r >= 4.5, colorScheme + ': ' + what + ' is ' + r.toFixed(2) + ':1');
     await c.close();
   }
+}
+
+// See in My sets, in the shelf planner, shows that set: its sheet open and its row in view behind it, down a long
+// list. A search or a filter left on from before that would hide the set is taken off (it used to land at the top of
+// My sets with the old search still in the box, and the set nowhere on the screen); one that shows it is left alone.
+{
+  const many = { tw: { id: 'tw', t: 1, name: 'Typewriter', room: 'Office', state: 'apart' }, bt: { id: 'bt', t: 1, name: 'Bonsai Tree', room: 'Study', state: 'built', size: { w: 20, d: 15, h: 18 } } };
+  for (let i = 0; i < 30; i++) many['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), room: 'Office', state: 'built' };
+  const { c, p } = await withSets({ sets: many, cases: { b: { id: 'b', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'bt' }] }] } } });
+  const seen = () => p.evaluate(() => {
+    const row = [...document.querySelectorAll('#list-wrap .item')].find(r => r.dataset.id === 'bt'), r = row && row.getBoundingClientRect();
+    return [location.hash, (document.getElementById('sheetTitle') || {}).textContent || '', document.getElementById('q').value,
+      document.querySelector('.chip[aria-pressed="true"]').dataset.f, !!r && r.top >= 60 && r.bottom <= innerHeight, Math.round(scrollY) > 500];
+  });
+  const see = async () => { await p.goto(base + '#shelves'); await p.click('.sv-set'); await p.click('#z-cat'); await p.waitForSelector('#e-save'); };
+  await p.goto(base + '#catalog');
+  await p.fill('#q', 'typewriter');
+  await p.click('.chip[data-f="apart"]');
+  await see();
+  assert.deepEqual(await seen(), ['#catalog', 'Bonsai Tree', '', 'all', true, true], 'the set’s sheet is open, its row behind it, the old search and filter gone');
+  await p.click('[data-close]');
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.id), 'bt', 'and closing the sheet leaves you on its row');
+  await p.fill('#q', 'bonsai');
+  await p.click('.chip[data-f="built"]');
+  await see();
+  assert.deepEqual((await seen()).slice(0, 4), ['#catalog', 'Bonsai Tree', 'bonsai', 'built'], 'a search and a filter that show the set stay');
+  await c.close();
 }
 
 // On an iPhone a sheet stays inside what's visible: its height follows the browser's toolbar (dvh; plain vh is the

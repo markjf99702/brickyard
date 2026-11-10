@@ -179,8 +179,8 @@
     // Its size and place as the sheet has them, to tell whether closing would lose a change.
     function now() { return app.fieldsOf(['z-w', 'z-d', 'z-h', 'z-where', 'z-turn']); }
     var was = now();
-    // Moving to My sets waits for the sheet to be closed, or Back's step over the sheet would undo the move.
-    $('z-cat').onclick = function (e) { e.preventDefault(); app.closeSheet(function () { location.hash = '#catalog'; }); };
+    // My sets opens on this set (app.showSet), once this sheet has closed.
+    $('z-cat').onclick = function (e) { e.preventDefault(); app.showSet(id); };
     function shift(by) {
       var c = copy(app.doc().cases[at.c]), l = c.levels[at.l], i = l.sets.findIndex(function (p) { return p.id === id; });
       var p = l.sets.splice(i, 1)[0]; l.sets.splice(i + by, 0, p); app.putCase(c); app.closeSheet(); render();

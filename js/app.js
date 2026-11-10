@@ -475,6 +475,36 @@
     };
   }
 
+  // One set, shown in My sets from another screen (the shelf planner's See in My sets): its row in view and its
+  // sheet open. A filter or a search left on from before that would hide it is taken off; one that shows it stays.
+  // The move waits for an open sheet to close (closeSheet), and the row and the sheet wait for My sets to be drawn:
+  // route() draws it from the top and closes any sheet from the screen before.
+  function rowOf(id) {
+    var rows = document.querySelectorAll('#list-wrap .item[data-id]');
+    for (var i = 0; i < rows.length; i++) if (rows[i].dataset.id === id) return rows[i];
+    return null;
+  }
+  function showSet(id) {
+    var x = DOC.sets[id];
+    if (!x || x.del) return;
+    closeSheet(function () {
+      var open = function () {
+        if (!rowOf(id) && !passes(x)) { prefs.show = 'all'; savePrefs(); renderCatalog(); }
+        if (!rowOf(id)) { $('q').value = ''; renderCatalog(); }
+        var row = rowOf(id);
+        // The row takes the focus, so it comes back to it when the sheet closes.
+        if (row) { row.scrollIntoView({ block: 'center' }); row.focus({ preventScroll: true }); }
+        editSheet(DOC.sets[id]);
+      };
+      if (location.hash === '#catalog') { open(); return; }
+      document.addEventListener('brickyard:route', function once() {
+        document.removeEventListener('brickyard:route', once);
+        if (location.hash === '#catalog' && DOC.sets[id] && !DOC.sets[id].del) open();
+      });
+      location.hash = '#catalog';
+    });
+  }
+
   // ---------- adding from Claude ----------
   function claudeSheet() {
     openSheet('<div class="hd"><h2 id="sheetTitle">Add from photos</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
@@ -759,7 +789,7 @@
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
-    newId: newId, takeDoc: takeDoc,
+    newId: newId, takeDoc: takeDoc, showSet: showSet,
     addSet: function (x) { var y = C.cleanSet(x); if (!y) return null; y.id = newId(); y.added = today(); putSet(y); save(); return y; },
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
