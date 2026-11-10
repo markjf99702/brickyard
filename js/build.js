@@ -377,10 +377,16 @@ function partsSheet() {
 // ---------- 3D ----------
 const PLATE = 0.4; // a plate is 0.4 studs tall (3.2 mm against 8 mm)
 let renderer = null, scene, camera, controls, meshes = [], running = false, anims = [];
+// The picture is drawn only when it has changed: `dirty` says it has, and `raf` is the one frame asked for (0 for
+// none). It used to be drawn sixty times a second whatever happened, by one more loop for every model opened
+// over another.
+let raf = 0, dirty = false;
+function redraw() { dirty = true; wake(); }
+function wake() { if (running && !raf) raf = requestAnimationFrame(loop); }
 let view = null; // { box, centre, radius: the model's bounds, moved: the person has turned or zoomed the picture }
 // Seen from the front right and a little above, like a set's instructions.
 const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize();
-const mats = {}, geos = {};
+const mats = {}, geos = {}, lines = {}, studs = {}, panes = {}; // made once for each colour or part, and kept
 
 function startStage() {
   const canvas = $('stage');
@@ -397,6 +403,7 @@ function startStage() {
     controls.enableDamping = true;
     controls.enablePan = false;
     controls.maxPolarAngle = Math.PI * 0.52; // stops just under the horizon: from below a model is a blank slab
+    controls.addEventListener('change', redraw);
     controls.addEventListener('start', () => {
       $('stage-hint').hidden = true;
       if (view) { view.moved = true; $('stage-reset').hidden = false; }
@@ -408,12 +415,29 @@ function startStage() {
       frame();
     };
     new ResizeObserver(resize).observe(canvas);
+    // A phone can take the picture away (the tab left in the background, memory running short). The browser brings
+    // it back by itself; until then the stage says so, where it was a blank box with a sad face.
+    let hint = null;
+    canvas.addEventListener('webglcontextlost', () => {
+      const h = $('stage-hint');
+      if (!hint) hint = { text: h.textContent, hidden: h.hidden };
+      h.textContent = 'The picture was dropped. It comes back by itself, or reload.'; h.hidden = false;
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      const h = $('stage-hint');
+      if (hint) { h.textContent = hint.text; h.hidden = hint.hidden; hint = null; }
+      redraw();
+    });
   }
   running = true;
   resize();
-  requestAnimationFrame(loop);
+  redraw();
 }
-function stopStage() { running = false; }
+function stopStage() {
+  running = false; anims = [];
+  if (raf) cancelAnimationFrame(raf);
+  raf = 0;
+}
 function resize() {
   if (!renderer) return;
   const c = renderer.domElement, w = c.clientWidth, h = c.clientHeight;
@@ -421,17 +445,22 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
   if (view && !view.moved) frame(); // a turned phone or a resized window fits the model again, until it's been moved
+  redraw(); // a new size clears the picture
 }
 function loop(t) {
+  raf = 0;
   if (!running) return;
+  const moving = anims.length > 0;
   anims = anims.filter(a => {
-    const k = Math.min(1, (t - a.t0) / 320);
+    const k = Math.max(0, Math.min(1, (t - a.t0) / 320));
     a.obj.position.y = a.y + (1 - k) * (1 - k) * 2.4;
     return k < 1;
   });
+  // While a turn or a zoom is still easing out, this moves the camera and says so ('change'), which asks for the
+  // next frame; once it has settled nothing does, and the loop sleeps until something changes.
   controls.update();
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
+  if (dirty || moving) { dirty = false; renderer.render(scene, camera); }
+  if (anims.length) wake();
 }
 
 function material(c) {
@@ -485,20 +514,43 @@ function bodies(p) {
   return (geos[p] = out);
 }
 
+// The dark lines along a part's edges, the glass in a frame, and all of a part's studs as one shape: each made once
+// for a part number and shared by every one of that part in every model, so opening models doesn't pile them up
+// (a set of lines for each piece and a pane for each window used to be made on every open and never let go), and
+// a part's studs are one thing to draw, not one each (a 16x16 plate was 257 things to draw).
+function edgesOf(p) { return lines[p] || (lines[p] = bodies(p).map(g => new THREE.EdgesGeometry(g, 28))); }
+function paneOf(p) {
+  if (panes[p]) return panes[p];
+  const sh = shapes[p], g = new THREE.BoxGeometry(sh.w - 0.44, sh.h * PLATE - PLATE * 2, 0.06);
+  g.translate(sh.w / 2, sh.h * PLATE / 2, sh.d / 2);
+  return (panes[p] = g);
+}
+function studsOf(p) {
+  if (p in studs) return studs[p];
+  const sh = shapes[p], top = sh.top === 'none' ? [] : sh.top === 'all' || !sh.top ? cellsOf(sh) : sh.top;
+  if (!top.length) return (studs[p] = null);
+  const one = studGeo.toNonIndexed(), pos = one.attributes.position.array, nor = one.attributes.normal.array, n = pos.length;
+  const P = new Float32Array(n * top.length), N = new Float32Array(n * top.length), y = sh.h * PLATE + 0.1 - 0.01;
+  top.forEach(([cx, cz], k) => {
+    for (let i = 0; i < n; i += 3) { P[k * n + i] = pos[i] + cx + 0.5; P[k * n + i + 1] = pos[i + 1] + y; P[k * n + i + 2] = pos[i + 2] + cz + 0.5; }
+    N.set(nor, k * n);
+  });
+  one.dispose();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  return (studs[p] = g);
+}
+
 function partObject(q) {
   const [p, c, x, y, z, r] = q, sh = shapes[p];
   const inner = new THREE.Group();
   const mat = material(c);
-  bodies(p).forEach(g => {
+  bodies(p).forEach((g, i) => {
     inner.add(new THREE.Mesh(g, mat));
-    inner.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 28), edgeMat));
+    inner.add(new THREE.LineSegments(edgesOf(p)[i], edgeMat));
   });
-  if (sh.k === 'frame') {
-    const pane = new THREE.Mesh(new THREE.BoxGeometry(sh.w - 0.44, sh.h * PLATE - PLATE * 2, 0.06), glassMat);
-    pane.position.set(sh.w / 2, sh.h * PLATE / 2, sh.d / 2); inner.add(pane);
-  }
-  const top = sh.top === 'none' ? [] : sh.top === 'all' || !sh.top ? cellsOf(sh) : sh.top;
-  top.forEach(([cx, cz]) => { const s = new THREE.Mesh(studGeo, mat); s.position.set(cx + 0.5, sh.h * PLATE + 0.1 - 0.01, cz + 0.5); inner.add(s); });
+  if (sh.k === 'frame') inner.add(new THREE.Mesh(paneOf(p), glassMat));
+  if (studsOf(p)) inner.add(new THREE.Mesh(studsOf(p), mat));
   if (p === '98138p07' || p === '98138p0c') {
     const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.position.set(0.5, sh.h * PLATE, 0.5);
     if (p === '98138p0c') eye.scale.set(1, 1, 0.25);
@@ -525,6 +577,7 @@ function buildScene(model) {
   view = { box, centre: box.getCenter(new THREE.Vector3()), radius: box.getSize(new THREE.Vector3()).length() / 2, moved: false };
   $('stage-reset').hidden = true;
   frame();
+  redraw();
 }
 
 // The eight corners of the model's bounds.
@@ -577,6 +630,7 @@ function showUpTo(step, animate) {
     m.obj.position.y = m.y;
     if (animate && !still && s === step) anims.push({ obj: m.obj, y: m.y, t0: performance.now() });
   });
+  redraw();
 }
 
 if (!$('build').hidden) route();

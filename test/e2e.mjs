@@ -1702,6 +1702,81 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// The 3D picture is drawn when it changes, not all the time: a model left alone isn't redrawn at all (it was, sixty
+// times a second), opening one model over another doesn't start a second loop drawing it (each open added one),
+// models opened in turn don't pile up what the graphics card holds, and a big plate's studs are one thing to draw.
+// Counted by wrapping the calls WebGL makes.
+{
+  const { c, p } = await withSets({ sets: {} });
+  await c.addInitScript(() => {
+    const S = window.__gl = { clears: 0, draws: 0, buffers: 0 }, P = WebGL2RenderingContext.prototype;
+    const wrap = (n, f) => { const o = P[n]; P[n] = function () { f(); return o.apply(this, arguments); }; };
+    wrap('clear', () => S.clears++);
+    ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced'].forEach(n => wrap(n, () => S.draws++));
+    wrap('createBuffer', () => S.buffers++); wrap('deleteBuffer', () => S.buffers--);
+  });
+  const gl = () => p.evaluate(() => Object.assign({}, window.__gl));
+  const open = async model => {
+    await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model })).toString('base64url'));
+    await p.waitForFunction(n => location.hash.startsWith('#model-m') && document.getElementById('build-title').textContent === n, model.name);
+  };
+  const toEnd = () => p.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+  const tower = (name, n) => ({ name, parts: Array.from({ length: n }, (_, i) => ['3003', i % 2 ? 4 : 15, 0, i * 3, 0, 0, i + 1]) });
+  await p.reload(); // so the page has the counters from its start
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
+  await toEnd();
+  await p.waitForTimeout(800);
+  let a = await gl();
+  assert.ok(a.clears > 0, 'the picture is drawn in this browser, and its calls are counted');
+  await p.waitForTimeout(2000);
+  let b = await gl();
+  assert.equal(b.clears - a.clears, 0, 'a model left alone isn’t redrawn');
+  // Two more models opened over the cottage, without passing through the list; then a step's drop is drawn once
+  // for each frame the browser gives, not once for each model opened.
+  await open(tower('Tower A', 6)); await open(tower('Tower B', 8));
+  await p.waitForTimeout(500);
+  const drop = await p.evaluate(() => new Promise(done => {
+    const from = window.__gl.clears, t0 = performance.now(); let frames = 0;
+    document.getElementById('step-next').click();
+    requestAnimationFrame(function tick() { frames++; if (performance.now() - t0 < 600) requestAnimationFrame(tick); else done({ frames, clears: window.__gl.clears - from }); });
+  }));
+  assert.ok(drop.clears >= 3 && drop.clears <= drop.frames + 1, 'a step dropping in is drawn once a frame, by one loop: ' + JSON.stringify(drop));
+  await p.waitForTimeout(400);
+  a = await gl(); await p.waitForTimeout(1000); b = await gl();
+  assert.equal(b.clears - a.clears, 0, 'and once it has landed, nothing more is drawn');
+  // Ten models of the same pieces, opened in turn through the list: what the graphics card holds stays level.
+  const held = [];
+  for (let i = 0; i < 10; i++) {
+    await open(tower('Tower ' + i, 10 + i));
+    await toEnd();
+    await p.waitForTimeout(250);
+    held.push((await gl()).buffers);
+    await p.goto(base + '#build');
+    await p.waitForSelector('#build-list:not([hidden]) .list');
+  }
+  assert.ok(held[9] > 0 && held[9] === held[2], 'ten models opened in turn hold no more than three did: ' + held);
+  // A 16x16 plate, studs and all, is a few things to draw.
+  await open({ name: 'Big plate', parts: [['91405', 2, 0, 0, 0, 0, 1]] });
+  await p.waitForTimeout(500);
+  a = await gl();
+  await toEnd();
+  await p.waitForTimeout(500);
+  b = await gl();
+  assert.ok(b.clears > a.clears && (b.draws - a.draws) / (b.clears - a.clears) < 10, 'a 16x16 plate is under 10 things to draw: ' + (b.draws - a.draws) + ' in ' + (b.clears - a.clears));
+  // The picture taken away (a phone short of memory): the stage says so, and says nothing once it is back.
+  await p.evaluate(() => { window.__lose = document.getElementById('stage').getContext('webgl2').getExtension('WEBGL_lose_context'); window.__lose.loseContext(); });
+  await p.waitForFunction(() => /picture was dropped/.test(document.getElementById('stage-hint').textContent));
+  assert.deepEqual([await p.textContent('#stage-hint'), await p.isVisible('#stage-hint')], ['The picture was dropped. It comes back by itself, or reload.', true]);
+  a = await gl();
+  await p.evaluate(() => window.__lose.restoreContext());
+  await p.waitForFunction(() => /Drag to turn/.test(document.getElementById('stage-hint').textContent));
+  await p.waitForTimeout(500);
+  b = await gl();
+  assert.ok(b.clears > a.clears, 'and it is drawn again when it comes back');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
