@@ -98,10 +98,10 @@ const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it 
     assert.equal(await p.evaluate(() => typeof window.brickyard), 'object', 'Brickyard started after a cut-off ' + h);
     assert.ok(!/[bldzq]\d[zj]/.test(await p.evaluate(() => location.hash)), 'and the link is gone from the address');
   }
-  // It stays up long enough to read (6 seconds, where a short message gets 3), and then goes.
+  // It stays up long enough to read (7 seconds, where a short message gets 3), and then goes.
   await p.waitForTimeout(4000);
   assert.equal(await p.isVisible('.toast'), true, 'the message is still there after 4 seconds');
-  await p.waitForFunction(() => document.querySelector('.toast').hidden, null, { timeout: 4000 });
+  await p.waitForFunction(() => document.querySelector('.toast').hidden, null, { timeout: 6000 });
   await p.goto(base + '#build');
   await p.waitForSelector('#build-list .group');
   await p.close();
@@ -1159,6 +1159,89 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.evaluate(() => window.brickyard.toast('This browser wouldn’t save.', true));
   await p.click('#menu-btn');
   assert.equal(await p.locator('.toast').isVisible(), true, 'a held warning stays');
+  await c.close();
+}
+
+// Messages can be read and acted on by everyone. The place they're shown in is on the page from the start (a screen
+// reader tends to miss one that arrives with its first words in it). A message stays longer the more there is to
+// read, 10 seconds with a button, and waits while the mouse is on it or its button has the keyboard's focus. Ctrl+Z
+// presses Undo while it shows (by keyboard the button came after every set in the list, and was gone first), except
+// in a box being typed in. A button that turns into a question on its first press has its new words read out, and
+// a set number that's refused marks its box as wrong.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built', room: 'Living room' }, o: { id: 'o', t: 1, name: 'Orchid', state: 'built' } } },
+    { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  await p.clock.install();
+  await p.goto(base + '#catalog');
+  const region = () => p.evaluate(() => { const r = document.querySelectorAll('[role="status"]'); return [r.length, r[0].contains(document.querySelector('.toast')), document.querySelector('.toast').hidden]; });
+  assert.deepEqual(await region(), [1, true, true], 'the place for messages is there before the first one');
+  const up = () => p.evaluate(() => !document.querySelector('.toast').hidden);
+  // How long each kind stays: the clock is the page's own, moved on by hand.
+  const lasts = async (show, ms) => {
+    await p.evaluate(show);
+    await p.clock.runFor(ms - 200);
+    const before = await up();
+    await p.clock.runFor(400);
+    return [before, await up()];
+  };
+  assert.deepEqual(await lasts(() => window.brickyard.toast('Saved'), 3200), [true, false], 'a short message: 3.2 seconds');
+  assert.deepEqual(await lasts(() => window.brickyard.toast('You already have Large Creative Brick Box (Office › Closet). Tap again to add a second copy.'), 3200 + 50 * 50), [true, false], '90 characters: 5.7 seconds');
+  assert.deepEqual(await lasts(() => window.brickyard.toast('x'.repeat(400)), 10000), [true, false], 'never more than 10 seconds');
+  assert.deepEqual(await lasts(() => window.brickyard.toast('Removed Orchid', false, { label: 'Undo', run() {} }), 10000), [true, false], 'one with a button: 10 seconds');
+  assert.deepEqual(await lasts(() => window.brickyard.toast('This browser wouldn’t save.', true), 6000), [true, false], 'a held warning: 6 seconds at least');
+  assert.deepEqual(await region(), [1, true, true], 'and the place is still the same one');
+  // It waits under the mouse, and while its button has the focus.
+  await p.evaluate(() => window.brickyard.toast('Removed Orchid', false, { label: 'Undo', run() {} }));
+  await p.hover('.toast span');
+  await p.clock.runFor(30000);
+  assert.equal(await up(), true, 'it stays while the mouse is on it');
+  await p.mouse.move(10, 10);
+  await p.clock.runFor(11000);
+  assert.equal(await up(), false, 'and goes once the mouse has left');
+  await p.evaluate(() => window.brickyard.toast('Removed Orchid', false, { label: 'Undo', run() {} }));
+  await p.focus('.toast button');
+  await p.clock.runFor(30000);
+  assert.equal(await up(), true, 'it stays while its button has the focus');
+  await p.focus('#q');
+  await p.clock.runFor(11000);
+  assert.equal(await up(), false);
+  // A message that can wait doesn't take an Undo's place.
+  await p.evaluate(() => { window.brickyard.toast('Removed Orchid', false, { label: 'Undo', run() {} }); window.brickyard.toastAfter('Sync didn’t work.'); });
+  assert.equal(await p.textContent('.toast span'), 'Removed Orchid');
+  await p.clock.runFor(10500);
+  assert.deepEqual([await up(), await p.textContent('.toast span')], [true, 'Sync didn’t work.'], 'it shows once the Undo has gone');
+  await p.clock.runFor(4000);
+  // Ctrl+Z is Undo while the button shows.
+  const sets = () => p.locator('.item .t').allTextContents();
+  await p.focus('.item:has-text("Tree House")');
+  await p.keyboard.press('Enter');
+  await p.focus('#e-del');
+  await p.keyboard.press('Enter');
+  await p.clock.runFor(100);
+  assert.equal(await p.textContent('[role="status"] .vh'), 'Tap again to remove', 'the button’s new words are read out');
+  await p.clock.runFor(700);
+  await p.keyboard.press('Enter');
+  assert.deepEqual([await sets(), await p.getAttribute('.toast button', 'title')], [['Orchid'], 'Undo (Ctrl+Z)']);
+  await p.focus('#q');
+  await p.keyboard.press('Control+z');
+  assert.deepEqual(await sets(), ['Orchid'], 'in the search box Ctrl+Z is the box’s own');
+  await p.focus('.item');
+  await p.keyboard.press('Control+z');
+  assert.deepEqual([await sets(), await p.textContent('.toast span')], [['Tree House', 'Orchid'], 'Tree House is back'], 'anywhere else it puts the set back');
+  await p.keyboard.press('Control+z');
+  assert.deepEqual(await sets(), ['Tree House', 'Orchid'], 'and does nothing with no Undo showing');
+  // Close with changes: its question is read out too.
+  await p.click('.item:has-text("Orchid")');
+  await p.fill('#e-notes', 'a gift');
+  await p.keyboard.press('Escape');
+  await p.clock.runFor(100);
+  assert.equal(await p.textContent('[role="status"] .vh'), 'Discard changes?');
+  // A set number that's refused: its box says so to a screen reader, until it's changed.
+  await p.fill('#e-num', 'hello');
+  await p.press('#e-num', 'Enter');
+  assert.deepEqual([await p.getAttribute('#e-num', 'aria-invalid'), await p.textContent('.toast span'), await p.evaluate(() => document.activeElement.id)], ['true', 'That set number doesn’t look right. It’s usually 4 or 5 digits.', 'e-num']);
+  await p.fill('#e-num', '10311');
+  assert.equal(await p.getAttribute('#e-num', 'aria-invalid'), null);
   await c.close();
 }
 

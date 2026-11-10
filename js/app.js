@@ -41,46 +41,97 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function plural(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
-  var toastTimer, heldUntil = 0, toastStays = false;
-  // A held message stays up for longer, and nothing else replaces it meanwhile. One with an action ({ label, run },
-  // such as Undo) carries a button and stays as long, but the next message takes its place; so does a 'long' one
-  // (hold is 'long'), which is a couple of sentences that need the time to be read.
+  // ---------- messages ----------
+  // The message at the bottom of the screen, in a region that's on the page from the start and stays there: a
+  // screen reader follows a region it already knows, and tends to miss one that arrives with its first words in it.
+  // The words go in after the message is shown, for the same reason. `aside` is for words that are read out but
+  // not shown (say).
+  var says = document.createElement('div'), toastEl = document.createElement('div'), aside = document.createElement('span');
+  says.setAttribute('role', 'status'); toastEl.className = 'toast'; toastEl.hidden = true; aside.className = 'vh';
+  says.appendChild(toastEl); says.appendChild(aside); document.body.appendChild(says);
+  var toastTimer, toastEnds = 0, toastLeft = 0, toastHeld = false, toastStays = false, toastN = 0, over = 0, queued = null;
+  var MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
+  // A tap on a message puts it away: a long one can sit over the box you want to type in next. Not a held one
+  // (it's the only sign something went wrong), and not by a tap on its button.
+  toastEl.addEventListener('click', function (e) { if (!toastHeld && !e.target.closest('button')) hideToast(); });
+  // It waits while the mouse is on it or its button has the keyboard's focus, and goes a moment after.
+  function linger(bit, on) {
+    var was = over; over = on ? over | bit : over & ~bit;
+    if (toastEl.hidden || !was === !over) return;
+    if (over) { toastLeft = Math.max(toastEnds - Date.now(), 1500); clearTimeout(toastTimer); }
+    else runToast(toastLeft);
+  }
+  toastEl.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') linger(1, true); });
+  toastEl.addEventListener('pointerleave', function () { linger(1, false); });
+  toastEl.addEventListener('focusin', function () { linger(2, true); });
+  toastEl.addEventListener('focusout', function () { linger(2, false); });
+  function runToast(ms) { clearTimeout(toastTimer); toastEnds = Date.now() + ms; toastTimer = setTimeout(hideToast, ms); }
+  // How long a message stays: 3.2 seconds, and longer the more there is to read (50 ms a character past 40, up
+  // to 10 seconds). A held message stays at least 6 seconds, and nothing else replaces it meanwhile. One with an
+  // action ({ label, run }, such as Undo) carries a button and stays 10 seconds, but the next message takes its
+  // place; so does a 'long' one (hold is 'long'), a couple of sentences that get at least 6 seconds.
   function toast(msg, hold, action) {
-    var now = Date.now(), stay = hold === 'long';
+    var stay = hold === 'long';
     hold = hold === true;
-    if (!hold && now < heldUntil) return;
-    var el = document.querySelector('.toast');
-    if (!el) {
-      el = document.createElement('div'); el.setAttribute('role', 'status'); document.body.appendChild(el);
-      // A tap on a message puts it away: a long one can sit over the box you want to type in next. Not a held one
-      // (it's the only sign something went wrong), and not by a tap on its button.
-      el.addEventListener('click', function (e) { if (!heldUntil && !e.target.closest('button')) hideToast(); });
-    }
+    if (!hold && toastHeld && !toastEl.hidden) return;
+    var el = toastEl;
     el.className = action ? 'toast act' : 'toast';
-    el.textContent = '';
+    el.hidden = false; el.textContent = '';
     el.appendChild(document.createElement('span')).textContent = msg;
     if (action) {
       var b = el.appendChild(document.createElement('button'));
       b.type = 'button'; b.textContent = action.label;
-      b.onclick = function () { hideToast(); action.run(); };
+      // Ctrl+Z (Cmd+Z on a Mac) presses Undo while it shows: by keyboard the button is past every set in the list.
+      if (action.label === 'Undo') { b.dataset.undo = '1'; b.title = 'Undo (' + (MAC ? '⌘Z' : 'Ctrl+Z') + ')'; }
+      b.onclick = function () { hideToast(true); action.run(); };
     }
-    el.hidden = false;
-    var ms = hold || stay || action ? 6000 : 3200;
-    heldUntil = hold ? now + ms : 0;
-    toastStays = !!(hold || stay || action);
-    clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, ms);
+    var ms = Math.min(3200 + Math.max(0, String(msg).length - 40) * 50, 10000);
+    if (hold || stay) ms = Math.max(ms, 6000);
+    if (action) ms = 10000;
+    toastHeld = hold; toastStays = !!(hold || stay || action); toastN++; over = 0;
+    runToast(ms);
   }
-  function hideToast() {
-    var el = document.querySelector('.toast');
-    if (el) el.hidden = true;
-    clearTimeout(toastTimer); heldUntil = 0; toastStays = false;
+  // `pressed` is true when the message's own button put it away: a message that was waiting (toastAfter) waits on,
+  // for whatever the button says next.
+  function hideToast(pressed) {
+    toastEl.hidden = true;
+    clearTimeout(toastTimer); toastHeld = false; toastStays = false; over = 0;
+    if (pressed === true || !queued) return;
+    var next = queued; queued = null;
+    setTimeout(function () { toastAfter(next[0], next[1]); }, 400);
   }
+  // A message that can wait (Drive sync saying it failed): shown once whatever is showing has gone, so it never
+  // takes the place of an Undo. The last one waiting is the one shown.
+  function toastAfter(msg, hold) {
+    if (toastEl.hidden) toast(msg, hold); else queued = [msg, hold];
+  }
+  // Words for a screen reader only, such as a button's new words when its first press turned it into a question.
+  var sayTimer = 0;
+  function say(t) {
+    aside.textContent = ''; clearTimeout(sayTimer);
+    sayTimer = setTimeout(function () { aside.textContent = t; sayTimer = setTimeout(function () { aside.textContent = ''; }, 5000); }, 50);
+  }
+  document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== 'z' && e.key !== 'Z')) return;
+    var b = !toastEl.hidden && toastEl.querySelector('button[data-undo]'), a = document.activeElement;
+    // In a box being typed in, Ctrl+Z is the box's own undo.
+    var typing = a && (a.tagName === 'TEXTAREA' || a.isContentEditable || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|range|file)$/.test(a.type)));
+    if (!b || typing) return;
+    e.preventDefault(); b.click();
+  });
   // Removing and doubling up take a second tap, so nothing goes on one slip. It has to come a moment after the
   // first, so a double tap is still one tap. True when this tap is the one that confirms.
   function secondTap(btn, key) {
     key = key || 'sure';
     var first = Number(btn.dataset[key] || 0);
-    if (!first) { btn.dataset[key] = String(Date.now()); return false; }
+    if (!first) {
+      btn.dataset[key] = String(Date.now());
+      // The button's new words ("Tap again to remove") are read out: a screen reader doesn't read again a button
+      // it's already on. Not when the first press said more in a message of its own.
+      var n = toastN;
+      setTimeout(function () { if (toastN === n && document.contains(btn)) say(btn.textContent); }, 0);
+      return false;
+    }
     return Date.now() - first >= 600;
   }
   function picHtml(x, cls) {
@@ -494,6 +545,7 @@
     // back to its own words.
     $('e-num').addEventListener('input', function () {
       var b = $('e-save');
+      this.removeAttribute('aria-invalid');
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
     });
     // Space ticks a tick-box; Enter on one would save the sheet, like Enter in a box.
@@ -502,7 +554,7 @@
       e.preventDefault();
       var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
-      if (raw && !num) { toast('That set number doesn’t look right. It’s usually 4 or 5 digits.'); $('e-num').focus(); return; }
+      if (raw && !num) { toast('That set number doesn’t look right. It’s usually 4 or 5 digits.'); $('e-num').setAttribute('aria-invalid', 'true'); $('e-num').focus(); return; }
       var y = C.cleanSet({
         num: num, name: $('e-name').value, year: $('e-year').value, pieces: $('e-pieces').value, theme: $('e-theme').value, state: st,
         room: $('e-room').value, spot: $('e-spot').value, box: $('e-box').value, missing: $('e-missing').value,
@@ -880,7 +932,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();
