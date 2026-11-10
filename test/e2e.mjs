@@ -1351,6 +1351,30 @@ await page.click('[data-close]');
   }
 }
 
+// On an iPhone a sheet stays inside what's visible: its height follows the browser's toolbar (dvh; plain vh is the
+// screen with the toolbar away, which pushed the title and Close off the top), and a sheet with no buttons along the
+// bottom ends clear of the home bar, as one with buttons does. Chromium has no toolbar to show, so the first half is
+// read from the style sheet.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Bonsai Tree', state: 'built' } } });
+  const cdp = await c.newCDPSession(p);
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { bottom: 34 } });
+  await p.goto(base + '#catalog');
+  const heights = await p.evaluate(() => {
+    const out = [], walk = rules => { for (const r of rules) { if (r.selectorText === '.sheet' && r.style.maxHeight) out.push(r.style.maxHeight); if (r.cssRules) walk(r.cssRules); } };
+    walk(document.styleSheets[0].cssRules);
+    return out;
+  });
+  assert.deepEqual(heights, ['92dvh', '86dvh'], 'a sheet’s height follows the visible screen');
+  const pad = sel => p.evaluate(s => parseFloat(getComputedStyle(document.querySelector(s)).paddingBottom), sel);
+  await p.click('#menu-btn');
+  assert.equal(await pad('.sheet .bd'), 48, 'the menu ends clear of the home bar');
+  await p.click('[data-close]');
+  await p.click('.item:has-text("Bonsai Tree")');
+  assert.deepEqual([await pad('.sheet .bd'), await pad('.sheet .ft')], [14, 46], 'a sheet with buttons keeps them clear instead');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);
