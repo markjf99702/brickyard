@@ -114,7 +114,17 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   eq(C.findDup(doc, C.cleanSet({ name: 'custom castle!' })).id, 'b', 'same name with no number');
   eq(C.live(doc).length, 2, 'removed sets are not live');
   eq(C.findDup(doc, C.cleanSet({ name: 'Box' })).id, 'a', 'a name alone finds a set that has a number too');
-  eq(C.findDup(doc, C.cleanSet({ num: '10497', name: 'Custom Castle' })), null, 'a set with a number is only ever matched by its number');
+  // A set owned by name alone is the one that arrives later with its number and that name (it used to be missed, and
+  // was added a second time); the set that has the number already comes first; two numbers with one name are two sets.
+  eq(C.findDup(doc, C.cleanSet({ num: '10497', name: 'Custom Castle' })).id, 'b', 'a set owned by name alone is found when it arrives with its number');
+  eq(C.findDup(doc, C.cleanSet({ num: '10497', name: 'custom-castle' })).id, 'b', 'the names are compared the way they always are');
+  eq(C.findDup(doc, C.cleanSet({ num: '10497', name: 'Castle' })), null, 'another name with a number is another set');
+  eq(C.findDup(doc, C.cleanSet({ num: '10497' })), null, 'a number alone doesn’t match a set that has none');
+  {
+    const two = C.cleanDoc({ catalog: { sets: { n: { id: 'n', t: 1, name: 'Bonsai Tree' }, a: { id: 'a', t: 1, num: '10281', name: 'Bonsai Tree' }, f: { id: 'f', t: 1, num: '75192', name: 'Millennium Falcon' } } } });
+    eq(C.findDup(two, C.cleanSet({ num: '10281', name: 'Bonsai Tree' })).id, 'a', 'the set with the same number comes before one with only the name');
+    eq(C.findDup(two, C.cleanSet({ num: '75257', name: 'Millennium Falcon' })), null, 'two different numbers with one name are not the same set');
+  }
   eq(C.findDup(doc, { name: '!!!' }), null, 'a name with nothing to compare matches nothing');
 }
 // A set that's in one list twice: the later ones are marked, the first isn't. Told the same way as a double

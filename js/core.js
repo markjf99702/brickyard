@@ -284,10 +284,14 @@
     var k = nameKey(set.name);
     return !!k && nameKey(have.name) === k;
   }
-  // Which owned set a new one might be.
+  // Which owned set a new one might be. A set owned by name alone (typed in before the photos were sent) is found
+  // when the new one arrives with its number and the same name: it used to be missed, and the review ticked it to
+  // be added a second time. One with the same number comes first. Two sets with different numbers and one name stay
+  // two sets.
   function findDup(doc, set) {
-    var all = live(doc);
-    for (var i = 0; i < all.length; i++) if (isDup(all[i], set)) return all[i];
+    var all = live(doc), i;
+    for (i = 0; i < all.length; i++) if (isDup(all[i], set)) return all[i];
+    for (i = 0; i < all.length; i++) if (!all[i].num && isDup(set, all[i])) return all[i];
     return null;
   }
   // In a list of sets (a batch from Claude), which ones are in it again: true for each set that matches one
