@@ -672,6 +672,8 @@
     if ($('e-del')) $('e-del').onclick = function () {
       if (!secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
       var kept = DOC.sets[x.id] && !DOC.sets[x.id].del ? DOC.sets[x.id] : x, name = kept.name || 'Set ' + C.shortNum(kept.num);
+      // With another set of the same name (three Millennium Falcons), the message says which one went.
+      if (kept.name && kept.num && C.live(DOC).some(function (o) { return o.id !== kept.id && C.fold(o.name || '') === C.fold(kept.name); })) name += ' ' + C.shortNum(kept.num);
       removeSet(x.id); save(); closeSheet(); renderCatalog();
       toast('Removed ' + name, false, { label: 'Undo', run: function () { putBack('sets', kept); save(); refresh(); toast(name + ' is back'); } });
     };
@@ -789,6 +791,11 @@
   // (js/shelves.js) use it too, so every paste box takes every kind of Brickyard link or file.
   function takePasted(box, plain) {
     var t = box.value; if (!t.trim()) { box.focus(); return; }
+    // A typed list of set numbers, or the text of a Brickset or Rebrickable export, isn't something Brickyard
+    // reads, but Claude does: say so, where it only said the paste didn't look like sets from Claude.
+    if (!/^\s*[{[]/.test(t) && !/#[a-z]\d[zj]|#batch=|:\/\//i.test(t) && /(^|[^\w-])\d{4,6}(-\d+)?(?![\w-])/.test(t)) {
+      plain = 'That’s a list, not a Brickyard link. Send it to Claude and ask for a Brickyard link: it fills in names, years and pieces.';
+    }
     takeIncoming(C.parseIncoming(t), /^\s*[{[]/.test(t) ? 'file' : 'link', plain); // a file's text starts with a bracket
   }
 

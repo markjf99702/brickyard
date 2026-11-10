@@ -2285,6 +2285,30 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// Removing one of two sets with the same name says which: "Removed Millennium Falcon 75257". And a typed list of
+// set numbers pasted where a link goes says what to do with it (it only said the paste didn't look like sets from
+// Claude); a link cut short, and words with no numbers, still say what they did.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '75192-1', name: 'Millennium Falcon' }, b: { id: 'b', t: 1, num: '75257-1', name: 'Millennium Falcon' }, d: { id: 'd', t: 1, num: '10281-1', name: 'Bonsai Tree' }, e: { id: 'e', t: 1, name: 'Bonsai tree' } } });
+  await p.goto(base + '#catalog');
+  const remove = async id => { await p.click(`.item[data-id="${id}"]`); await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del'); return p.textContent('.toast span'); };
+  assert.equal(await remove('b'), 'Removed Millennium Falcon 75257');
+  await p.click('.toast button');
+  assert.equal(await p.textContent('.toast span'), 'Millennium Falcon 75257 is back');
+  assert.equal(await remove('e'), 'Removed Bonsai tree', 'one with no number has only its name to give');
+  assert.equal(await remove('d'), 'Removed Bonsai Tree', 'and the only set of its name is named as before');
+  const LIST = 'That’s a list, not a Brickyard link. Send it to Claude and ask for a Brickyard link: it fills in names, years and pieces.';
+  const paste = async text => { await p.evaluate(() => { document.querySelector('.toast').hidden = true; }); await p.fill('#paste', text); await p.click('#p-go'); await p.waitForFunction(() => !document.querySelector('.toast').hidden); return p.textContent('.toast'); };
+  await p.click('#claude-btn');
+  assert.equal(await paste('10497, 21318, 75192'), LIST);
+  assert.equal(await paste('75192 Millennium Falcon\n10281-1 Bonsai Tree'), LIST);
+  assert.equal(await paste('Set Number,Quantity\n75192-1,1\n10281-1,2'), LIST, 'the text of an export');
+  assert.equal(await paste('my sets please'), 'That doesn’t look like sets from Claude or a Brickyard file');
+  assert.match(await paste(base + '#b1zAAAA12345'), /cut short or has a wrong character/);
+  assert.equal(await p.locator('.sheet').count(), 1, 'the sheet stays open for another go');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

@@ -20,6 +20,7 @@ What each kind of photo gives you:
 - **Instruction books:** the set number on the front cover, and a picture of the model.
 - **Built models:** only the model itself. Identify the set if you recognise it with confidence, and flag it with `unsure` otherwise ("built model; looks like 10497 Galaxy Explorer").
 - **Loose bricks in bags or a bin:** not a set. Mention them, don't list them.
+- **A typed list, or an export from Brickset or Rebrickable** (a CSV or a pasted table): a typed list of set numbers. Take the set number from each row, a row with a quantity of 2 as two entries, and fill in name, year, pieces and theme from what you know about each number; the export's other columns can be left. Brickyard itself doesn't read these files, which is why they come to you.
 
 Rules:
 - **Set numbers from what's visible, or from a confident identification.** A number you read off a box needs no flag. A number you know from recognising a built model gets `unsure` saying so. A number you're guessing between two sets gets `unsure` naming both ("could be 42083").
