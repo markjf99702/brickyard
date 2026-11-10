@@ -228,13 +228,26 @@
 
   function nameKey(n) { return String(n || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ''); }
 
-  // Which owned set a new one might be: same set number, or (with no number) the same name.
+  // Whether a new set might be one already there: the same set number, or (with no number) the same name. The
+  // cataloger's script (is_dup) tells doubles the same way.
+  function isDup(have, set) {
+    if (set.num) return have.num === set.num;
+    var k = nameKey(set.name);
+    return !!k && nameKey(have.name) === k;
+  }
+  // Which owned set a new one might be.
   function findDup(doc, set) {
-    var all = live(doc), i;
-    if (set.num) { for (i = 0; i < all.length; i++) if (all[i].num === set.num) return all[i]; return null; }
-    var k = nameKey(set.name); if (!k) return null;
-    for (i = 0; i < all.length; i++) if (nameKey(all[i].name) === k) return all[i];
+    var all = live(doc);
+    for (var i = 0; i < all.length; i++) if (isDup(all[i], set)) return all[i];
     return null;
+  }
+  // In a list of sets (a batch from Claude), which ones are in it again: true for each set that matches one
+  // earlier in the list, either way round, so a set with its number and the same set by name alone are a pair
+  // whichever comes first. The first of them isn't marked.
+  function repeats(sets) {
+    return sets.map(function (x, i) {
+      return sets.slice(0, i).some(function (y) { return isDup(y, x) || isDup(x, y); });
+    });
   }
 
   // A batch from Claude: {"brickyard": 1, "batch": {name, room, spot, box, state, sets: [...]}}.
@@ -411,7 +424,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, matches: matches, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

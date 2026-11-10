@@ -75,7 +75,17 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
   eq(C.findDup(doc, C.cleanSet({ num: '10698-2' })), null, 'another version is not');
   eq(C.findDup(doc, C.cleanSet({ name: 'custom castle!' })).id, 'b', 'same name with no number');
   eq(C.live(doc).length, 2, 'removed sets are not live');
+  eq(C.findDup(doc, C.cleanSet({ name: 'Box' })).id, 'a', 'a name alone finds a set that has a number too');
+  eq(C.findDup(doc, C.cleanSet({ num: '10497', name: 'Custom Castle' })), null, 'a set with a number is only ever matched by its number');
+  eq(C.findDup(doc, { name: '!!!' }), null, 'a name with nothing to compare matches nothing');
 }
+// A set that's in one list twice: the later ones are marked, the first isn't. Told the same way as a double
+// with the catalog (same number, or the same name when one of the two has no number), whichever comes first.
+const TWICE = [{ num: '10497', name: 'Galaxy Explorer' }, { num: '21318', name: 'Tree House' }, { num: '10497', name: 'Galaxy Explorer', state: 'built' }, { name: 'Mystery Castle' },
+  { name: 'mystery castle!' }, { name: 'Tree House' }, { name: 'Bonsai & Friends' }, { num: '10281', name: 'Bonsai and friends' }, { num: '10497-2', name: 'Galaxy Explorer' }, { num: '10497' }, { num: '40000', name: '???' }, { name: '???' }];
+const TWICE_WANT = [false, false, true, false, true, true, false, true, false, true, false, false];
+eq(C.repeats(TWICE.map(C.cleanSet)), TWICE_WANT, 'which sets in a list are in it again');
+eq(C.repeats([]), [], 'an empty list has no repeats');
 
 // Merging: any order, same result; newest change wins; removals stick.
 {
@@ -293,6 +303,14 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     const o = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), odd, '--out', dir], { encoding: 'utf8' });
     check(/doesn’t look like a set number/.test(o), 'script flags a bad set number');
     check(/twice/.test(o), 'script flags doubles');
+    // A set in the list twice is marked [twice] next to it in the script's summary, on the same sets the page's
+    // review marks "Also above in this list".
+    const twiceFile = path.join(dir, 'twice.json');
+    fs.writeFileSync(twiceFile, JSON.stringify({ sets: TWICE }));
+    const summary = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), twiceFile, '--out', dir, '--no-link'], { encoding: 'utf8' });
+    const lines = summary.split('\n').filter(l => /^ {2}\s*\S/.test(l));
+    eq(lines.map(l => /\[twice\]/.test(l)), TWICE_WANT, 'the script marks the same sets [twice] as the page does');
+    eq((summary.match(/^WARNING: .* is in the list twice/gm) || []).length, TWICE_WANT.filter(Boolean).length, 'with a warning for each');
     // Set numbers however they're written: the script's set_num and the page's setNum agree.
     const spellings = ['10698', '10698-1', '#10698-2', 'Set 6020', 'set10698', 'No. 10698', 'LEGO 10698', 'Lego set 10698', 'lego10698-1',
       'LEGO® Set No. #10698-2', 'LEGO™ 75192', 'set #no. 10698', 'sw0001a', 'set 10698 v2', 'LEGO', 'hello', '12', 'LEGO-10698'];

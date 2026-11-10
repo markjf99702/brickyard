@@ -644,6 +644,32 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// A set that's in one batch twice says so on the later one, and in the count at the top. Both stay ticked (there
+// may really be two); one that's also owned already is unticked as ever, and isn't told to untick.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', room: 'Hall' } } });
+  const open = async sets => {
+    await p.goto('about:blank');
+    await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { name: 'Hall shelf', sets } })).toString('base64url'));
+    await p.waitForSelector('#rv-add');
+    return p.$$eval('#rv li', lis => lis.map(li => [li.querySelector('.t').textContent, li.querySelector('input').checked, [...li.querySelectorAll('.w')].map(w => w.textContent)]));
+  };
+  const galaxy = { num: '10497', name: 'Galaxy Explorer' }, tree = { num: '21318', name: 'Tree House' };
+  assert.deepEqual(await open([galaxy, tree, { name: 'Bonsai Tree' }, galaxy, tree, { name: 'bonsai tree' }]), [
+    ['Galaxy Explorer', true, []], ['Tree House', false, ['You already have this one (Hall)']], ['Bonsai Tree', true, []],
+    ['Galaxy Explorer', true, ['Also above in this list. Untick it unless you have two.']],
+    ['Tree House', false, ['You already have this one (Hall)', 'Also above in this list.']],
+    ['bonsai tree', true, ['Also above in this list. Untick it unless you have two.']]], 'the later of two the same says so');
+  assert.equal(await p.textContent('.sheet .lede'), 'Hall shelf · 6 sets · 2 you already have · 3 twice in this list');
+  assert.equal(await p.textContent('#rv-n'), '4 of 6 ticked', 'the repeats stay ticked');
+  await p.click('#rv li:nth-child(6)');
+  await p.click('#rv-add');
+  assert.deepEqual((await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del).map(x => x.name))).sort(), ['Bonsai Tree', 'Galaxy Explorer', 'Galaxy Explorer', 'Tree House'], 'left ticked, both copies are added; unticked, one');
+  const plain = await open([{ name: 'Bonsai Tree' }, { num: '21327', name: 'Typewriter' }]);
+  assert.deepEqual([plain.map(r => r[2].length), await p.textContent('.sheet .lede')], [[1, 0], 'Hall shelf · 2 sets · 1 you already have'], 'a list with nothing in it twice says nothing about it');
+  await c.close();
+}
+
 // Copy everything as a link warns when the link is long enough to be cut off on the way (over 8,000 characters).
 {
   const few = { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box' } }, lots = {};

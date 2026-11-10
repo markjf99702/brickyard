@@ -556,11 +556,14 @@
   });
 
   function reviewSheet(batch) {
-    var rows = batch.sets.map(function (x) { var dup = C.findDup(DOC, x); return { x: x, dup: dup, on: !dup }; });
+    // A set that's in the list a second time is marked, and stays ticked: there may really be two, and only the
+    // person looking at the shelf knows.
+    var again = C.repeats(batch.sets);
+    var rows = batch.sets.map(function (x, i) { var dup = C.findDup(DOC, x); return { x: x, dup: dup, again: again[i], on: !dup }; });
     var seenAt = DOC.seen[batch.id];
-    var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.x.check; }).length;
+    var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.x.check; }).length, na = rows.filter(function (r) { return r.again; }).length;
     openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
-      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + '</p>' +
+      '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
       (seenAt ? '<p class="flag"><span>You opened this link before. Sets you already have are unticked.</span></p>' : '') +
       '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
@@ -570,6 +573,7 @@
         return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
           '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(meta) + '</div>' +
           (r.dup ? '<div class="w">You already have this one' + (C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '') + '</div>' : '') +
+          (r.again ? '<div class="w">Also above in this list.' + (r.on ? ' Untick it unless you have two.' : '') + '</div>' : '') +
           (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft"><span class="note" id="rv-n" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>',

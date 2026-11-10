@@ -21,8 +21,8 @@ sets.json (every field is optional except a set number or a name):
 
 Set numbers are normalised the way Rebrickable writes them ("10698", "#10698" or "LEGO 10698" -> "10698-1");
 a number that doesn't look like a set number is dropped and flagged. State words like "assembled" or "new in
-box" are mapped onto Brickyard's four. Likely doubles in the list are flagged. Exits 1 (printing why) if the
-input can't be used.
+box" are mapped onto Brickyard's four. A set that's in the list a second time is marked [twice] in the summary
+and warned about; Brickyard's review marks the same ones. Exits 1 (printing why) if the input can't be used.
 
 Sizes for the shelf planner, for sets already in Brickyard, go in a file of their own and make a sizes link:
 
@@ -136,6 +136,25 @@ def clean(x, i, warn):
     return {k: v for k, v in out.items() if v not in ('', 0, [], None) or k == 'instr'}
 
 
+def name_key(n):
+    """The same as nameKey in js/core.js."""
+    return re.sub(r'[^a-z0-9]+', '', str(n or '').lower().replace('&', 'and'))
+
+
+def is_dup(have, new):
+    """The same as isDup in js/core.js: the same set number, or (with no number) the same name."""
+    if new.get('num'):
+        return have.get('num') == new['num']
+    k = name_key(new.get('name'))
+    return bool(k) and name_key(have.get('name')) == k
+
+
+def repeats(sets):
+    """The same as repeats in js/core.js: for each set, whether it matches one earlier in the list. Brickyard's
+    review marks the same ones "Also above in this list"."""
+    return [any(is_dup(y, x) or is_dup(x, y) for y in sets[:i]) for i, x in enumerate(sets)]
+
+
 def make_link(base, prefix, text):
     c = zlib.compressobj(9, zlib.DEFLATED, -15)
     data = c.compress(text.encode('utf-8')) + c.flush()
@@ -208,12 +227,10 @@ def main():
     sets = [y for y in (clean(x, i, warn) for i, x in enumerate(src['sets'])) if y]
     if not sets:
         sys.exit('No usable sets: each needs a set number or a name.')
-    seen = {}
-    for x in sets:
-        k = x.get('num') or re.sub(r'[^a-z0-9]', '', x.get('name', '').lower())
-        if k in seen:
+    twice = repeats(sets)
+    for x, again in zip(sets, twice):
+        if again:
             warn.append(f'“{x.get("name") or x.get("num")}” is in the list twice. Keep both only if there really are two copies.')
-        seen[k] = 1
     batch = {'name': s(src.get('name'), 120), 'room': s(src.get('room'), 60), 'spot': s(src.get('spot') or src.get('shelf'), 60),
              'box': s(src.get('box'), 40), 'state': state(src.get('state')), 'sets': sets}
     batch = {k: v for k, v in batch.items() if v}
@@ -229,8 +246,8 @@ def main():
     path.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
 
     print(f'{len(sets)} set{"s" if len(sets) != 1 else ""}' + (f' · {batch["name"]}' if batch.get('name') else ''))
-    for x in sets:
-        print(f'  {x.get("num", "?").removesuffix("-1"):>8}  {x.get("name", "")}' + (f'   [check: {x["check"]}]' if x.get('check') else ''))
+    for x, again in zip(sets, twice):
+        print(f'  {x.get("num", "?").removesuffix("-1"):>8}  {x.get("name", "")}' + ('   [twice]' if again else '') + (f'   [check: {x["check"]}]' if x.get('check') else ''))
     for w in warn:
         print('WARNING: ' + w)
     print(f'File: {path}')

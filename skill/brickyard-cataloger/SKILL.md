@@ -24,7 +24,7 @@ What each kind of photo gives you:
 Rules:
 - **Set numbers from what's visible, or from a confident identification.** A number you read off a box needs no flag. A number you know from recognising a built model gets `unsure` saying so. A number you're guessing between two sets gets `unsure` naming both ("could be 42083").
 - **Name, year, pieces and theme** can come from the box or from what you know about that set number. Leave out what you don't know rather than guess.
-- **Two copies of the same set** are two entries. The script warns about doubles; keep both only if there really are two.
+- **Two copies of the same set** are two entries. The script marks the second one `[twice]` in its summary and warns; keep both only if there really are two. Brickyard's review marks it as well ("Also above in this list") and leaves it ticked, so say in your hand-over when a set is there twice on purpose.
 
 ## 2. Where they are, and what state they're in
 
