@@ -32,17 +32,32 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function plural(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
-  var toastTimer, heldUntil = 0;
-  // A held message stays up for longer, and nothing else replaces it meanwhile.
-  function toast(msg, hold) {
+  var toastTimer, heldUntil = 0, toastStays = false;
+  // A held message stays up for longer, and nothing else replaces it meanwhile. One with an action ({ label, run },
+  // such as Undo) carries a button and stays as long, but the next message takes its place.
+  function toast(msg, hold, action) {
     var now = Date.now();
     if (!hold && now < heldUntil) return;
     var el = document.querySelector('.toast');
-    if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
-    el.textContent = msg; el.hidden = false;
-    var ms = hold ? 6000 : 3200;
+    if (!el) { el = document.createElement('div'); el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.className = action ? 'toast act' : 'toast';
+    el.textContent = '';
+    el.appendChild(document.createElement('span')).textContent = msg;
+    if (action) {
+      var b = el.appendChild(document.createElement('button'));
+      b.type = 'button'; b.textContent = action.label;
+      b.onclick = function () { hideToast(); action.run(); };
+    }
+    el.hidden = false;
+    var ms = hold || action ? 6000 : 3200;
     heldUntil = hold ? now + ms : 0;
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.hidden = true; }, ms);
+    toastStays = !!(hold || action);
+    clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, ms);
+  }
+  function hideToast() {
+    var el = document.querySelector('.toast');
+    if (el) el.hidden = true;
+    clearTimeout(toastTimer); heldUntil = 0; toastStays = false;
   }
   // Removing and doubling up take a second tap, so nothing goes on one slip. It has to come a moment after the
   // first, so a double tap is still one tap. True when this tap is the one that confirms.
@@ -250,6 +265,7 @@
   function behind(on) { document.querySelectorAll('body > section, body > .jd-foot').forEach(function (el) { el.inert = on; }); }
   function openSheet(html, onClose) {
     closeSheet();
+    if (!toastStays) hideToast(); // "Added 7 sets" would sit on top of the next sheet
     lastFocus = document.activeElement;
     var scrim = document.createElement('div');
     scrim.className = 'scrim';

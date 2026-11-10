@@ -422,6 +422,38 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// A message at the bottom uses the screen's width (it was squeezed into half of it, four lines tall), stays centred,
+// and can carry a button. One left showing goes when a sheet opens, unless it's a held warning.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', room: 'Living room', spot: 'Bookcase' } } });
+  const box = () => p.locator('.toast').boundingBox();
+  await p.goto(base + '#catalog');
+  await p.click('#add-btn');
+  await p.fill('#e-num', '21318');
+  await p.click('#e-save');
+  assert.equal(await p.textContent('.toast'), 'You already have Tree House (Living room › Bookcase). Tap again to add a second copy.');
+  let b = await box();
+  assert.ok(b.width > 300, 'a long message is wider than 300 px on a phone (' + Math.round(b.width) + ')');
+  assert.ok(b.x >= 16 && b.x + b.width <= 390 - 16 + 0.5 && Math.abs(b.x + b.width / 2 - 195) < 1, 'and sits centred with a margin each side');
+  await p.evaluate(() => window.brickyard.toast('Saved'));
+  b = await box();
+  assert.ok(b.width < 120 && Math.abs(b.x + b.width / 2 - 195) < 1, 'a short one stays small and centred (' + Math.round(b.width) + ')');
+  await p.click('[data-close]');
+  await p.evaluate(() => { window.undone = 0; window.brickyard.toast('Removed Tree House', false, { label: 'Undo', run: () => { window.undone++; } }); });
+  assert.equal(await p.textContent('.toast button'), 'Undo');
+  await p.click('.toast button');
+  assert.deepEqual([await p.evaluate(() => window.undone), await p.locator('.toast').isHidden()], [1, true], 'its button runs once and the message goes');
+  await p.evaluate(() => window.brickyard.toast('Added 7 sets'));
+  assert.equal(await p.locator('.toast button').count(), 0, 'the next message has no button left in it');
+  await p.click('#menu-btn');
+  assert.equal(await p.locator('.toast').isHidden(), true, 'a message left showing goes when a sheet opens');
+  await p.click('[data-close]');
+  await p.evaluate(() => window.brickyard.toast('This browser wouldn’t save.', true));
+  await p.click('#menu-btn');
+  assert.equal(await p.locator('.toast').isVisible(), true, 'a held warning stays');
+  await c.close();
+}
+
 // Pictures can be turned off.
 await page.click('#menu-btn');
 await page.click('#m-pics');
