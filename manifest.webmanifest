@@ -1,7 +1,7 @@
 {
   "name": "Brickyard",
   "short_name": "Brickyard",
-  "description": "Brickyard keeps track of your LEGO: every set you own, where it is, and whether it's built.",
+  "description": "Brickyard keeps track of your LEGO: every set you own, where it is, and whether it’s built.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

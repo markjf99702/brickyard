@@ -1242,7 +1242,7 @@ await page.click('[data-close]');
     cases: { k: { id: 'k', t: 1, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] } } });
   await p.goto(base + '#shelves');
   const why = p.locator('#shelves-body .list .item:has-text("Lamborghini") .warn');
-  assert.equal(await why.textContent(), 'Too big for every bookcase (60 × 26 cm)');
+  assert.equal(await why.textContent(), 'At 60 × 26 cm, too big for your bookcase');
   assert.equal(await why.evaluate(e => e.scrollWidth <= e.clientWidth), true, 'the reason is shown whole');
   await c.close();
 }
@@ -1270,7 +1270,7 @@ await page.click('[data-close]');
   await p.goto(base + '#shelves');
   await p.click('[data-act="fill"]');
   const why = () => p.locator('#shelves-body .list .item:has-text("Tree House") .warn').allTextContents();
-  assert.deepEqual(await why(), ['Too tall for every shelf (39 cm)']);
+  assert.deepEqual(await why(), ['39 cm tall; your tallest shelf is 32 cm'], 'the reason gives the set’s height and the tallest shelf’s');
   await p.click('[data-act="add-case"]');
   await p.click('#k-preset [data-k="3"]');
   await p.fill('#k-name', 'Tall one'); await p.fill('#k-w', '40'); await p.fill('#k-d', '30'); await p.fill('#k-levels', '45');
@@ -1396,6 +1396,35 @@ await page.click('[data-close]');
     assert.equal(await p.textContent('#sheetTitle'), title, 'a tap ' + where + ' a small set opens it');
     await p.click('[data-close]');
   }
+  await c.close();
+}
+
+// What the planner says about its sets. With none it can place there's no count ("0 sets of 0 on shelves"), and the
+// note that says which sets it places has the way to My sets. The count reads "3 of 5 sets on shelves", and "All 5
+// sets are on shelves" once they are; from the first set placed, a line says a set in the drawing can be tapped. A
+// set that fits nowhere gives its own size and the most there is: "Too deep for every bookcase (32 cm)" under a
+// bookcase whose shelves are all labelled 32 cm read as the bookcase's size.
+{
+  const billy = { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [32, 32].map(h => ({ h, sets: [] })) } };
+  const says = p => p.evaluate(() => [...document.querySelectorAll('#shelves-body > .sumline, #shelves-body > .note')].map(e => e.textContent));
+  const none = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Castle', state: 'sealed' } }, cases: billy });
+  await none.p.goto(base + '#shelves');
+  await none.p.waitForSelector('.case');
+  assert.deepEqual(await says(none.p), ['The planner places sets marked Built or Partly built in My sets. You don’t have any yet. Add or mark them in My sets.'], 'no count with nothing to place');
+  await none.p.click('#shelves-body .note a');
+  await none.p.waitForSelector('#list-wrap .item');
+  assert.equal(await none.p.evaluate(() => location.hash), '#catalog', 'and the note leads to My sets');
+  await none.c.close();
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree', 20, 15, 18), b: set('b', 'Typewriter', 27, 26, 11), g: set('g', 'Galaxy Explorer', 52, 32, 13), n: { id: 'n', t: 1, name: 'Orchid', state: 'built' } }, cases: billy });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await says(p), ['0 of 4 sets on shelves', 'Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.'], 'nothing placed yet: the count, and no word about tapping');
+  await p.click('[data-act="fill"]');
+  assert.deepEqual((await says(p)).slice(0, 2), ['2 of 4 sets on shelves', 'Tap a set to move it, turn it side-on or fix its size.']);
+  assert.equal(await p.textContent('#shelves-body .list .item:has-text("Galaxy Explorer") .warn'), '32 cm deep; your bookcase is 26 cm deep');
+  await p.evaluate(() => { const d = window.brickyard.doc(); for (const id of ['g', 'n']) window.brickyard.putSet(Object.assign({}, d.sets[id], { state: 'apart' })); window.brickyard.refresh(); });
+  assert.deepEqual(await says(p), ['All 2 sets are on shelves', 'Tap a set to move it, turn it side-on or fix its size.']);
   await c.close();
 }
 

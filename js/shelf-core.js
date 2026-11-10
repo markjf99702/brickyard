@@ -54,7 +54,10 @@
   }
 
   // Why a set fits on no shelf at all, or '' if it fits somewhere. Running out of room says more than being
-  // too tall for some shelf, so it wins.
+  // too tall for some shelf, so it wins. A reason with a size in it gives both sizes, the set's and the biggest
+  // there is to put it in: "Too deep for every bookcase (32 cm)" under a bookcase whose shelves are all labelled
+  // 32 cm (their height) read as the bookcase's own size. A set can stand either way round, so its depth or width
+  // here is the lesser of the two, "even side-on" when that's the way that gives it.
   function whyNot(cases, x, byId) {
     if (!hasSize(x)) return 'It needs a size';
     if (!cases.length) return 'No bookcases yet';
@@ -65,11 +68,20 @@
       why.push(f.why);
     }
     var all = function (re) { return why.every(function (w) { return re.test(w); }); };
+    var most = function (of) { return Math.max.apply(null, cases.map(of)); }, one = cases.length === 1;
+    var least = Math.min(x.size.w, x.size.d);
     if (why.some(function (w) { return /room/.test(w); })) return 'No room left on a shelf it fits';
-    if (all(/deep/)) return 'Too deep for every bookcase (' + Math.min(x.size.w, x.size.d) + ' cm)';
-    if (all(/tall/)) return 'Too tall for every shelf (' + x.size.h + ' cm)';
-    if (all(/wide/)) return 'Too wide for every bookcase (' + Math.min(x.size.w, x.size.d) + ' cm)';
-    if (all(/deep|wide|big/)) return 'Too big for every bookcase (' + x.size.w + ' × ' + x.size.d + ' cm)';
+    if (all(/deep/)) {
+      return least + ' cm deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + most(function (c) { return c.d; }) + ' cm' + (one ? ' deep' : '');
+    }
+    if (all(/tall/)) {
+      var hs = [].concat.apply([], cases.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
+      return x.size.h + ' cm tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + Math.max.apply(null, hs) + ' cm' + (hs.length === 1 ? ' tall' : '');
+    }
+    if (all(/wide/)) {
+      return least + ' cm wide' + (x.size.w > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'widest bookcase is ') + most(function (c) { return c.w; }) + ' cm' + (one ? ' wide' : '');
+    }
+    if (all(/deep|wide|big/)) return 'At ' + x.size.w + ' × ' + x.size.d + ' cm, too big for ' + (one ? 'your bookcase' : 'every bookcase');
     if (all(/deep|tall/)) return 'Too tall or too deep for every shelf';
     return 'Too big for every shelf';
   }

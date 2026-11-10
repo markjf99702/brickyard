@@ -37,9 +37,11 @@
     } else {
       var placed = sorted.placed.length, total = placed + sorted.waiting.length + sorted.noSize.length;
       var fitting = sorted.waiting.filter(function (x) { return !S.whyNot(all, x, ids); }).length;
-      html += '<p class="sumline"><span>' + plural(placed, 'set') + ' of ' + total + ' on shelves</span></p>';
+      // Nothing to count until there's a set the planner places (the note at the end says which those are).
+      if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>';
       html += '<div class="acts-row">' + (fitting ? '<button class="btn" type="button" data-act="fill">Fit ' + (fitting === sorted.waiting.length ? plural(fitting, 'set') : 'the sets') + ' onto the shelves</button>' : '') +
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
+      if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
       all.forEach(function (c) { html += caseHtml(c, ids); });
       if (placed) html += '<div class="how" style="margin-top:6px"><b>Happy with it?</b> <span class="note" style="display:block;margin:2px 0 8px">Copy each set’s room and shelf into My sets, so search finds it there.</span><button class="btn quiet sm" type="button" data-act="apply">Put these places in My sets</button></div>';
     }
@@ -55,7 +57,7 @@
         '<ul class="list">' + sorted.noSize.map(function (x) { return setRow(x, ''); }).join('') + '</ul>';
     }
     if (!sorted.placed.length && !sorted.waiting.length && !sorted.noSize.length) {
-      html += '<p class="note" style="margin-top:16px">The planner places sets marked <b>Built</b> or <b>Partly built</b> in My sets. You don’t have any yet.</p>';
+      html += '<p class="note" style="margin-top:16px">The planner places sets marked <b>Built</b> or <b>Partly built</b> in My sets. You don’t have any yet. <a href="#catalog">Add or mark them in My sets.</a></p>';
     }
     $('shelves-body').innerHTML = html;
   }

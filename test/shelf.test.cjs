@@ -52,7 +52,7 @@ eq(r.cases[0].levels.map(l => l.sets.map(p => p.id)), [['tall'], ['mid', 'b'], [
 eq(k2.levels[2].sets.length, 1, 'the old bookcase is not changed');
 eq(r.left, [], 'everything fitted');
 const r2 = S.fill([k2], sets.concat([set('huge', 20, 20, 50), set('deep', 40, 40, 10)]));
-eq(r2.left.map(x => [x.set.id, x.why]), [['huge', 'Too tall for every shelf (50 cm)'], ['deep', 'Too deep for every bookcase (40 cm)']], 'why things are left');
+eq(r2.left.map(x => [x.set.id, x.why]), [['huge', '50 cm tall; your tallest shelf is 40 cm'], ['deep', '40 cm deep; your bookcase is 26 cm deep']], 'why things are left: the set’s size and the most there is');
 const srt = S.sort(sets, r.cases);
 eq([srt.placed.length, srt.waiting.length, srt.noSize.map(x => x.id)], [5, 0, ['nosize']], 'taken-apart sets are not on shelves');
 eq(S.used(r.cases[0].levels[2], ids(sets)), 61, 'shelf use counts the gap');
@@ -63,10 +63,21 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
 eq(S.fits(kallax, 0, lambo, ids([lambo])).why, 'Too big (60 × 26 cm, the shelf is 33 × 37)', 'too wide facing out and too deep side-on');
-eq(S.whyNot([kallax], lambo, ids([lambo])), 'Too big for every bookcase (60 × 26 cm)', 'too big for an empty shelf is not short of room');
+eq(S.whyNot([kallax], lambo, ids([lambo])), 'At 60 × 26 cm, too big for your bookcase', 'too big for an empty shelf is not short of room');
+eq(S.whyNot([kallax, shelf(30, 40, [20])], lambo, ids([lambo])), 'At 60 × 26 cm, too big for every bookcase', 'too big for each of two');
 const square = set('sq', 40, 40, 10);
 eq(S.fits(shelf(33, 45, [20]), 0, square, ids([square])).why, 'Too wide (40 cm, the shelf is 33)', 'too wide both ways');
-eq(S.whyNot([shelf(33, 45, [20])], square, ids([square])), 'Too wide for every bookcase (40 cm)', 'too wide for every bookcase');
+eq(S.whyNot([shelf(33, 45, [20])], square, ids([square])), '40 cm wide; your bookcase is 33 cm wide', 'too wide for the one bookcase');
+eq(S.whyNot([shelf(33, 45, [20]), shelf(36, 45, [20])], square, ids([square])), '40 cm wide; your widest bookcase is 36 cm', 'too wide for every bookcase');
+// The reasons give the set's size and the most any bookcase or shelf has. A set stands either way round, so its
+// depth is the lesser of its two sides, "even side-on" when that's the way that gives it; so is its width.
+const explorer = set('explorer', 52, 32, 13), b6 = { id: 'b6', name: 'Billy', w: 76, d: 26, levels: [32, 32, 32, 32, 32, 32].map(h => ({ h, sets: [] })) };
+eq(S.whyNot([b6], explorer, ids([explorer])), '32 cm deep; your bookcase is 26 cm deep', 'too deep for a Billy, whose shelves are 32 cm tall');
+eq(S.whyNot([b6, kallax], set('d2', 60, 40, 13), {}), '40 cm deep; your deepest bookcase is 37 cm', 'too deep for each of two');
+eq(S.whyNot([b6], set('d3', 30, 41, 13), {}), '30 cm deep even side-on; your bookcase is 26 cm deep', 'the lesser side is its width');
+eq(S.whyNot([shelf(20, 45, [20])], set('w2', 40, 30, 10), {}), '30 cm wide even side-on; your bookcase is 20 cm wide', 'the lesser side is its depth');
+eq(S.whyNot([b6], set('t2', 27, 24, 37), {}), '37 cm tall; your tallest shelf is 32 cm', 'too tall for every shelf');
+eq(S.whyNot([shelf(50, 40, [8])], set('t3', 10, 10, 10.5), {}), '10.5 cm tall; your shelf is 8 cm tall', 'too tall for the one shelf');
 const galaxy = set('galaxy', 51, 25, 33), billy = { id: 'b', name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 32, sets: [] }] };
 eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 'too tall for one bookcase and too big for the other');
 eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
