@@ -277,6 +277,9 @@
   }
 
   $('q').addEventListener('input', renderCatalog);
+  // Going into the search while it holds the last thing looked for selects it, so typing replaces it: packing one
+  // set after another, each search started with clearing the one before.
+  $('q').addEventListener('focus', function () { if (this.value) this.select(); });
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;
@@ -430,32 +433,36 @@
     x = x ? JSON.parse(JSON.stringify(x)) : { id: newId(), state: 'built' };
     var z = x.size || {};
     // Everything the sheet lets you change, to tell whether closing it would lose something.
-    var st = x.state, was = null;
+    var st = x.state, was = null, numWas = isNew ? '' : x.num || '';
+    // Enter in one of the sheet's one-line boxes saves (the boxes are in a form, so the browser still lets Enter
+    // choose a suggestion from a box's list first); on a phone the keyboard's key says Done.
+    var box = function (id, val, extra) { return input(id, val, ' enterkeyhint="done"' + (extra || '')); };
     var now = function () { return fieldsOf(['e-num', 'e-year', 'e-name', 'e-pieces', 'e-theme', 'e-room', 'e-spot', 'e-box', 'e-missing', 'e-instr', 'e-w', 'e-d', 'e-h', 'e-tags', 'e-notes'], [st || '']); };
     var panel = openSheet(
       '<div class="hd"><h2 id="sheetTitle">' + (isNew ? 'Add a set' : esc(x.name || 'Set ' + C.shortNum(x.num))) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
-      '<div class="bd">' +
+      '<form class="bd" id="e-form" novalidate>' +
       (isNew ? '' : picHtml(x, 'head-pic')) +
       (x.check ? '<p class="flag"><span><b>Check:</b> ' + esc(x.check) + '</span><button class="btn sm quiet" type="button" id="e-ok">It’s right</button></p>' : '') +
-      '<div class="two">' + field('Set number', input('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', input('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
-      field('Name', input('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
-      '<div class="two">' + field('Pieces', input('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', input('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
+      '<div class="two">' + field('Set number', box('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', box('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
+      field('Name', box('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
+      '<div class="two">' + field('Pieces', box('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', box('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
       '<div class="field"><span class="lbl">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
         return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k].replace('Taken apart', 'Apart') + '</button>';
       }).join('') + '</div></div>' +
-      '<div class="two">' + field('Room', input('e-room', x.room, ' list="dl-room" placeholder="e.g. Office"')) + field('Shelf or spot', input('e-spot', x.spot, ' list="dl-spot" placeholder="e.g. Top shelf"')) + '</div>' +
-      field('Moving box', input('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
+      '<div class="two">' + field('Room', box('e-room', x.room, ' list="dl-room" placeholder="e.g. Office"')) + field('Shelf or spot', box('e-spot', x.spot, ' list="dl-spot" placeholder="e.g. Top shelf"')) + '</div>' +
+      field('Moving box', box('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
       field('Missing pieces', '<textarea id="e-missing" placeholder="e.g. one red 2×4 brick, the minifigure’s hat">' + esc(x.missing) + '</textarea>') +
       '<label class="check"><input type="checkbox" id="e-instr"' + (x.instr ? ' checked' : '') + '> I have the paper instructions</label>' +
       // Each box has its own label: a placeholder is gone once the box holds a number, leaving a bare "50 8 16".
       '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
-      field('Width, cm', input('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', input('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', input('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
-      field('Tags', input('e-tags', (x.tags || []).join(', '), ' placeholder="Comma between tags"')) +
+      field('Width, cm', box('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', box('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', box('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
+      field('Tags', box('e-tags', (x.tags || []).join(', '), ' placeholder="Comma between tags"')) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
-      '</div>' +
-      '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="button" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
+      '</form>' +
+      '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="submit" form="e-form" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
       function () { return now() !== was; });
     was = now();
+    if (panel.querySelector('.head-pic')) panel.querySelector('.head-pic').dataset.num = numWas;
 
     $('e-state').onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -476,7 +483,24 @@
       removeSet(x.id); save(); closeSheet(); renderCatalog();
       toast('Removed ' + name, false, { label: 'Undo', run: function () { putBack('sets', kept); save(); refresh(); toast(name + ' is back'); } });
     };
-    $('e-save').onclick = function () {
+    // The picture at the top follows the number: one put right showed the old set until Save.
+    $('e-num').addEventListener('change', function () {
+      var pic = panel.querySelector('.head-pic'), num = C.setNum(this.value.trim()), d = document.createElement('div');
+      if (!pic || pic.dataset.num === num) return;
+      d.innerHTML = picHtml({ num: num }, 'head-pic'); d.firstChild.dataset.num = num;
+      pic.parentNode.replaceChild(d.firstChild, pic);
+    });
+    // A different number is a different question: the button that was asking about a set you already have goes
+    // back to its own words.
+    $('e-num').addEventListener('input', function () {
+      var b = $('e-save');
+      if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
+    });
+    // Space ticks a tick-box; Enter on one would save the sheet, like Enter in a box.
+    $('e-form').onkeydown = function (e) { if (e.key === 'Enter' && e.target.type === 'checkbox') e.preventDefault(); };
+    $('e-form').onsubmit = function (e) {
+      e.preventDefault();
+      var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
       if (raw && !num) { toast('That set number doesn’t look right. It’s usually 4 or 5 digits.'); $('e-num').focus(); return; }
       var y = C.cleanSet({
@@ -486,13 +510,13 @@
         size: { w: $('e-w').value, d: $('e-d').value, h: $('e-h').value }, check: x.check, added: x.added || today(),
       });
       if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
-      if (isNew) {
-        var dup = C.findDup(DOC, y);
-        if (dup && !secondTap(this, 'again')) {
-          this.textContent = 'Add another copy';
-          toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + '. Tap again to add a second copy.');
-          return;
-        }
+      // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
+      // (which used to save without a word).
+      var dup = isNew ? C.findDup(DOC, y) : y.num && y.num !== numWas ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
+      if (dup && !secondTap(btn, 'again')) {
+        btn.textContent = isNew ? 'Add another copy' : 'Save anyway';
+        toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.'));
+        return;
       }
       y.id = x.id; putSet(y); save(); closeSheet(); renderCatalog();
       toast(isNew ? 'Added' : 'Saved');

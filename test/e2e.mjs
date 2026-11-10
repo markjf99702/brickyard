@@ -460,6 +460,82 @@ await page.click('.chip[data-f="all"]');
   await c.close();
 }
 
+// A set's sheet from the keyboard. Enter in a one-line box saves (it did nothing: on a phone the keyboard had to be
+// put away to reach Save), Enter in Missing pieces or Notes is still a new line, and Enter on a tick-box or a State
+// button doesn't save. The picture at the top follows the number as soon as it's changed. A set renumbered to one
+// that's already owned takes a second go, like adding one. And going back into the search selects what's in it.
+{
+  const { c, p } = await withSets({ sets: { f: { id: 'f', t: 1, num: '75192-1', name: 'Millennium Falcon', room: 'Office', state: 'built' },
+    r: { id: 'r', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built' }, b: { id: 'b', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', box: '7' } } });
+  const asked = [];
+  p.on('request', r => { if (r.url().includes('rebrickable')) asked.push(r.url().replace(/.*\/sets\//, '')); });
+  const kept = id => p.evaluate(i => window.brickyard.doc().sets[i], id), sheets = () => p.locator('.sheet').count();
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Retro Radio")');
+  assert.deepEqual(await p.$$eval('#e-form input:not([type="checkbox"])', els => [els.length, els.every(e => e.enterKeyHint === 'done')]), [12, true], 'the keyboard’s Enter key says Done');
+  await p.fill('#e-box', '7');
+  await p.press('#e-box', 'Enter');
+  assert.deepEqual([await sheets(), (await kept('r')).box, await p.textContent('.toast')], [0, '7', 'Saved'], 'Enter in Moving box saves and closes');
+  await p.click('.item:has-text("Retro Radio")');
+  await p.click('#e-missing');
+  await p.keyboard.type('the dial');
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('one foot');
+  assert.deepEqual([await sheets(), await p.inputValue('#e-missing')], [1, 'the dial\none foot'], 'Enter in Missing pieces is a new line');
+  await p.focus('#e-instr');
+  await p.keyboard.press('Enter');
+  await p.focus('#e-state [data-v="apart"]');
+  await p.keyboard.press('Enter');
+  assert.deepEqual([await sheets(), await p.getAttribute('#e-state [data-v="apart"]', 'aria-pressed'), (await kept('r')).missing], [1, 'true', undefined], 'Enter on a tick-box or a State button doesn’t save');
+  // The number put right: the picture is asked for again at once, for the new number.
+  asked.length = 0;
+  await p.fill('#e-num', '10340');
+  await p.press('#e-num', 'Tab');
+  await p.waitForFunction(() => document.querySelector('.head-pic').dataset.num === '10340-1');
+  await until(() => asked.includes('10340-1.jpg/1000x800p.jpg'), 5000, 'the picture follows the number');
+  // A number another set has: the first go asks, the second saves.
+  await p.fill('#e-num', '75192');
+  await p.press('#e-num', 'Enter');
+  assert.deepEqual([await sheets(), await p.textContent('#e-save'), await p.textContent('.toast'), (await kept('r')).num],
+    [1, 'Save anyway', 'You already have Millennium Falcon (Office). Tap again to keep both.', '10334-1'], 'renumbered to a set that’s owned: it asks first');
+  await p.press('#e-num', 'Enter');
+  assert.equal((await kept('r')).num, '10334-1', 'and Enter held down is still one go');
+  await p.fill('#e-num', '10340');
+  assert.equal(await p.textContent('#e-save'), 'Save', 'another number puts Save back');
+  await p.fill('#e-num', '75192');
+  await p.click('#e-save');
+  await p.waitForTimeout(650);
+  await p.click('#e-save');
+  assert.deepEqual([await sheets(), (await kept('r')).num, (await kept('r')).missing], [0, '75192-1', 'the dial\none foot'], 'the second go saves');
+  // A set saved with the number it already had isn't asked about, though another has it too.
+  await p.click('.item:has-text("Retro Radio")');
+  await p.fill('#e-room', 'Hall');
+  await p.press('#e-room', 'Enter');
+  assert.deepEqual([await sheets(), (await kept('r')).room], [0, 'Hall']);
+  // Adding by hand: Enter adds, and a set already owned still takes a second go.
+  await p.click('#add-btn');
+  await p.fill('#e-num', '21318');
+  await p.press('#e-num', 'Enter');
+  assert.equal(await p.locator('.item').count(), 4, 'Enter adds the set');
+  await p.click('#add-btn');
+  await p.fill('#e-num', '21318');
+  await p.press('#e-num', 'Enter');
+  await p.press('#e-num', 'Enter');
+  assert.deepEqual([await p.locator('.item').count(), await p.textContent('#e-save')], [4, 'Add another copy'], 'Enter doesn’t get round the second tap');
+  await p.click('[data-close]'); await p.waitForTimeout(650); await p.click('[data-close]');
+  // The search: tapped or clicked with something in it, typing replaces it.
+  await p.fill('#q', 'radio');
+  await p.click('h1:visible');
+  await p.click('#q');
+  await p.keyboard.type('falcon');
+  assert.equal(await p.inputValue('#q'), 'falcon', 'a click in the search selects what’s there');
+  await p.click('h1:visible');
+  await p.tap('#q');
+  await p.keyboard.type('bonsai');
+  assert.deepEqual([await p.inputValue('#q'), await p.locator('.item .t').allTextContents()], ['bonsai', ['Bonsai Tree']], 'and so does a tap');
+  await c.close();
+}
+
 // What's typed in a sheet isn't thrown away on one slip. With changes in it, a tap on the dimmed page outside does
 // nothing, and Close or Escape ask first ("Discard changes?") and close on the next one. A sheet nothing was changed
 // in closes as it always did.

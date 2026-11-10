@@ -172,6 +172,7 @@ a.item { color: inherit; text-decoration: none; }
 .sheet .hd { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; border-bottom: 1px solid var(--line); }
 .sheet .hd h2 { margin: 0; font-size: 19px; flex: 1; min-width: 0; }
 .sheet .bd { padding: 14px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.sheet form.bd { margin: 0; }
 .sheet .ft { padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px); border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: space-between; align-items: center; }
 /* A sheet with no row of buttons at the bottom ends clear of the phone's home bar too. */
 .sheet .bd:last-child { padding-bottom: calc(env(safe-area-inset-bottom) + 14px); }
