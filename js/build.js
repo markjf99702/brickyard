@@ -211,7 +211,10 @@ function openSheet() {
 // ---------- one model ----------
 async function openModel(id) {
   const model = await modelById(id);
-  if (!model) { toast('That model isn’t here any more'); location.hash = '#build'; return; }
+  // The list takes this address's place in history rather than a new one after it. Back can land here on a model
+  // that was removed, with no tap since, and Chrome's Back then skips every place a page adds: the next Back would
+  // leave Brickyard.
+  if (!model) { toast('That model isn’t here any more'); location.replace('#build'); return; }
   const { pool, sets, lots, any } = await currentPool();
   const res = B.check(model, shapes, any ? pool : null);
   current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots };
@@ -296,7 +299,7 @@ $('model-menu').onclick = () => {
     const id = current.id, name = current.model.name, all = saved(), kept = all[id];
     delete all[id]; write(MODELS, all);
     app.closeSheet(() => {
-      location.hash = '#build';
+      location.replace('#build'); // in the removed model's place, so Back doesn't come back to it
       toast('Removed ' + name, false, { label: 'Undo', run: () => {
         const now = saved(); now[id] = kept; write(MODELS, now);
         app.refresh(); toast(name + ' is back');

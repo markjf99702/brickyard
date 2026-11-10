@@ -660,6 +660,15 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.click('#mm-del');
   await p.waitForSelector('#build-list:not([hidden]) .list');
   assert.deepEqual(await at(), ['#build', 0, '', 'build', false], 'a removed model lands on the list of models');
+  await back();
+  assert.deepEqual([await at(), await p.isVisible('#build-list'), await p.locator('.toast:not([hidden])', { hasText: 'isn’t here any more' }).count()], [['#build', 0, '', 'build', false], true, 0], 'and Back doesn’t come back to the model that’s gone');
+  // The address of a model that isn't kept here goes to the list, in its place in history: Back doesn't bounce off it.
+  await p.goto(base + '#catalog');
+  await p.evaluate(() => { location.hash = '#model-mgone'; });
+  await p.waitForSelector('#build-list:not([hidden]) .list');
+  assert.deepEqual([await at(), await p.textContent('.toast')], [['#build', 0, '', 'build', false], 'That model isn’t here any more']);
+  await back();
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back from the list is My sets, not the missing model again');
   // Loose pieces pasted in My sets land on Build from your box once added.
   await p.goto(base + '#catalog');
   await p.click('#claude-btn');
