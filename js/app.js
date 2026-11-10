@@ -619,6 +619,7 @@
       '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="submit" form="e-form" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
       function () { return now() !== was; });
     was = now();
+    var lent = {}; // boxes filled from a first copy of the same set: { box id: what was put in it }
     if (panel.querySelector('.head-pic')) panel.querySelector('.head-pic').dataset.num = numWas;
 
     $('e-state').onclick = function (e) {
@@ -653,6 +654,9 @@
       var b = $('e-save');
       this.removeAttribute('aria-invalid');
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
+      // What the boxes took from a first copy of the old number goes with it, unless it's been changed since.
+      Object.keys(lent).forEach(function (id) { if ($(id).value === lent[id]) $(id).value = ''; });
+      lent = {};
       still();
     });
     // A number changed on a set that's already here leaves the name, year and pieces as they were: the row would
@@ -692,6 +696,13 @@
       var dup = isNew ? C.findDup(DOC, y) : y.num && y.num !== numWas ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
       if (dup && !secondTap(btn, 'again')) {
         btn.textContent = isNew ? 'Add another copy' : 'Save anyway';
+        // A second copy added by its number alone takes the first copy's name, year, pieces and theme, into the
+        // boxes left empty, where they can be seen and changed before the second tap. (It was a bare "Set 75192"
+        // beside the first copy, which had them all.) Never where the first copy is, its state or its notes.
+        if (isNew && y.num && dup.num === y.num) [['e-name', dup.name], ['e-year', dup.year], ['e-pieces', dup.pieces], ['e-theme', dup.theme]].forEach(function (f) {
+          var el = $(f[0]);
+          if (!el.value.trim() && f[1]) { el.value = f[1]; lent[f[0]] = String(f[1]); }
+        });
         toast('You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.'));
         return;
       }

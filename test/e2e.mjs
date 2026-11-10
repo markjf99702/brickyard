@@ -2029,6 +2029,37 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// A second copy added by its number takes the first copy's name, year, pieces and theme into the empty boxes on
+// the first tap, to be seen before "Add another copy" (it was a bare "Set 75192" beside a first copy that had them
+// all). Not its place, state, missing pieces, notes or size; a box already typed in is left alone; and a change of
+// number takes them out again.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '75192-1', name: 'Millennium Falcon', year: 2017, pieces: 7541, theme: 'Star Wars', state: 'sealed', room: 'Garage', box: '4', missing: 'a dish', notes: 'From Sam', size: { w: 84, d: 56, h: 21 }, tags: ['display'] } } });
+  await p.goto(base + '#catalog');
+  const boxes = () => p.evaluate(() => ['e-name', 'e-year', 'e-pieces', 'e-theme', 'e-room', 'e-box', 'e-missing', 'e-notes', 'e-w', 'e-tags'].map(id => document.getElementById(id).value));
+  await p.click('#add-btn');
+  await p.fill('#e-num', '75192');
+  await p.click('#e-save');
+  assert.equal(await p.textContent('.toast'), 'You already have Millennium Falcon (Garage · Box 4). Tap again to add a second copy.');
+  assert.equal(await p.textContent('#e-save'), 'Add another copy');
+  assert.deepEqual(await boxes(), ['Millennium Falcon', '2017', '7541', 'Star Wars', '', '', '', '', '', ''], 'the empty boxes take what the first copy has, and nothing about where it is');
+  // Another number: what was lent goes, and the button asks afresh.
+  await p.fill('#e-num', '75257');
+  assert.deepEqual([await boxes(), await p.textContent('#e-save')], [['', '', '', '', '', '', '', '', '', ''], 'Add set']);
+  // A year typed first is kept.
+  await p.fill('#e-num', '75192');
+  await p.fill('#e-year', '2018');
+  await p.click('#e-save');
+  assert.deepEqual((await boxes()).slice(0, 4), ['Millennium Falcon', '2018', '7541', 'Star Wars']);
+  await p.waitForTimeout(650);
+  await p.click('#e-save');
+  const sets = await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => x.id !== 'a').map(x => [x.num, x.name, x.year, x.pieces, x.theme, x.state, x.room, x.box, x.missing, x.notes, x.size, x.tags]));
+  assert.deepEqual(sets, [['75192-1', 'Millennium Falcon', 2018, 7541, 'Star Wars', 'built', undefined, undefined, undefined, undefined, undefined, undefined]], 'the second copy has the first one’s name and piece count');
+  assert.deepEqual(await p.$$eval('#list-wrap .item .t', els => els.map(e => e.textContent)), ['Millennium Falcon', 'Millennium Falcon']);
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });
