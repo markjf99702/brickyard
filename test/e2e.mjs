@@ -684,6 +684,44 @@ assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 're
   await c.close();
 }
 
+// "Added 3 sets" has Undo: one tap takes out the sets that were just added and leaves My sets as it was (a batch added
+// with the wrong box typed for all of them used to be put right or removed set by set). The link is then offered
+// whole again, as if it had never been opened.
+{
+  const batch = { brickyard: 1, batch: { name: 'Hall shelf', sets: [{ num: '10334', name: 'Retro Radio' }, { num: '10497', name: 'Galaxy Explorer' }, { num: '10331', name: 'Kingfisher Bird' }, { num: '10281', name: 'Bonsai Tree' }] } };
+  const { c, p } = await withSets({ sets: { o: { id: 'o', t: 1, name: 'Orchid', state: 'built' }, b: { id: 'b', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built' } } });
+  const link = base + '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url');
+  const names = () => p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del).map(x => x.name + (x.box ? ' in ' + x.box : '')).sort());
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const ticks = () => p.$$eval('.rv li input', bs => bs.map(b => b.checked));
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  await p.fill('#rv-box', '12'); // the wrong box
+  await p.click('#rv-add');
+  assert.deepEqual([await toastSays(), await names()], [['Added 3 sets', 'Undo'], ['Bonsai Tree', 'Galaxy Explorer in 12', 'Kingfisher Bird in 12', 'Orchid', 'Retro Radio in 12']]);
+  await p.click('.toast button');
+  assert.deepEqual([await toastSays(), await names(), await p.locator('.item .t').allTextContents(), await p.evaluate(() => window.brickyard.doc().seen)],
+    [['Took those 3 sets out again', ''], ['Bonsai Tree', 'Orchid'], ['Bonsai Tree', 'Orchid'], {}], 'Undo leaves My sets as it was');
+  assert.deepEqual(Object.values(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog.sets).filter(x => !x.del).length, 2, 'and that is saved');
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([await ticks(), await p.locator('.sheet .flag').count()], [[true, true, true, false], 0], 'the link is offered whole again, without "opened before"');
+  // Undo after a second go at the same link takes out only what that go added, and remembers the first.
+  await p.click('.rv li >> nth=2 >> .t');
+  await p.click('#rv-add');
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual(await ticks(), [false, false, true, false]);
+  await p.click('#rv-add');
+  assert.deepEqual(await toastSays(), ['Added 1 set', 'Undo']);
+  await p.click('.toast button');
+  assert.deepEqual([await toastSays(), await names()], [['Took that set out again', ''], ['Bonsai Tree', 'Galaxy Explorer', 'Orchid', 'Retro Radio']]);
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([await ticks(), await p.locator('.sheet .flag').count()], [[false, false, true, false], 1], 'the first go is still remembered');
+  await c.close();
+}
+
 // Tab stays in an open sheet, never reaching the page behind it, and closing it gives focus back.
 await page.focus('#menu-btn');
 await page.keyboard.press('Enter');

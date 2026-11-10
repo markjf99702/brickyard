@@ -681,7 +681,7 @@
     $('rv').onclick = tickRow;
     $('rv-add').onclick = function () {
       var room = $('rv-room').value.trim(), spot = $('rv-spot').value.trim(), box = $('rv-box').value.trim(), n = 0, day = today();
-      var took = Object.assign({}, before);
+      var took = Object.assign({}, before), ids = [], seenWas = DOC.seen[batch.id];
       rows.forEach(function (r, i) {
         if (!r.on) return;
         var y = Object.assign({}, r.x);
@@ -693,12 +693,20 @@
         else if (!box && batch.box && C.natural(C.boxName(y.box), C.boxName(batch.box)) === 0) delete y.box;
         y = C.cleanSet(Object.assign(y, { added: day }));
         if (!y) return;
-        y.id = newId(); putSet(y); n++; took[i] = y.id;
+        y.id = newId(); putSet(y); n++; took[i] = y.id; ids.push(y.id);
       });
       DOC.seen[batch.id] = Date.now();
       tookFrom(batch.id, took);
       save(); closeSheet(); renderCatalog();
-      toast('Added ' + plural(n, 'set'));
+      // Undo takes out the sets this tap added (a batch with the wrong box typed for all of them was fourteen sets
+      // to put right or remove by hand), and forgets that the link was opened, so it's offered whole again.
+      toast('Added ' + plural(n, 'set'), false, { label: 'Undo', run: function () {
+        ids.forEach(function (id) { if (DOC.sets[id] && !DOC.sets[id].del) removeSet(id); });
+        if (seenWas === undefined) delete DOC.seen[batch.id]; else DOC.seen[batch.id] = seenWas;
+        tookFrom(batch.id, before);
+        save(); refresh();
+        toast(n === 1 ? 'Took that set out again' : 'Took those ' + n.toLocaleString() + ' sets out again');
+      } });
     };
     count();
   }
