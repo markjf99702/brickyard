@@ -2244,6 +2244,24 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   }
 }
 
+// Search the way it's typed: a box asked for as a question shows that box, loose pieces and all (the other words
+// were searched for, and "what's in box 3" found nothing); "box 03" is box 3; a plural finds the singular; and
+// the chips' own words find what the chips show.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10280-1', name: 'Flower Bouquet', box: '3', missing: 'one leaf' }, b: { id: 'b', t: 1, num: '21327-1', name: 'Typewriter', box: '3' },
+    d: { id: 'd', t: 1, num: '76391-1', name: 'Hogwarts Icons', box: '4' }, e: { id: 'e', t: 1, num: '10295-1', name: 'Porsche 911' } },
+    loose: { l: { id: 'l', t: 1, name: 'Blue tub', box: '3', parts: [['3001', 4, 40]] } } });
+  await p.goto(base + '#catalog');
+  const find = async q => { await p.fill('#q', q); return [(await p.$$eval('#list-wrap .item .t', els => els.map(e => e.textContent.split(' ')[0]))).join(), await p.locator('#list-wrap .note.lots').count()]; };
+  assert.deepEqual(await find('what’s in box 3'), ['Flower,Typewriter', 1], 'a box asked for as a question, with its loose pieces');
+  assert.deepEqual([await find('box 03'), await find('box3'), await find('in box 3 type')], [['Flower,Typewriter', 1], ['Flower,Typewriter', 1], ['Typewriter', 0]]);
+  assert.match(await p.textContent('#print-head'), /^Brickyard · My sets by room · “in box 3 type” · /);
+  await p.fill('#q', 'what’s in box 3');
+  assert.match(await p.textContent('#print-head'), /^Brickyard · Box 3 · /, 'and printed, it is headed Box 3');
+  assert.deepEqual([await find('flowers'), await find('911'), await find('not packed'), await find('missing pieces'), await find('lego 21327')], [['Flower', 0], ['Porsche', 0], ['Porsche', 0], ['Flower', 0], ['Typewriter', 0]]);
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

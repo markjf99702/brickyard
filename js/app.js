@@ -296,7 +296,7 @@
     var lots = C.liveLots(DOC).filter(function (l) { return l.box; });
     var labels = Object.keys(all.concat(lots).reduce(function (m, x) { if (x.box) m[x.box] = 1; return m; }, {}));
     var shown = all.filter(function (x) { return passes(x) && C.matches(x, q, labels); });
-    var bs = C.boxSearch(q, labels), inBox = function (x) { return x.box && C.boxName(x.box).toLowerCase() === bs.label; };
+    var bs = C.boxSearch(q, labels), inBox = function (x) { return C.inBox(x, bs.label); };
     var hunt = bs && bs.label && !bs.rest.trim() && show === 'all' ? lots.filter(inBox) : [];
     var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), shown.length > 0) : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +

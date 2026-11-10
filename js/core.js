@@ -332,33 +332,56 @@
   // A word after "box" that's neither a label nor a number is just a word ("creative brick box large"): then
   // it's no box search at all (null). Otherwise it returns the label (null for a box with nothing in it, such as
   // "box 3" before anything is packed in box 3) and the rest of the query.
+  // It can be asked as a question: "in box 3", "what's in box 3" and "sets in box 3" are all box 3 (the other words
+  // used to be searched for, so "in box 3" found only the sets with "in" somewhere). "box3" is box 3 too, and a
+  // label is matched the way boxes are grouped (natural), so "box 03" finds box 3.
   function boxSearch(q, labels) {
-    var bm = /(?:^|\s)box\s+(\S.*)$/i.exec(q);
+    q = unlego(q);
+    var bm = /(?:^|\s)box(?:\s+|(?=[#\d]))(\S.*)$/i.exec(q);
     if (!bm) return null;
     var rest = bm[1].toLowerCase().replace(/\s+/g, ' ').trim(), tries = [rest], best = null;
     if (bareBox(rest) !== rest) tries.push(bareBox(rest));
     labels.forEach(function (l) {
-      var k = boxName(l).toLowerCase();
+      var k = boxName(l).toLowerCase(), n = k.split(' ').length;
       if (!k || (best && k.length <= best.label.length)) return;
-      tries.forEach(function (t) { if (t === k || t.indexOf(k + ' ') === 0) best = { label: k, after: t.slice(k.length) }; });
+      tries.forEach(function (t) {
+        var words = t.split(' ');
+        if (natural(words.slice(0, n).join(' '), k) === 0) best = { label: k, after: words.slice(n).join(' ') };
+      });
     });
     if (!best && !/^\d+$/.test(tries[tries.length - 1].split(' ')[0])) return null;
-    return { label: best ? best.label : null, rest: q.slice(0, bm.index) + ' ' + (best ? best.after : '') };
+    var before = fold(q.slice(0, bm.index)).replace(/(^|\s)(?:what'?s\s+)?in\s*$/, '$1');
+    return { label: best ? best.label : null, rest: (before + ' ' + (best ? best.after : '')).split(/\s+/).filter(function (w) { return w && w !== 'sets'; }).join(' ') };
   }
+  // "lego 75192" is 75192: the word LEGO in front of a search is dropped, unless it's the whole search.
+  function unlego(q) { return String(q || '').replace(/^\s*lego\s+(?=\S)/i, ''); }
+  // True when a set's box is the one a box search found (its label, as boxSearch gives it).
+  function inBox(x, label) { return !!x.box && natural(boxName(x.box), label) === 0; }
 
   // labels: every moving-box label in the catalog. Without them, the set's own is the only one known.
+  // Besides the set's own fields, the words the screen uses are searched: "missing pieces" finds the sets with
+  // something missing and "to check" the ones marked, and "not packed" is the sets with no moving box. A word of
+  // four letters or more that isn't found is tried without its last s or es ("flowers" finds Flower Bouquet).
   function matches(x, q, labels) {
     if (!q) return true;
+    q = unlego(q);
     var b = boxSearch(q, labels || (x.box ? [x.box] : []));
     if (b) {
-      if (!b.label || boxName(x.box).toLowerCase() !== b.label) return false;
+      if (!b.label || !inBox(x, b.label)) return false;
       q = b.rest;
     }
-    var hay = fold([x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
-      .join(' ')), plain = unpunct(hay);
-    return fold(q).split(/\s+/).filter(Boolean).every(function (w) {
-      var u = unpunct(w);
-      return hay.indexOf(w) >= 0 || (!!u && plain.indexOf(u) >= 0);
+    q = fold(q);
+    if (/(^|\s)not packed(\s|$)/.test(q)) {
+      if (x.box) return false;
+      q = q.replace(/(^|\s)not packed(?=\s|$)/, ' ');
+    }
+    // The number's "-1" is left out of the text without punctuation: "76391-1" read as 763911, and "911" found it.
+    var rest = [shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '',
+      x.missing ? 'missing pieces' : '', x.check ? 'to check' : ''].join(' ');
+    var hay = fold((x.num || '') + ' ' + rest), plain = unpunct(fold(rest));
+    var has = function (w) { var u = unpunct(w); return hay.indexOf(w) >= 0 || (!!u && plain.indexOf(u) >= 0); };
+    return q.split(/\s+/).filter(Boolean).every(function (w) {
+      return has(w) || (w.length >= 4 && ((/s$/.test(w) && has(w.slice(0, -1))) || (/es$/.test(w) && has(w.slice(0, -2)))));
     });
   }
   // Search reads a name the way it's said. Both what's typed and what's searched are put in lower case, without
@@ -466,7 +489,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
-    hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);

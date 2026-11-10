@@ -190,6 +190,32 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   eq(find('box 3'), ['Typewriter'], 'box 3 is not box 13');
   eq(find('box 99'), [], 'a box with nothing in it finds nothing');
 }
+// Search as it's typed on a phone: a plural finds the singular, the screen's own words find what they name, a
+// number's "-1" isn't read as one more digit, and a box can be asked for as "box3", "box 03" or a question.
+{
+  const sets = [
+    C.cleanSet({ num: '76391', name: 'Hogwarts Icons - Collectors\' Edition', box: '3' }), C.cleanSet({ num: '10295', name: 'Porsche 911', box: '3', check: 'or the 42096?' }),
+    C.cleanSet({ num: '10280', name: 'Flower Bouquet', box: '03', missing: 'one leaf' }), C.cleanSet({ num: '76187', name: 'Venom', theme: 'Helmet Collection' }),
+    C.cleanSet({ num: '75192', name: 'Millennium Falcon', box: 'Kitchen 2', notes: 'in the hall' }), C.cleanSet({ num: '10305', name: 'Lion Knights\' Castle', room: 'Classroom' }),
+    C.cleanSet({ name: 'Battle Pack', box: '12' }),
+  ];
+  const labels = sets.map(x => x.box).filter(Boolean);
+  const find = q => sets.filter(x => C.matches(x, q, labels)).map(x => x.name.split(' ')[0]);
+  eq(find('911'), ['Porsche'], '911 is the Porsche, not set 76391-1');
+  eq([find('76391'), find('76391-1'), find('7639')], [['Hogwarts'], ['Hogwarts'], ['Hogwarts']], 'a number is still found, with its -1 or by its start');
+  eq([find('flowers'), find('helmets'), find('castles'), find('bouquets'), find('boxes')], [['Flower'], ['Venom'], ['Lion'], ['Flower'], ['Hogwarts', 'Porsche', 'Flower', 'Millennium', 'Battle']], 'a plural finds the singular ("boxes" finds what is in a box)');
+  eq([find('class'), find('icons'), find('bus')], [['Lion'], ['Hogwarts'], []], 'a word that is there as typed is found as before, and a short one is left alone');
+  eq([find('missing'), find('missing pieces'), find('check'), find('to check')], [['Flower'], ['Flower'], ['Porsche'], ['Porsche']], 'the words on the chips find what the chips show');
+  eq([find('not packed'), find('not packed castle'), find('pack'), find('packed')], [['Venom', 'Lion'], ['Lion'], ['Battle'], []], 'not packed is the sets with no box, and "pack" is still only a word');
+  eq([find('lego 75192'), find('LEGO millennium falcon'), find('lego')], [['Millennium'], ['Millennium'], []], 'LEGO in front of a search is dropped');
+  eq([find('box3'), find('box 03'), find('Box #03'), find('box 3')], Array(4).fill(['Hogwarts', 'Porsche', 'Flower']), 'box3 and box 03 are box 3, and so is the box labelled 03');
+  eq([find('in box 3'), find('what’s in box 3'), find('whats in box 3'), find('sets in box 3'), find('box 3 sets')], Array(5).fill(['Hogwarts', 'Porsche', 'Flower']), 'a box asked for as a question');
+  eq([find('what’s in box kitchen 2'), find('in box 3 porsche'), find('lego box 12')], [['Millennium'], ['Porsche'], ['Battle']], 'with a label of two words, a word after it, or LEGO in front');
+  eq([C.boxSearch('what’s in box 3', labels), C.boxSearch('box 3 sets', labels), C.boxSearch('in box 3 porsche', labels)], [{ label: '03', rest: '' }, { label: '03', rest: '' }, { label: '03', rest: 'porsche' }], 'what is left to search for');
+  eq([find('in the'), find('falcon in')], [['Millennium'], ['Millennium']], '"in" away from a box is a word like any other');
+  eq([find('box 7'), find('box7'), find('in box 7'), C.boxSearch('brick box 10698', labels)], [[], [], [], { label: null, rest: 'brick' }], 'a box nothing is packed in still finds nothing');
+  eq([C.inBox(sets[2], '3'), C.inBox(sets[3], '3'), C.inBox(sets[4], 'kitchen 2')], [true, false, true], 'inBox matches a label the way boxes are grouped');
+}
 // "Box 5", "box #5" and "#5" typed as a label are all box 5: shown as "Box 5", never "Box Box 5", and found by
 // "box 5". Only showing and searching changes; the label is kept as typed.
 eq(['Box 5', 'box #5', '#5', '# 5', 'Box5', 'BOX 5', '5', 'Box Kitchen 2', 'Kitchen 2', 'Boxes', 'Box', '#', ''].map(C.boxName),
