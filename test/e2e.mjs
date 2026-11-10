@@ -300,11 +300,31 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 
-// Edit: clear a check, then remove a set.
+// "It's right" on a set marked Check is saved at once: closing the sheet without Save leaves it cleared (it used to
+// come back), and Save afterwards keeps it cleared along with whatever else was changed.
+await page.click('.chip[data-f="check"]');
+assert.equal(await page.textContent('.chip[data-f="check"] .n'), '1');
 await page.click('.item:has-text("Lamborghini")');
 await page.click('#e-ok');
-await page.click('#e-save');
-assert.ok(!(await live()).find(x => /Lamborghini/.test(x.name)).check);
+assert.equal(await page.textContent('.toast'), 'Marked as right');
+assert.deepEqual([await page.locator('.sheet').count(), await page.locator('.sheet .flag').count()], [1, 0], 'the sheet stays open, without its Check note');
+await page.click('[data-close]');
+assert.ok(!(await live()).find(x => /Lamborghini/.test(x.name)).check, 'It’s right then Close: the check is gone');
+assert.equal(await page.textContent('.chip[data-f="check"] .n'), '0', 'and To check counts none');
+await page.click('.chip[data-f="all"]');
+{
+  const { c, p } = await withSets({ sets: { l: { id: 'l', t: 1, num: '42115-1', name: 'Lamborghini', check: 'could be 42083' } } });
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Lamborghini")');
+  await p.click('#e-ok');
+  await p.fill('#e-notes', 'on loan');
+  await p.click('#e-save');
+  const l = await p.evaluate(() => window.brickyard.doc().sets.l);
+  assert.deepEqual([l.check, l.notes, l.num], [undefined, 'on loan', '42115-1'], 'Save after It’s right keeps the check cleared');
+  await c.close();
+}
+
+// Remove a set.
 await page.click('.item:has-text("Medieval Castle")');
 await page.dblclick('#e-del');
 assert.equal((await live()).length, 7, 'one tap, or a double tap, does not remove');

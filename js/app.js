@@ -336,7 +336,14 @@
       st = st === b.dataset.v ? '' : b.dataset.v;
       this.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y.dataset.v === st); });
     };
-    if ($('e-ok')) $('e-ok').onclick = function () { delete x.check; this.parentNode.remove(); };
+    // Saved at once, on the set as it's kept, so Close afterwards doesn't bring the check back. Whatever else has
+    // been typed in the sheet still waits for Save.
+    if ($('e-ok')) $('e-ok').onclick = function () {
+      delete x.check; this.parentNode.remove(); panel.focus({ preventScroll: true });
+      var kept = DOC.sets[x.id];
+      if (kept && !kept.del && kept.check) { kept = JSON.parse(JSON.stringify(kept)); delete kept.check; putSet(kept); save(); renderCatalog(); }
+      toast('Marked as right');
+    };
     if ($('e-del')) $('e-del').onclick = function () {
       if (!secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
       removeSet(x.id); save(); closeSheet(); renderCatalog(); toast('Removed');
