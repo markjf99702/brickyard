@@ -119,6 +119,8 @@ async function renderList() {
   stopStage();
   current = null;
   $('build-title').textContent = 'Build from your box';
+  document.title = 'Build from your box · Brickyard';
+  app.heading(); // arriving from another screen, the heading takes the focus (js/app.js)
   $('build-back').setAttribute('href', '#');
   $('model-menu').hidden = true;
   $('model-view').hidden = true;
@@ -232,6 +234,8 @@ async function openModel(id) {
   const res = B.check(model, shapes, any ? pool : null);
   current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots };
   $('build-title').textContent = model.name;
+  document.title = model.name + ' · Brickyard';
+  app.heading();
   $('build-back').setAttribute('href', '#build');
   $('model-menu').hidden = false;
   $('build-list').hidden = true;

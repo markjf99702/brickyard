@@ -796,6 +796,66 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Every screen has its own title (they were all "Brickyard": in the tab, the browser's history, a phone's app
+// switcher), and on a move to another screen its heading takes the focus, so a screen reader says where this is
+// (the focus was left nowhere). Not when Brickyard first opens. And the names a screen reader is given: a chip is
+// "Built, 2 sets" (it read "Built2"), a group's heading "Hall, 2 sets", a row's warning "To check" like its chip,
+// and the State buttons are a group called State. The count line is read out when a search or a filter changes it.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' }, b: { id: 'b', t: 1, name: 'Orchid', state: 'built', room: 'Hall', check: 'or is it 10311?' },
+    d: { id: 'd', t: 1, name: 'Typewriter', state: 'apart', room: 'Office' } } }, { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  const at = () => p.evaluate(() => { const a = document.activeElement; return [document.title, a === document.body ? 'BODY' : a.tagName + ' ' + a.textContent.slice(0, 40)]; });
+  const shown = id => p.waitForFunction(i => !document.getElementById(i).hidden, id); // the browser moves on a moment after the press
+  assert.deepEqual(await at(), ['Brickyard', 'BODY'], 'home, as it opens: nothing takes the focus');
+  await p.focus('#go-catalog');
+  await p.keyboard.press('Enter');
+  await shown('catalog');
+  assert.deepEqual(await at(), ['My sets · Brickyard', 'H1 My sets']);
+  await p.goBack();
+  await shown('home');
+  assert.deepEqual(await at(), ['Brickyard', 'H1 Brickyard']);
+  await p.click('#go-shelves');
+  await shown('shelves');
+  assert.deepEqual(await at(), ['Shelf planner · Brickyard', 'H1 Shelf planner']);
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list .list .item');
+  assert.deepEqual(await at(), ['Build from your box · Brickyard', 'H1 Build from your box']);
+  await p.click('#build-list .list .item:has-text("Cottage")');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.waitForFunction(() => document.title !== 'Build from your box · Brickyard');
+  assert.deepEqual(await at(), ['Cottage · Brickyard', 'H1 Cottage'], 'a model’s title and heading are its name');
+  const step = await p.textContent('#step-n');
+  await p.keyboard.press('ArrowRight');
+  assert.notEqual(await p.textContent('#step-n'), step, 'and the arrow keys still step through it');
+  await p.click('#build-back');
+  await p.waitForSelector('#build-list:not([hidden]) .list .item');
+  await p.waitForFunction(() => document.title === 'Build from your box · Brickyard');
+  assert.deepEqual(await at(), ['Build from your box · Brickyard', 'H1 Build from your box']);
+  // Opened afresh on a screen, the focus is left alone; a link that opens a sheet leaves it in the sheet.
+  await p.goto('about:blank');
+  await p.goto(base + '#catalog');
+  assert.deepEqual(await at(), ['My sets · Brickyard', 'BODY']);
+  await p.goto(base + '#shelves');
+  const batch = { brickyard: 1, batch: { sets: [{ num: '10497', name: 'Galaxy Explorer' }] } };
+  await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url'));
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([(await at())[0], await p.evaluate(() => !!document.activeElement.closest('.sheet'))], ['My sets · Brickyard', true], 'sets from a link: the sheet has the focus');
+  assert.equal(await p.getByRole('group', { name: 'Put them all in' }).count(), 1);
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !(history.state && history.state.sheet));
+  await p.waitForTimeout(100);
+  assert.deepEqual(await at(), ['My sets · Brickyard', 'H1 My sets'], 'and hands it to the heading when it closes');
+  // Names.
+  const named = (role, name, more) => p.getByRole(role, { name, exact: true, ...more }).count();
+  assert.deepEqual([await named('button', 'All, 3 sets'), await named('button', 'Built, 2 sets'), await named('button', 'To check, 1 set'), await p.textContent('.chip[data-f="built"]')], [1, 1, 1, 'Built2'], 'a chip’s name has its count in words; it looks as it did');
+  assert.deepEqual([await named('heading', 'Hall, 2 sets', { level: 2 }), await named('heading', 'Office, 1 set', { level: 2 }), await p.locator('#list-wrap h3').count()], [1, 1, 0], 'a group’s heading, straight under the screen’s');
+  assert.equal(await p.textContent('.item[data-id="b"] .warn'), 'To check', 'the row says To check, as the chip does');
+  assert.equal(await p.getAttribute('#sum', 'aria-live'), 'polite', 'the count is read out when it changes');
+  await p.click('.item[data-id="a"]');
+  assert.deepEqual([await named('group', 'State'), await p.getByRole('group', { name: 'State' }).getByRole('button').count()], [1, 4], 'the State buttons are a group called State');
+  await c.close();
+}
+
 // Open a file in My sets also takes the sizes and model files Claude hands over: sizes go on to the shelf planner's
 // Add sizes, a model into Build from your box, opened. A sizes link pasted into Add from photos goes on too.
 {
@@ -1964,7 +2024,7 @@ await page.waitForFunction(() => navigator.serviceWorker?.controller, null, { ti
 const rowsBefore = await page.locator('#list-wrap .item').count();
 assert.ok(rowsBefore > 0, 'My sets has sets in it before going offline');
 const opened = async how => {
-  assert.equal(await page.title(), 'Brickyard', 'the page did not open ' + how);
+  assert.equal(await page.title(), 'My sets · Brickyard', 'the page did not open ' + how);
   await page.waitForSelector('#list-wrap .item', { timeout: 5000 }).catch(() => {});
   assert.equal(await page.locator('#list-wrap .item').count(), rowsBefore, 'My sets did not show its sets ' + how);
 };

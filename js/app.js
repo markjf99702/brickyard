@@ -169,9 +169,27 @@
     if (openScrim && openScrim._at !== location.hash) dropSheet();
     var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h), onShelves = /^#(shelves|z1[zj])/.test(h);
     $('home').hidden = onCat || onBuild || onShelves; $('catalog').hidden = !onCat; $('build').hidden = !onBuild; $('shelves').hidden = !onShelves;
+    // Each screen has its own title, for the tab, the browser's history and a phone's app switcher (they all read
+    // "Brickyard"). A model's is its name, once Build from your box has it open (js/build.js).
+    document.title = onCat ? 'My sets · Brickyard' : onBuild ? 'Build from your box · Brickyard' : onShelves ? 'Shelf planner · Brickyard' : 'Brickyard';
     if (onCat) renderCatalog(); else if (!onBuild && !onShelves) renderHome();
     window.scrollTo(0, 0);
+    // On a move to another screen its heading takes the focus, so a screen reader says where this is and Tab starts
+    // from the top of it (the link that was pressed is hidden by now, which left the focus nowhere). Not when
+    // Brickyard opens, and Build from your box says when its heading is ready (a model's name).
+    var screen = onBuild ? h.replace(/^#d1[zj].*/, '#model-') : onCat ? 'catalog' : onShelves ? 'shelves' : 'home';
+    arriving = !!onScreenNow && onScreenNow !== screen;
+    onScreenNow = screen;
+    if (!onBuild) heading();
     document.dispatchEvent(new CustomEvent('brickyard:route', { detail: h }));
+  }
+  var onScreenNow = '', arriving = false;
+  function heading() {
+    if (!arriving) return;
+    arriving = false;
+    var h1 = document.querySelector('body > section:not([hidden]) h1');
+    // A sheet opened for this screen keeps the focus, and gets it back to give to the heading when it closes.
+    if (openScrim) lastFocus = h1; else if (h1) h1.focus({ preventScroll: true });
   }
   window.addEventListener('hashchange', function () { if (!checkLink()) route(); });
   window.addEventListener('scroll', function () {
@@ -245,7 +263,8 @@
       return f[0] === 'all' || f[0] === show || (f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : t[f[0]]);
     }).map(function (f) {
       var n = f[0] === 'all' ? t.sets : f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : (t[f[0]] || 0);
-      return '<button class="chip" type="button" data-f="' + f[0] + '" aria-pressed="' + (show === f[0]) + '">' + esc(f[1]) + '<span class="n">' + n + '</span></button>';
+      // Its name for a screen reader is "Built, 7 sets": the label and the count run together read as "Built7".
+      return '<button class="chip" type="button" data-f="' + f[0] + '" aria-pressed="' + (show === f[0]) + '" aria-label="' + esc(f[1]) + ', ' + plural(n, 'set') + '">' + esc(f[1]) + '<span class="n">' + n + '</span></button>';
     }).join('');
     // The lit chip is always in view: the row scrolls sideways on a phone, and "To check" is at its far end.
     var lit = chips.querySelector('[aria-pressed="true"]');
@@ -317,7 +336,8 @@
       });
     }
     $('list-wrap').innerHTML = groups.map(function (g) {
-      return (g.name ? '<h3 class="group"><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h3>' : '') +
+      // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
+      return (g.name ? '<h2 class="group"' + (g.sets.length ? ' aria-label="' + esc(g.name) + ', ' + plural(g.sets.length, 'set') + '"' : '') + '><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h2>' : '') +
         (g.sets.length ? '<ul class="list">' + g.sets.map(setItem).join('') + '</ul>' : '') +
         (g.lots ? lotsLine(g.lots, g.name.replace(/^Box /, ''), g.sets.length > 0) : '');
     }).join('') + huntLine;
@@ -328,7 +348,7 @@
     return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
       '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m">' + esc(metaLine(x)) + '</div>' +
       (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
-      (x.missing || x.check ? '<div class="m warn">' + [x.missing ? 'Missing pieces' : '', x.check ? 'Check' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>' +
+      (x.missing || x.check ? '<div class="m warn">' + [x.missing ? 'Missing pieces' : '', x.check ? 'To check' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</div>' +
       (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
   }
 
@@ -522,7 +542,7 @@
       '<div class="two">' + field('Set number', box('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', box('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
       field('Name', box('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
       '<div class="two">' + field('Pieces', box('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', box('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
-      '<div class="field"><span class="lbl">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
+      '<div class="field" role="group" aria-labelledby="e-state-l"><span class="lbl" id="e-state-l">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
         return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k].replace('Taken apart', 'Apart') + '</button>';
       }).join('') + '</div></div>' +
       '<div class="two">' + field('Room', box('e-room', x.room, ' list="dl-room" placeholder="e.g. Office"')) + field('Shelf or spot', box('e-spot', x.spot, ' list="dl-spot" placeholder="e.g. Top shelf"')) + '</div>' +
@@ -728,7 +748,7 @@
     openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nb ? ' · ' + nb + ' added before' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
       (seenAt || nb ? '<p class="flag"><span>You opened this link before. ' + (nb ? 'The sets you added from it then are unticked, and so are any others you already have.' : 'Sets you already have are unticked.') + '</span></p>' : '') +
-      '<div class="bulk"><span class="lbl">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
+      '<div class="bulk" role="group" aria-labelledby="rv-all"><span class="lbl" id="rv-all">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
       '<span class="note" style="margin:0">Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.</span></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
@@ -957,7 +977,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, toastAfter: toastAfter, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();
