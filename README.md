@@ -51,10 +51,11 @@ The skill has to work on its own once it's uploaded to Claude, so it carries a c
 
 ## Shelf planner
 
-- **Bookcases**: add each one with its inside width and depth and the clear height of each shelf (presets for an IKEA Billy, a narrow Billy and a Kallax column). Each is drawn from the front, to scale, with your sets on it.
-- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put. Anything that doesn't fit says why (too tall, too deep, too wide, no room left).
-- Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. **Put these places in My sets** copies each set's room and shelf into the catalog.
-- **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them.
+- **Bookcases**: add each one with its inside width and depth and the clear height of each shelf, top shelf first, a box for each (presets for an IKEA Billy, a narrow Billy and a Kallax column; a Billy's shelves move, so its preset is six even spaces of about 30 cm to measure against yours). Each is drawn from the front, to scale, with your sets on it. Sizes are in cm; one typed with `in` or `"` after it is worked out and the message says so.
+- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put, and the message has Undo. Anything that doesn't fit says why (too tall, too deep, too wide, no room left), and one line adds the reasons up, with about how much more shelf the sets short of room would take. **Take every set off** in a bookcase's sheet starts it again.
+- Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. A line over a bookcase says what's wrong on it: a shelf that's overfull, a set too tall or too deep, a set that has been taken apart or sealed since it was placed (with a button to take it off).
+- **Put these places in My sets** copies each placed set's room and shelf into the catalog, with Undo; the card counts the sets it would change first.
+- **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them. A size that looks wrong for its set (3 cm tall for 4,514 pieces) arrives unticked with the reason.
 - Bookcases are saved with the catalog, so backups and merges carry them.
 
 ## Sync with Google Drive
