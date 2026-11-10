@@ -785,15 +785,17 @@
       '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>' +
       '</div><div class="ft"><button class="btn quiet" type="button" id="p-file">Open a file</button><button class="btn" type="button" id="p-go">Open</button></div>');
     $('p-file').onclick = function () { $('file').click(); };
-    $('p-go').onclick = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file'); };
+    $('p-go').onclick = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file', true); };
   }
   // What's in a sheet's paste box, read as whatever it is. Open a model (js/build.js) and Sizes from Claude
   // (js/shelves.js) use it too, so every paste box takes every kind of Brickyard link or file.
-  function takePasted(box, plain) {
+  function takePasted(box, plain, sets) {
     var t = box.value; if (!t.trim()) { box.focus(); return; }
     // A typed list of set numbers, or the text of a Brickset or Rebrickable export, isn't something Brickyard
-    // reads, but Claude does: say so, where it only said the paste didn't look like sets from Claude.
-    if (!/^\s*[{[]/.test(t) && !/#[a-z]\d[zj]|#batch=|:\/\//i.test(t) && /(^|[^\w-])\d{4,6}(-\d+)?(?![\w-])/.test(t)) {
+    // reads, but Claude does: say so, where it only said the paste didn't look like sets from Claude. Only in the
+    // box that's for sets (`sets`): under Open a model, "My Brickyard pieces" pasted back has a set number in it
+    // too, and was told Claude would fill in names, years and pieces.
+    if (sets && !/^\s*[{[]/.test(t) && !/#[a-z]\d[zj]|#batch=|:\/\//i.test(t) && /(^|[^\w-])\d{4,6}(-\d+)?(?![\w-])/.test(t)) {
       plain = 'That’s a list, not a Brickyard link. Send it to Claude and ask for a Brickyard link: it fills in names, years and pieces.';
     }
     takeIncoming(C.parseIncoming(t), /^\s*[{[]/.test(t) ? 'file' : 'link', plain); // a file's text starts with a bracket

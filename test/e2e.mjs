@@ -2306,6 +2306,15 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.equal(await paste('my sets please'), 'That doesn’t look like sets from Claude or a Brickyard file');
   assert.match(await paste(base + '#b1zAAAA12345'), /cut short or has a wrong character/);
   assert.equal(await p.locator('.sheet').count(), 1, 'the sheet stays open for another go');
+  // Only the box for sets says so. "My Brickyard pieces" pasted back under Open a model has a set's number in it
+  // too, and was told Claude would fill in names, years and pieces.
+  await p.goto(base + '#build');
+  await p.click('#open-model');
+  await p.evaluate(() => { document.querySelector('.toast').hidden = true; });
+  await p.fill('#model-paste', 'My Brickyard pieces\nLarge Creative Brick Box (10698)\n3001/4 ×12');
+  await p.click('#model-go');
+  await p.waitForFunction(() => !document.querySelector('.toast').hidden);
+  assert.equal(await p.textContent('.toast'), 'That doesn’t look like a model from Claude');
   await c.close();
 }
 
