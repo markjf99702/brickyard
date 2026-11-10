@@ -5,11 +5,21 @@
   var S = window.ShelfCore, C = window.BrickCore, app = window.brickyard;
   var esc = app.esc, plural = app.plural, toast = app.toast;
   var T = 1.8; // board thickness in the drawing, cm
+  // Sizes inside, in cm, from IKEA's UK product pages as read on 10 November 2026. BILLY bookcase 80x28x202 cm
+  // (and 40x28x202): "1 fixed shelf and 4 adjustable shelves included", so six spaces; BILLY extra shelf 76x26 cm
+  // (36x26 for the narrow one), 2 cm thick. Six spaces of 32 cm and five 2 cm shelves would be 202 cm, the whole
+  // outside height, with nothing left for the top, the bottom and the plinth. With 2 cm panels top and bottom and
+  // no plinth at all the spaces could average 31.3 cm at most; 30 is an estimate that allows for the plinth, whose
+  // height IKEA doesn't publish. The shelves move, so the sheet says to measure. KALLAX 42x147 cm is 41.5 cm wide
+  // and 39 cm deep (it was 37 here, which turned away sets 37.1 to 39 cm deep), with 33 cm spaces (its inserts are
+  // 33x33 cm).
+  var MEASURE = 'Measure yours for a close fit.';
+  var BILLY_NOTE = 'Billy shelves move: these are six even spaces of about 30 cm. Measure yours.';
   var PRESETS = [
-    { k: 'billy', label: 'Billy', name: 'Billy', w: 76, d: 26, levels: [32, 32, 32, 32, 32, 32] },
-    { k: 'billy40', label: 'Billy narrow', name: 'Billy narrow', w: 36, d: 26, levels: [32, 32, 32, 32, 32, 32] },
-    { k: 'kallax', label: 'Kallax column', name: 'Kallax', w: 33, d: 37, levels: [33, 33, 33, 33] },
-    { k: 'custom', label: 'My own', name: '', w: '', d: '', levels: [] },
+    { k: 'billy', label: 'Billy', name: 'Billy', w: 76, d: 26, levels: [30, 30, 30, 30, 30, 30], note: BILLY_NOTE },
+    { k: 'billy40', label: 'Billy narrow', name: 'Billy narrow', w: 36, d: 26, levels: [30, 30, 30, 30, 30, 30], note: BILLY_NOTE },
+    { k: 'kallax', label: 'Kallax column', name: 'Kallax', w: 33, d: 39, levels: [33, 33, 33, 33], note: MEASURE },
+    { k: 'custom', label: 'My own', name: '', w: '', d: '', levels: [], note: '' },
   ];
   // A set's colour in the drawing, by its theme. Its name is written on it in white, so each is dark enough for
   // white to measure 4.5:1 on it (the orange was #e08a1e, 2.7:1, and the green #2f8a4e, 4.3:1).
@@ -508,7 +518,7 @@
       '<label class="field"><span>Depth inside, cm</span><input id="k-d" inputmode="decimal" value="' + esc(v.d) + '"></label></div>' +
       '<div class="field" role="group" aria-labelledby="k-levels-l"><span class="lbl" id="k-levels-l">Height of each shelf, top shelf first (cm)</span><ol class="levels" id="k-levels"></ol>' +
       '<div><button class="btn sm quiet" type="button" id="k-add">Add a shelf</button></div></div>' +
-      '<p class="note">The height is the clear space above each shelf, up to the one above it. The presets are rough: measure yours for a close fit.</p>' +
+      '<p class="note">The height is the clear space above each shelf, up to the one above it. <span id="k-note">' + esc(isNew ? preset.note : MEASURE) + '</span></p>' +
       (onIt ? '<div><button class="btn sm quiet" type="button" id="k-clear">Take every set off</button></div>' : '') +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
       function () { return now() !== was || $('k-room').value.trim() !== v.room; });
@@ -546,6 +556,7 @@
       this.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y === b); });
       $('k-name').value = p.name; $('k-w').value = p.w; $('k-d').value = p.d;
       rows = (p.levels.length ? p.levels : ['']).map(function (h) { return { from: -1, v: String(h) }; }); draw();
+      $('k-note').textContent = p.note;
       was = now();
       if (p.k === 'custom') $('k-name').focus();
     };

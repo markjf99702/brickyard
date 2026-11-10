@@ -1898,6 +1898,27 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// The presets. A Billy's six spaces are about 30 cm (six of 32 cm and its five 2 cm shelves would be 202 cm, the whole
+// outside height, with no top, bottom or plinth), and the sheet says they're a guess to measure. A Kallax is 39 cm
+// deep inside (IKEA UK's product pages, 10 November 2026).
+{
+  const { c, p } = await withSets({ sets: {} });
+  const sheet = () => p.evaluate(() => [document.getElementById('k-w').value, document.getElementById('k-d').value, [...document.querySelectorAll('#k-levels input')].map(i => i.value).join(' '), document.getElementById('k-note').textContent]);
+  await p.goto(base + '#shelves');
+  await p.click('[data-act="add-case"]');
+  assert.deepEqual(await sheet(), ['76', '26', '30 30 30 30 30 30', 'Billy shelves move: these are six even spaces of about 30 cm. Measure yours.']);
+  await p.click('#k-preset [data-k="1"]');
+  assert.deepEqual((await sheet()).slice(0, 3), ['36', '26', '30 30 30 30 30 30']);
+  await p.click('#k-preset [data-k="2"]');
+  assert.deepEqual(await sheet(), ['33', '39', '33 33 33 33', 'Measure yours for a close fit.']);
+  await p.click('#k-preset [data-k="3"]');
+  assert.deepEqual(await sheet(), ['', '', '', ''], 'My own starts with one empty shelf');
+  await p.click('#k-preset [data-k="0"]');
+  await p.click('#k-save');
+  assert.deepEqual(await p.evaluate(() => Object.values(window.brickyard.doc().cases).map(k => [k.name, k.w, k.d, k.levels.map(l => l.h).join(' ')])), [['Billy', 76, 26, '30 30 30 30 30 30']]);
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },
