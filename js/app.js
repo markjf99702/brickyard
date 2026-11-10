@@ -674,9 +674,10 @@
   }
 
   // Something that couldn't be read. A Brickyard link that doesn't unpack, or one of a later format, says so and
-  // what to do (C.parseIncoming marks which); anything else gets `plain`, the words for where it was tried.
+  // what to do (C.parseIncoming marks which); anything else gets `plain`, the words for where it was tried. A cut
+  // link can't say who made it (Claude, Stud Finder, or Copy everything as a link here), so the words don't either.
   function unread(e, plain) {
-    if (e && e.why === 'cut') toast('That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file Claude sent.', 'long');
+    if (e && e.why === 'cut') toast('That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file that came with it.', 'long');
     else if (e && e.why === 'newer') toast('That link needs a newer Brickyard. Reload the page, then open it again.', 'long');
     else toast(e && /browser/.test(e.message) ? e.message : plain);
   }

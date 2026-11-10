@@ -79,7 +79,7 @@ assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
 // A link cut short (as a chat app can leave it) says so when Brickyard opens on it, with what to do, on the screen
 // that kind of link belongs to; so does a link of a newer format than this copy of the page knows. Everything else
 // still works.
-const CUT = 'That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file Claude sent.';
+const CUT = 'That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file that came with it.';
 const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it again.';
 {
   const p = await ctx.newPage();
