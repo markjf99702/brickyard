@@ -13,6 +13,7 @@
   --line: #e3dacb;
   --red: #c8322b;
   --red-btn: var(--red); /* behind the buttons' white text; dark mode keeps this deeper red for it */
+  --red-text: var(--red); /* small red words (To check, Remove); dark mode has a lighter red for them, 4.5:1 on a card */
   --red-ink: #ffffff;
   --yellow: #f2bf1d;
   --blue: #1f5ba6;
@@ -27,7 +28,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #181614; --card: #221f1c; --ink: #f2ece2; --muted: #a79d90; --line: #3a352f;
-    --red: #e04a40; --red-btn: #c8322b; --yellow: #f2c53a; --blue: #6a9be0; --green: #5cbf7c; --soft: #2c2824;
+    --red: #e04a40; --red-btn: #c8322b; --red-text: #ef6a5f; --yellow: #f2c53a; --blue: #6a9be0; --green: #5cbf7c; --soft: #2c2824;
     --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 8px 20px -12px rgba(0, 0, 0, .6);
     --seg-on: #564f47; --edge: var(--line);
     color-scheme: dark;
@@ -35,7 +36,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #181614; --card: #221f1c; --ink: #f2ece2; --muted: #a79d90; --line: #3a352f;
-  --red: #e04a40; --red-btn: #c8322b; --yellow: #f2c53a; --blue: #6a9be0; --green: #5cbf7c; --soft: #2c2824;
+  --red: #e04a40; --red-btn: #c8322b; --red-text: #ef6a5f; --yellow: #f2c53a; --blue: #6a9be0; --green: #5cbf7c; --soft: #2c2824;
   --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 8px 20px -12px rgba(0, 0, 0, .6);
   --seg-on: #564f47; --edge: var(--line);
   color-scheme: dark;
@@ -85,7 +86,7 @@ a { color: var(--blue); }
 .btn.quiet { background: var(--soft); color: var(--ink); box-shadow: none; }
 .btn.sm { padding: 7px 12px; font-size: 14px; }
 .btn.wide { width: 100%; justify-content: center; }
-.btn.danger { background: none; color: var(--red); box-shadow: none; padding-left: 0; }
+.btn.danger { background: none; color: var(--red-text); box-shadow: none; padding-left: 0; }
 .icon-btn { width: 44px; height: 44px; border-radius: 11px; border: 0; background: var(--soft); cursor: pointer; display: grid; place-items: center; }
 
 /* ---------- home ---------- */
@@ -114,6 +115,8 @@ a { color: var(--blue); }
   width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); padding: 0 12px 0 38px;
 }
 .search svg { position: absolute; left: 12px; top: 13px; color: var(--muted); }
+/* An example in an empty box is as readable as a label. The browser's own grey was 3.6:1 in dark mode. */
+::placeholder { color: var(--muted); opacity: 1; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
 .chips::-webkit-scrollbar { display: none; }
@@ -150,9 +153,9 @@ a.item { color: inherit; text-decoration: none; }
 .badge { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 3px 7px; white-space: nowrap; background: var(--soft); color: var(--ink); }
 .badge.built { background: color-mix(in srgb, var(--green) 18%, transparent); color: color-mix(in srgb, var(--ink) 25%, var(--green)); }
 .badge.partial { background: color-mix(in srgb, var(--yellow) 30%, transparent); color: color-mix(in srgb, var(--ink) 80%, var(--yellow)); }
-.badge.apart { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue); }
+.badge.apart { background: color-mix(in srgb, var(--blue) 16%, transparent); color: color-mix(in srgb, var(--ink) 25%, var(--blue)); }
 .badge.sealed { background: color-mix(in srgb, var(--red) 14%, transparent); color: color-mix(in srgb, var(--ink) 25%, var(--red)); }
-.item .m.warn { color: var(--red); font-weight: 600; white-space: normal; text-wrap: balance; }
+.item .m.warn { color: var(--red-text); font-weight: 600; white-space: normal; text-wrap: balance; }
 .note.lots { margin: 8px 2px 0; }
 .note.lots a { color: inherit; text-underline-offset: 2px; }
 .empty { text-align: center; padding: 34px 10px 10px; color: var(--muted); }
@@ -193,7 +196,7 @@ a.item { color: inherit; text-decoration: none; }
 .seg button { border: 0; background: none; border-radius: 8px; padding: 8px 2px; min-height: 44px; font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--muted); }
 /* In dark mode the card colour is darker than the track, so the chosen button looked pressed in and was hard to pick
    out: there it's lighter than the track instead (--seg-on). */
-.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--ink); box-shadow: var(--shadow); }
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1.5px var(--muted); }
 .check { display: flex; gap: 10px; align-items: center; min-height: 44px; margin-bottom: 12px; cursor: pointer; }
 .check input { flex: none; }
 .check input { width: 20px; height: 20px; accent-color: var(--red); }
@@ -215,12 +218,16 @@ a.item { color: inherit; text-decoration: none; }
 /* review list */
 .rv { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .rv li { display: grid; grid-template-columns: 24px 56px 1fr; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; cursor: pointer; }
-.rv li.off { opacity: .55; }
+/* An unticked set is told by its box, its faded picture and its quieter name. The whole row was faded, which took
+   the reason it's unticked ("You already have this one") down to 2.5:1. */
+.rv li.off { background: none; }
+.rv li.off .pic { opacity: .55; }
+.rv li.off .t { color: var(--muted); }
 .rv .pic { width: 56px; height: 46px; }
 .rv input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--red); }
 .rv .t { font-weight: 600; line-height: 1.25; }
 .rv .m { color: var(--muted); font-size: 13.5px; }
-.rv .w { color: var(--red); font-size: 13.5px; margin-top: 2px; }
+.rv .w { color: var(--red-text); font-size: 13.5px; margin-top: 2px; }
 .bulk { background: var(--soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
 .bulk .field { margin: 0; }
 
@@ -256,7 +263,7 @@ ul.need.wide { grid-template-columns: 1fr; }
 ul.need li { display: flex; gap: 10px; align-items: center; line-height: 1.25; }
 ul.need i { flex: none; width: 30px; height: 20px; border-radius: 4px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .15); }
 ul.need small { display: block; color: var(--muted); font-size: 13px; }
-ul.need li.short small::after { content: ' · short'; color: var(--red); font-weight: 600; }
+ul.need li.short small::after { content: ' · short'; color: var(--red-text); font-weight: 600; }
 
 /* ---------- shelf planner ---------- */
 .case { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 12px 0; }

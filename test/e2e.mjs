@@ -1767,6 +1767,55 @@ await page.click('[data-close]');
   }
 }
 
+// More small text at 4.5:1 or better, light and dark, each against what's painted behind it with any fading counted:
+// the red words (To check and Missing pieces on a row, the reason in a batch from Claude, Remove, "short" by a piece:
+// 4.1:1 in dark mode on the brighter red that suits a button), the Taken apart badge, the examples in empty boxes
+// (the browser's grey, 3.6:1 in dark mode), and an unticked set in a batch from Claude, whose whole row was faded to
+// 55%, taking the reason it's unticked to 2.5:1. And the chosen State button has a line round it that stands out
+// from its track at 3:1 or better (the button alone was 1.2:1 in light, 1.8:1 in dark).
+{
+  // What's painted for `sel` (or its ::pseudo) over the backgrounds of `under`, outermost last, with the fading
+  // (opacity) of the element and everything round it up to the last of them.
+  const ratio = (p, sel, under, pseudo, what = 'color') => p.evaluate(([sel, under, pseudo, what]) => {
+    const parse = c => {
+      const m = /^(?:rgba?|color)\((?:srgb )?([^)]*)\)/.exec(c), v = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+      return c.startsWith('color(') ? [v[0], v[1], v[2], v[3] ?? 1] : [v[0] / 255, v[1] / 255, v[2] / 255, v[3] ?? 1];
+    };
+    const over = (a, b) => [0, 1, 2].map(i => a[i] * a[3] + b[i] * (1 - a[3])).concat(1);
+    const lum = c => [0.2126, 0.7152, 0.0722].reduce((n, k, i) => n + k * (c[i] <= 0.03928 ? c[i] / 12.92 : ((c[i] + 0.055) / 1.055) ** 2.4), 0);
+    const el = document.querySelector(sel), grounds = under.map(u => document.querySelector(u)), last = grounds[grounds.length - 1];
+    const bg = grounds.reduceRight((b, g) => over(parse(getComputedStyle(g).backgroundColor), b), [1, 1, 1, 1]);
+    let fade = 1;
+    for (let e = el; e && e !== last; e = e.parentElement) fade *= +getComputedStyle(e).opacity;
+    const ink = parse(what === 'ring' ? /rgba?\([^)]*\)[^,]*inset|inset[^,]*rgba?\([^)]*\)/.exec(getComputedStyle(el).boxShadow)[0].match(/rgba?\([^)]*\)/)[0] : getComputedStyle(el, pseudo || undefined).color);
+    if (pseudo === '::placeholder') ink[3] *= +getComputedStyle(el, pseudo).opacity;
+    ink[3] *= fade;
+    const a = lum(over(ink, bg)), b = lum(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }, [sel, under, pseudo, what]);
+  const sets = { b: { id: 'b', t: 1, num: '10698-1', name: 'Large Creative Brick Box', state: 'apart', check: 'or 10696?', missing: 'a red brick' }, g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } };
+  const batch = { brickyard: 1, batch: { sets: [{ num: '10497', name: 'Galaxy Explorer', year: 2022, check: 'the box was half hidden' }] } };
+  for (const colorScheme of ['light', 'dark']) {
+    const { c, p } = await withSets({ sets }, { colorScheme });
+    await p.goto(base + '#catalog');
+    const got = { 'To check on a row': await ratio(p, '.item .m.warn', ['.item', 'body']), 'Taken apart': await ratio(p, '.badge.apart', ['.badge.apart', '.item', 'body']),
+      'the search’s example': await ratio(p, '#q', ['#q'], '::placeholder') };
+    await p.evaluate(() => document.querySelector('#list-wrap').insertAdjacentHTML('beforeend', '<div class="callout"><ul class="need"><li class="short"><small id="probe">2 of 4</small></li></ul></div>'));
+    got['short, by a piece'] = await ratio(p, '#probe', ['.callout', 'body'], '::after');
+    await p.click('.item[data-id="g"]');
+    Object.assign(got, { Remove: await ratio(p, '#e-del', ['.sheet']), 'a box’s example': await ratio(p, '#e-box', ['#e-box'], '::placeholder'), 'an example in Missing pieces': await ratio(p, '#e-missing', ['#e-missing'], '::placeholder') });
+    const ring = await ratio(p, '#e-state [aria-pressed="true"]', ['#e-state', '.sheet'], '', 'ring');
+    assert.ok(ring >= 3, colorScheme + ': the line round the chosen State button is ' + ring.toFixed(2) + ':1 against its track');
+    await p.click('[data-close]');
+    await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url'));
+    await p.waitForSelector('.rv li.off');
+    Object.assign(got, { 'an unticked set’s name': await ratio(p, '.rv li.off .t', ['.rv li.off', '.sheet']), 'its details': await ratio(p, '.rv li.off .m', ['.rv li.off', '.sheet']),
+      'why it’s unticked': await ratio(p, '.rv li.off .w', ['.rv li.off', '.sheet']) });
+    for (const [what, r] of Object.entries(got)) assert.ok(r >= 4.5, colorScheme + ': ' + what + ' is ' + r.toFixed(2) + ':1');
+    await c.close();
+  }
+}
+
 // Build from your box says only what's so. A set with no parts list is named only when it's taken apart (its pieces
 // are the ones not counted; it used to count every built and sealed set too, and promise Claude could add their
 // pieces). With no set it can build from, it says which set it has a list for without presuming you own one. A set
