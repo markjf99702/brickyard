@@ -176,7 +176,9 @@
     var src = 'https://cdn.rebrickable.com/media/thumbs/sets/' + x.num + '.jpg/' + (head ? '1000x800p' : '250x250p') + '.jpg';
     if (!settling) settling = setTimeout(settle, 0);
     return '<div class="pic ' + (gotPic[src] ? 'in ' : '') + (cls || '') + '">' + (gotPic[src] ? '' : BRICK) +
-      '<img alt="" loading="lazy" src="' + esc(src) + '" data-fallback="1" data-num="' + esc(x.num) + '"></div>';
+      // The menu says of these pictures "Loaded from Rebrickable by set number. Nothing else is sent": so not the
+      // address of the page asking either, which a browser adds unless it's told not to (no-referrer).
+      '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(src) + '" data-fallback="1" data-num="' + esc(x.num) + '"></div>';
   }
   function arrived(img) { gotPic[img.getAttribute('src')] = 1; if (img.parentNode) img.parentNode.classList.add('in'); }
   document.addEventListener('load', function (e) {

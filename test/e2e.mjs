@@ -48,8 +48,14 @@ const until = async (ok, ms, what) => {
 const browser = await pw.chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
 // Set pictures come from Rebrickable; here they all fail, which shows the plain brick instead.
-const pictures = [];
-await ctx.route('https://cdn.rebrickable.com/**', r => { pictures.push(r.request().url()); r.fulfill({ status: 404 }); });
+// `told` is what a picture request said about where it came from (its Referer), which should be nothing.
+const pictures = [], told = [];
+await ctx.route('https://cdn.rebrickable.com/**', r => {
+  pictures.push(r.request().url());
+  const h = r.request().headers();
+  for (const k of ['referer', 'origin', 'cookie']) if (h[k]) told.push(k + ': ' + h[k]);
+  r.fulfill({ status: 404 });
+});
 const page = await ctx.newPage();
 const problems = [];
 page.on('pageerror', e => problems.push(e.message));
@@ -158,6 +164,7 @@ assert.equal(await page.locator('.item').count(), 1);
 assert.equal(await page.locator('#catalog .fab-row').isVisible(), true, 'the bottom buttons are back once there are sets');
 await page.waitForSelector('.item .pic.none'); // the picture was asked for, and failed here
 assert.ok(pictures.some(u => u.includes('10698-1')), 'asked Rebrickable for the picture');
+assert.deepEqual(told, [], 'and told it nothing else: not which site asked');
 
 // A bad set number is refused.
 await page.click('#add-btn');
@@ -4000,6 +4007,8 @@ await until(() => page.evaluate(async () => !!(await (await caches.match('index.
 release = false;
 
 assert.deepEqual(problems, [], 'problems while using it');
+assert.ok(pictures.length > 1, 'set pictures were asked for along the way');
+assert.deepEqual(told, [], 'and no request for one said which site was asking');
 await browser.close();
 server.close();
 
