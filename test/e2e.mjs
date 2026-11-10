@@ -1618,6 +1618,41 @@ await page.dblclick('#k-del');
 assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().cases).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
 await page.click('[data-close]');
 
+// Put these places in My sets writes over what My sets said, so its message has Undo, and the card says first how
+// many sets it would change ("My sets matches these shelves" when none, with no button). A set on two bookcases
+// counts once; a set that's been taken apart or sealed since it was placed is left alone, and the message says so.
+// Removing a bookcase takes its name out of My sets too ("Billy, shelf 1", the words the button wrote), in the same
+// Undo.
+{
+  const set = (id, name, state, more) => ({ id, t: 1, name, state, size: { w: 12, d: 10, h: 10 }, ...more });
+  const { c, p } = await withSets({ sets: {
+    bt: set('bt', 'Bonsai Tree', 'built', { room: 'Living room', spot: 'Mantelpiece, left of the clock' }), tw: set('tw', 'Typewriter', 'built', { room: 'Office', spot: 'Billy, shelf 1' }),
+    lb: set('lb', 'London Bus', 'built'), mc: set('mc', 'Medieval Castle', 'apart', { box: '7' }), or: set('or', 'Orchid', 'sealed') },
+    cases: { k: { id: 'k', t: 2, name: 'Billy', room: 'Office', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'tw' }, { id: 'bt' }] }, { h: 32, sets: [{ id: 'mc' }, { id: 'or' }, { id: 'lb' }] }] },
+      x: { id: 'x', t: 1, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [{ id: 'bt' }] }] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
+  const places = () => p.evaluate(() => Object.values(window.brickyard.doc().sets).map(x => [x.id, x.room || '', x.spot || ''].join('/')).sort());
+  const card = () => p.evaluate(() => [document.getElementById('apply-n').textContent, !!document.querySelector('[data-act="apply"]')]);
+  const before = ['bt/Living room/Mantelpiece, left of the clock', 'lb//', 'mc//', 'or//', 'tw/Office/Billy, shelf 1'];
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual(await card(), ['2 sets are somewhere else in My sets.', true], 'the card counts the sets My sets has elsewhere, each once');
+  await p.click('[data-act="apply"]');
+  assert.deepEqual(await toastSays(), ['2 sets updated in My sets; 2 left alone: taken apart or sealed', 'Undo'], 'the message counts what changed and what was left, with Undo');
+  assert.deepEqual(await places(), ['bt/Office/Billy, shelf 1', 'lb/Office/Billy, shelf 2', 'mc//', 'or//', 'tw/Office/Billy, shelf 1'], 'a taken-apart or sealed set gets no shelf');
+  assert.deepEqual(await card(), ['My sets matches these shelves.', false], 'and the card says My sets is up to date');
+  await p.click('.toast button');
+  assert.deepEqual([await places(), await toastSays(), await card()], [before, ['Put those 2 sets’ places back', ''], ['2 sets are somewhere else in My sets.', true]], 'Undo puts back the room and spot that were written over');
+  await p.click('[data-act="apply"]');
+  await p.click('[data-case="k"]');
+  await p.click('#k-del'); await p.waitForTimeout(650); await p.click('#k-del');
+  assert.deepEqual(await toastSays(), ['Removed Billy. Its sets are back in Not on a shelf yet. 3 sets no longer say Billy in My sets.', 'Undo']);
+  assert.deepEqual(await places(), ['bt/Office/', 'lb/Office/', 'mc//', 'or//', 'tw/Office/'], 'removing the bookcase clears the shelf it gave each set');
+  await p.click('.toast button');
+  assert.deepEqual(await places(), ['bt/Office/Billy, shelf 1', 'lb/Office/Billy, shelf 2', 'mc//', 'or//', 'tw/Office/Billy, shelf 1'], 'and Undo puts the bookcase and those words back');
+  await c.close();
+}
+
 // A set made taller than its shelf after it was placed is marked, like an overfull shelf.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, name: 'Typewriter', state: 'built', size: { w: 30, d: 30, h: 20 } } },

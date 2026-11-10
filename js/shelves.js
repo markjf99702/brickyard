@@ -43,7 +43,14 @@
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
       all.forEach(function (c) { html += caseHtml(c, ids); });
-      if (placed) html += '<div class="how" style="margin-top:6px"><b>Happy with it?</b> <span class="note" style="display:block;margin:2px 0 8px">Copy each set’s room and shelf into My sets, so search finds it there.</span><button class="btn quiet sm" type="button" data-act="apply">Put these places in My sets</button></div>';
+      if (placed) {
+        // The card says whether My sets is behind these shelves: after Fit moves a set, or a bookcase is renamed,
+        // nothing else on the screen did.
+        var apart = places(all, ids).filter(function (p) { return p.differs; }).length;
+        html += '<div class="how" style="margin-top:6px"><b>Happy with it?</b> <span class="note" style="display:block;margin:2px 0 8px">Copy each set’s room and shelf into My sets, so search finds it there.</span>' +
+          (apart ? '<p class="note" id="apply-n" style="margin:0 0 8px;color:var(--ink)">' + (apart === 1 ? '1 set is' : apart.toLocaleString() + ' sets are') + ' somewhere else in My sets.</p><button class="btn quiet sm" type="button" data-act="apply">Put these places in My sets</button>'
+            : '<p class="note ok" id="apply-n" style="margin:0">My sets matches these shelves.</p>') + '</div>';
+      }
     }
     if (sorted.waiting.length) {
       html += '<h2 class="group"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2><ul class="list">' + sorted.waiting.map(function (x) {
@@ -204,20 +211,51 @@
     toast(moved ? plural(moved, 'set') + ' placed' + (r.left.length ? '; ' + r.left.length + ' didn’t fit' : '') : 'Nothing else fits. See why under each set.');
   }
 
-  function applyPlaces() {
-    var ids = byId(), n = 0;
-    cases().forEach(function (c) {
-      c.levels.forEach(function (l, li) {
-        l.sets.forEach(function (p) {
-          var x = ids[p.id]; if (!x) return;
-          var spot = shelfName(c, li), room = c.room || x.room || '';
-          if (x.spot === spot && (x.room || '') === room) return;
-          var y = JSON.parse(JSON.stringify(x)); y.spot = spot; if (room) y.room = room; else delete y.room;
-          app.putSet(y); n++;
-        });
-      });
+  // Where the shelves put each set, against what My sets says: one entry for each set on a shelf (once, wherever
+  // it stands), with the room and spot the button below would write. A set that isn't built or partly built any
+  // more is `skip`: a taken-apart or sealed set isn't on a shelf, whatever the drawing still holds.
+  function places(all, ids) {
+    var at = S.placements(all), byCase = {}, out = [];
+    all.forEach(function (c) { byCase[c.id] = c; });
+    Object.keys(at).forEach(function (id) {
+      var x = ids[id], c = byCase[at[id].c]; if (!x) return;
+      var spot = shelfName(c, at[id].l), room = c.room || x.room || '', skip = S.ON_SHELVES.indexOf(x.state) < 0;
+      out.push({ x: x, spot: spot, room: room, skip: skip, differs: !skip && (x.spot !== spot || (x.room || '') !== room) });
     });
-    toast(n ? plural(n, 'set') + ' updated in My sets' : 'My sets already says this');
+    return out;
+  }
+  function sameWords(a, b) { return String(a || '') === String(b || ''); }
+
+  // Copies each placed set's room and shelf into My sets. It overwrites what was written there (a room, "Mantelpiece,
+  // left of the clock"), so the message has Undo, which puts back the room and spot of each set it changed, where
+  // they still are as this left them.
+  function applyPlaces() {
+    var list = places(cases(), byId()), was = [], left = list.filter(function (p) { return p.skip; });
+    list.forEach(function (p) {
+      if (!p.differs) return;
+      var y = copy(p.x); was.push({ id: y.id, room: y.room, spot: y.spot, toRoom: p.room, toSpot: p.spot });
+      y.spot = p.spot; if (p.room) y.room = p.room; else delete y.room;
+      app.putSet(y);
+    });
+    render();
+    var kinds = ['taken apart', 'sealed', 'not built'].filter(function (k) {
+      return left.some(function (p) { return (p.x.state === 'apart' ? 'taken apart' : p.x.state === 'sealed' ? 'sealed' : 'not built') === k; });
+    });
+    var also = left.length ? left.length.toLocaleString() + ' left alone: ' + kinds.join(' or ') : '';
+    if (!was.length) { toast(also ? 'Nothing to update; ' + also : 'My sets already says this'); return; }
+    toast(plural(was.length, 'set') + ' updated in My sets' + (also ? '; ' + also : ''), false, { label: 'Undo', run: function () {
+      var n = 0;
+      was.forEach(function (w) {
+        var x = app.doc().sets[w.id];
+        if (!x || x.del || !sameWords(x.spot, w.toSpot) || !sameWords(x.room, w.toRoom)) return; // changed since: leave it
+        var y = copy(x);
+        if (w.room) y.room = w.room; else delete y.room;
+        if (w.spot) y.spot = w.spot; else delete y.spot;
+        app.putSet(y); n++;
+      });
+      app.refresh();
+      toast(n === 1 ? 'Put that set’s place back' : 'Put those ' + n.toLocaleString() + ' sets’ places back');
+    } });
   }
 
   // One set: its size, where it stands, and moving it.
@@ -309,11 +347,25 @@
     if ($('k-del')) $('k-del').onclick = function () {
       if (!app.secondTap(this)) { this.textContent = 'Tap again to remove'; return; }
       var kept = copy(c), ids = byId(), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
+      // Sets that My sets says are on this bookcase, in the words Put these places in My sets writes ("Hall Billy,
+      // shelf 2"), stop saying so: the bookcase is gone. Not when another bookcase has the same name.
+      var twin = cases().some(function (k) { return k.id !== c.id && k.name === c.name; }), said = [];
+      if (!twin) sets().forEach(function (x) {
+        var m = /^(.*), shelf (\d+)$/.exec(x.spot || '');
+        if (!m || m[1] !== c.name || +m[2] < 1 || +m[2] > c.levels.length || (c.room && x.room && x.room !== c.room)) return;
+        said.push({ id: x.id, spot: x.spot });
+        var y = copy(x); delete y.spot; app.putSet(y);
+      });
       app.removeCase(c.id); app.closeSheet(); render();
-      toast('Removed ' + c.name + (n ? '. Its sets are back in Not on a shelf yet.' : ''), false, { label: 'Undo', run: function () {
+      toast('Removed ' + c.name + (n ? '. Its sets are back in Not on a shelf yet.' : '') +
+        (said.length ? (n ? ' ' : '. ') + (said.length === 1 ? '1 set no longer says' : said.length.toLocaleString() + ' sets no longer say') + ' ' + c.name + ' in My sets.' : ''), false, { label: 'Undo', run: function () {
         // A set stood on another bookcase in the meantime stays there.
         var at = S.placements(cases());
         kept.levels.forEach(function (l) { l.sets = l.sets.filter(function (p) { return !at[p.id]; }); });
+        said.forEach(function (w) {
+          var x = app.doc().sets[w.id];
+          if (x && !x.del && !x.spot) { var y = copy(x); y.spot = w.spot; app.putSet(y); }
+        });
         app.putBack('cases', kept); toast(kept.name + ' is back');
       } });
     };
