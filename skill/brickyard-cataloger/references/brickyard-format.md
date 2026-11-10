@@ -74,6 +74,8 @@ Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scan
 | `note` | Free text, up to 300 characters |
 | `parts[]` | Rows of `[LDraw part, LDraw colour, count]`. A fourth item is the part's name, worth adding for parts the builder can't draw (not in `parts/shapes.json`). The same part and colour twice is added up; rows that don't fit are dropped |
 
+Part numbers: the everyday number for a piece is accepted as well as LDraw's current one. BrickLink and Rebrickable write a 1x2 plate as `3023` and a round 1x1 plate as `4073`; the builder knows them as `3023b` and `6141`. `parts/aliases.json` lists these, and a number in it is read as the builder's whenever pieces are counted, in the page and in the designer skill's `check_model.py`. The lot is kept with the numbers it came with.
+
 Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed. Opening one shows the lot to review, then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.
 
 ## A model (for Build from your box)
@@ -93,6 +95,6 @@ A model Claude designed from someone's pieces. The brickyard-designer skill writ
 | `sets` | The set numbers whose pieces it was designed from, up to 50. One set number on its own (`"10698-1"`) is read as a list of one |
 | `parts[]` | Rows of `[part, colour, x, y, z, turn, step]`, up to 5,000. Rows that don't fit are dropped |
 
-In a row, `part` and `colour` are LDraw numbers (3001 is a 2x4 brick, 4 is red). `x` runs left to right and `z` back to front, in studs (-200 to 200); `y` runs up in plates (0 to 600; a brick is 3 plates). They give the back-left-bottom corner of the part's footprint after turning. `turn` is 0, 90, 180 or 270, and at 90 or 270 the part's width runs front to back. `step` is the building step it goes on in, from 1 (up to 2,000); with steps left out, each height is a step, bottom up.
+In a row, `part` and `colour` are LDraw numbers (3001 is a 2x4 brick, 4 is red). `x` runs left to right and `z` back to front, in studs (-200 to 200); `y` runs up in plates (0 to 600; a brick is 3 plates). They give the back-left-bottom corner of the part's footprint after turning. `turn` is 0, 90, 180 or 270, and at 90 or 270 the part's width runs front to back. `step` is the building step it goes on in, from 1 (up to 2,000); with steps left out, each height is a step, bottom up. An everyday part number listed in `parts/aliases.json` is read as the builder's (3023 as 3023b), as for loose pieces above.
 
 Links: `https://brickyard.junkdrawer.works/#d1z<data>` (deflated, base64url, like `#b1z`) or `#d1j<data>` uncompressed. Opening one saves the model in that browser under **Models**, checks it against the pieces ticked there (enough of each part in each colour, nothing overlapping, everything joined by studs, every step joining onto what's built), and shows it step by step. The model on its own, without the `{"brickyard": 1, "model": …}` wrapper, opens too when it's pasted or opened as a file.

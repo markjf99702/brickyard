@@ -29,8 +29,10 @@ function get(path) {
   return cache[path];
 }
 let shapes = null, colors = null, index = null;
-const ready = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), get('parts/index.json')])
-  .then(([s, c, i]) => { shapes = s; colors = c; index = i; });
+// parts/aliases.json is other numbers for the same piece (3023 for 3023b). Without it (a copy of the page from
+// before it existed) every number is read as it's written, as it was.
+const ready = Promise.all([get('parts/shapes.json'), get('parts/colors.json'), get('parts/index.json'), get('parts/aliases.json').catch(() => ({}))])
+  .then(([s, c, i, a]) => { shapes = s; colors = c; index = i; B.useAliases(a); });
 
 // Sets in My sets that Brickyard has a parts list for. Taken-apart sets count by default; the toggles override.
 // `pieces` is the count My sets shows for the set, so the two screens agree (the parts list for 10698 adds up to
@@ -55,7 +57,7 @@ function poolLots() {
   const prefs = read(POOL, {});
   return Object.values(app.doc().loose || {}).filter(x => !x.del)
     .map(x => ({ id: x.id, name: x.name, box: x.box || '', parts: x.parts, kinds: x.parts.length,
-      pieces: x.parts.reduce((n, r) => n + r[2], 0), usable: x.parts.reduce((n, r) => n + (shapes[r[0]] ? r[2] : 0), 0),
+      pieces: x.parts.reduce((n, r) => n + r[2], 0), usable: x.parts.reduce((n, r) => n + (shapes[B.canon(r[0])] ? r[2] : 0), 0),
       on: x.id in prefs ? prefs[x.id] : true }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }

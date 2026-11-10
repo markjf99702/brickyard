@@ -24,6 +24,12 @@ eq(Object.keys(index), ['10698-1'], 'one parts list so far');
 eq(box.parts.reduce((n, r) => n + r[2], 0), index['10698-1'], 'index counts the 10698 pieces');
 check(Object.values(shapes).every(s => s.n && s.w > 0 && s.d > 0 && s.h > 0 && s.k), 'every shape has a name, size and kind');
 check(box.parts.every(r => colors[String(r[1])]), 'every 10698 colour has a name and hex');
+// Other numbers for the same piece (parts/aliases.json) are kept beside the shapes, not in them: each points
+// straight at a shape, and none is a shape itself.
+const aliases = json('parts/aliases.json');
+check(Object.keys(aliases).length > 0 && Object.keys(aliases).every(k => /^[0-9a-z]+$/.test(k) && !shapes[k] && shapes[aliases[k]]), 'every other number points at a shape and isn’t one');
+B.useAliases(aliases);
+eq(['3023', '3660', '3660a', '4073', '3001', '6223', 'constructor'].map(B.canon), ['3023b', '3660b', '3660b', '6141', '3001', '6223', 'constructor'], 'a number is read as the builder’s; other pieces are left alone');
 // The designer skill is uploaded to Claude on its own, so it carries a copy of parts/ in its data/ folder.
 const skill = path.join(root, 'skill/brickyard-designer');
 const filesIn = dir => { try { return fs.readdirSync(dir, { recursive: true, withFileTypes: true }).filter(f => f.isFile()).map(f => path.relative(dir, path.join(f.parentPath || f.path, f.name)).split(path.sep).join('/')).sort(); } catch (e) { return []; } };
@@ -187,6 +193,11 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]),
     'floating, base first': M(FLOAT_A), 'floating, rows swapped': M(FLOAT_A2), 'a floating pair': M(FLOAT_B), 'a floating pair, backwards': M(FLOAT_B2), 'two towers': M(TOWERS),
   };
+  // Everyday part numbers, as BrickLink and Rebrickable write them, are the pieces shapes.json has under LDraw's
+  // current numbers: two 1x2 plates and a round 1x1 plate, an inverted slope under both its old numbers. 6223 and
+  // 76959 are different pieces, and stay unknown.
+  cases['everyday part numbers'] = { name: 'Bare', parts: [['3023', 15, 0, 0, 0, 0, 1], ['3023.dat', 4, 0, 1, 0, 0, 2], ['4073', 14, 0, 2, 0, 0, 3], ['3660', 4, 0, 3, 0, 0, 4], ['3660a', 1, 0, 6, 0, 0, 5], ['6223', 1, 9, 0, 0, 0, 1], ['76959', 1, 9, 3, 0, 0, 1]] };
+  eq(B.cleanModel(cases['everyday part numbers']).parts.map(q => q[0]), ['3023b', '3023b', '6141', '3660b', '3660b', '6223', '76959'], 'a model’s part numbers are read as the builder’s');
   Object.assign(cases, batch); // and the seeded models, as they were written (the script cleans them itself)
   let py = null;
   // Importing the script would leave a __pycache__ folder in the repo (and on the site), so it writes no bytecode.
@@ -199,6 +210,7 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('cm', sys.argv[1]); cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
 import contextlib, io
 shapes = json.load(open(sys.argv[2])); pool = {}
+cm.use_aliases(sys.argv[4])
 for p, c, n in json.load(open(sys.argv[3]))['parts']: pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
 src = json.loads(sys.stdin.read()); out = {}
 for k, m in src['cases'].items():
@@ -213,7 +225,7 @@ for k, v in src['sets'].items():
     said = io.StringIO()
     with contextlib.redirect_stdout(said):
         sets[k] = [cm.clean_model(dict(sets=v, parts=[['3001', 4, 0, 0, 0, 0, 1]]))['sets'], 'WARNING' in said.getvalue()]
-print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/shapes.json'), path.join(root, 'parts/sets/10698-1.json')], { input: JSON.stringify({ cases, sets: SETS }) }).toString());
+print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/shapes.json'), path.join(root, 'parts/sets/10698-1.json'), path.join(root, 'parts')], { input: JSON.stringify({ cases, sets: SETS }) }).toString());
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (py) eq(bytecode(), bytecodeBefore, 'checking the script leaves no bytecode behind in the repo');
   // The same parts after cleaning, and the same findings word for word, naming the same parts in the same order.
@@ -250,6 +262,39 @@ print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/s
     const lotOnly = run(['--sets', '--pieces', lotFile]);
     check(lotOnly[0] === 1 && /you have 5\b/.test(lotOnly[1]), 'script: with no sets, a lot file is the whole budget');
     eq(run(['--no-sets', '--pieces', lotFile]).slice(0, 2), lotOnly.slice(0, 2), 'script: --no-sets is an empty --sets');
+
+    // A lot counted under everyday part numbers pools with a model written under the builder's, and the other way
+    // round, in the page and in the script, from a lot file or from a pasted list. The script says which numbers
+    // it read as another, and the file it writes carries the builder's.
+    const bareLot = { id: 'b1', name: 'Bare tub', parts: [['3023', 15, 1], ['3023b', 15, 1], ['4073', 14, 1], ['3660a', 4, 2], ['6223', 1, 2]] };
+    eq(B.poolOf([bareLot]), { '3023b/15': 2, '6141/14': 1, '3660b/4': 2, '6223/1': 2 }, 'a lot’s everyday part numbers pool under the builder’s');
+    const stack = ids => ({ name: 'Stack', parts: [[ids[0], 15, 0, 0, 0, 0, 1], [ids[0], 15, 0, 1, 0, 0, 2], [ids[1], 14, 0, 2, 0, 0, 3]] });
+    const lotOf = parts => ({ brickyard: 1, loose: { id: 'b1', name: 'Bare tub', parts } });
+    const textOf = parts => 'My Brickyard pieces, from loose pieces (Bare tub).\nPieces the builder knows, as LDraw part/colour ×count:\n' + parts.map(r => r[0] + '/' + r[1] + ' ×' + r[2]).join(', ') + '\n';
+    const bare = path.join(dir, 'bare.json'), bareTub = path.join(dir, 'bare.brickyard-loose.json'), bareText = path.join(dir, 'bare.txt');
+    for (const [modelIds, lotParts, what] of [[['3023b', '6141'], bareLot.parts, 'a lot under everyday numbers, a model under the builder’s'],
+      [['3023', '4073'], [['3023b', 15, 2], ['6141', 14, 1]], 'a model under everyday numbers, a lot under the builder’s']]) {
+      eq(B.check(B.cleanModel(stack(modelIds)), shapes, B.poolOf([{ parts: lotParts }])).problems, [], 'page: ' + what);
+      fs.writeFileSync(bare, JSON.stringify(stack(modelIds)));
+      fs.writeFileSync(bareTub, JSON.stringify(lotOf(lotParts)));
+      fs.writeFileSync(bareText, textOf(lotParts));
+      for (const [f, kind] of [[bareTub, 'lot file'], [bareText, 'pasted list']]) {
+        const r = sh([bare, '--out', dir, '--no-link', '--no-sets', '--pieces', f]);
+        check(r[0] === 0 && /NOTE: part 3023 was read as 3023b/.test(r[1]), 'script, ' + kind + ': ' + what + (r[0] === 0 ? '' : '\n    ' + r[1].split('\n').slice(0, 4).join(' | ')));
+      }
+      eq(JSON.parse(fs.readFileSync(path.join(dir, 'stack.brickyard-model.json'), 'utf8')).model.parts.map(q => q[0]), ['3023b', '3023b', '6141'], 'script: the file it writes carries the builder’s numbers');
+    }
+    // One too few is still short, counted under the builder's number.
+    fs.writeFileSync(bareTub, JSON.stringify(lotOf([['3023', 15, 1], ['4073', 14, 1]])));
+    const oneShort = sh([bare, '--out', dir, '--no-link', '--no-sets', '--pieces', bareTub]);
+    check(oneShort[0] === 1 && /Needs 2 of 3023b\/15, you have 1\b/.test(oneShort[1]), 'script: one 1x2 plate too few is short, under either number');
+    eq(B.check(B.cleanModel(stack(['3023', '4073'])), shapes, B.poolOf([{ parts: [['3023', 15, 1], ['4073', 14, 1]] }])).problems.map(p => p.text), ['Needs 2 of 3023b/15, you have 1'], 'and the page says the same');
+    // A data folder from before the table existed has no other numbers: the script still runs, and reads each as written.
+    const old = path.join(dir, 'old-data');
+    fs.cpSync(path.join(root, 'parts'), old, { recursive: true });
+    fs.rmSync(path.join(old, 'aliases.json'));
+    const before = sh([bare, '--out', dir, '--no-link', '--no-sets', '--data', old]);
+    check(before[0] === 1 && /PROBLEM: Part 3023 isn’t one the builder knows yet/.test(before[1]) && !/Traceback/.test(before[2]), 'script: with no aliases.json, a number is read as written');
 
     // A pasted list already counts the sets it names, so the model's own sets aren't added on top of it: one
     // brick more than the list has is one too many, with or without the empty --sets.

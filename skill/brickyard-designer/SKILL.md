@@ -20,7 +20,7 @@ Paths here are from this skill's folder: `scripts/check_model.py`, and `data/` f
 
 When they pasted a list, that list is the whole budget, loose pieces and all. Save what they pasted to a text file and give it to the script with `--pieces pieces.txt`. The pasted list already counts the sets it names, so the script leaves the model's own `sets` out of the count and says so in a NOTE. Don't put `--sets` beside a pasted list unless they have sets the list doesn't name: those are counted on top, and the script warns that they are. A `.brickyard-loose.json` file works with `--pieces` too; that one is added on top of the sets.
 
-Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `data/colors.json` (code, then name and hex). Only parts in shapes.json can be used; wheels, hinges and other specials can't yet.
+Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `data/colors.json` (code, then name and hex). Only parts in shapes.json can be used; wheels, hinges and other specials can't yet. Write parts under the numbers shapes.json has. A few everyday numbers are read as those (`data/aliases.json`: 3023 is 3023b, 4073 is 6141), in the model and in their pieces, and the script says so in a NOTE.
 
 ## 2. Coordinates
 

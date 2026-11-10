@@ -31,6 +31,9 @@ plus every --pieces file:
   list already counts the sets it names, so the model's own sets are left out (a NOTE says so). Sets given with
   --sets beside it are still added, with a WARNING.
 
+A part number that is another number for a piece the builder knows (3023 for 3023b: aliases.json in the data
+folder) is read as that piece, in the model and in the pieces, with a NOTE. The file and link carry the builder's.
+
 It checks what Brickyard checks, the same way (js/build-core.js): every part is one the builder knows, there
 are enough of each part in each colour, no two parts overlap, everything is joined by studs, and every step
 joins onto what's already built. With --layers it prints each layer from above.
@@ -46,6 +49,31 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_BASE = 'https://brickyard.junkdrawer.works/'
 LINK_WARN = 6000  # characters; make_brickyard.py in the cataloger skill uses the same number and the same note
 LONG_LINK = 'NOTE: this link is long. Lead with the file; some apps cut long links off.'
+
+
+# Other numbers for the same piece, from aliases.json in the data folder (3023 is 3023b): the everyday number
+# BrickLink and Rebrickable use, read as the one shapes.json knows, the same as canon in js/build-core.js. READ_AS
+# collects each number that was read as another, for a NOTE.
+ALIASES, READ_AS = {}, {}
+
+
+def use_aliases(data):
+    """Reads aliases.json from the data folder. A folder without one (a copy from before it existed) has none."""
+    ALIASES.clear()
+    READ_AS.clear()
+    try:
+        table = json.loads((Path(data) / 'aliases.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return
+    if isinstance(table, dict):
+        ALIASES.update({k: v for k, v in table.items() if isinstance(v, str)})
+
+
+def canon(p):
+    if p in ALIASES:
+        READ_AS[p] = ALIASES[p]
+        return ALIASES[p]
+    return p
 
 
 def set_names(v):
@@ -132,7 +160,7 @@ def clean_model(o):
         if not p or None in (c, x, y, z) or r % 90:
             print(f'WARNING: part #{i + 1} {q} left out: needs a part, colour, x, y, z and a turn of 0/90/180/270')
             continue
-        parts.append([p, c, x, y, z, r, s])
+        parts.append([canon(p), c, x, y, z, r, s])
     if not parts:
         sys.exit('No usable parts.')
     if any(not q[6] for q in parts):
@@ -296,11 +324,12 @@ def read_pieces(path):
                 except (TypeError, ValueError):
                     continue
                 if n > 0:
-                    k = f'{str(r[0]).lower()}/{int(r[1])}'
+                    k = f'{canon(str(r[0]).lower())}/{int(r[1])}'
                     pool[k] = pool.get(k, 0) + n
         return pool, 'lot'
     for p, c, n in re.findall(r'\b([0-9a-z]{1,24})/(\d{1,5})\s*[×x]\s*(\d+)', text):
-        pool[f'{p}/{int(c)}'] = pool.get(f'{p}/{int(c)}', 0) + int(n)
+        k = f'{canon(p)}/{int(c)}'
+        pool[k] = pool.get(k, 0) + int(n)
     if not pool:
         sys.exit(f'{path}: no pieces found. Expected a loose-pieces file or "part/colour ×count" text.')
     return pool, 'text'
@@ -333,6 +362,7 @@ def main():
     data = find_data(a.data)
     shapes = json.loads((data / 'shapes.json').read_text())
     colors = json.loads((data / 'colors.json').read_text())
+    use_aliases(data)
     try:
         src = json.loads(Path(a.file).read_text(encoding='utf-8'))
     except (OSError, ValueError) as e:
@@ -362,7 +392,7 @@ def main():
             if not f.exists():
                 sys.exit(f'No parts list for set {x} in {data / "sets"}.')
             for p, c, n in json.loads(f.read_text())['parts']:
-                pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
+                pool[f'{canon(p)}/{c}'] = pool.get(f'{canon(p)}/{c}', 0) + n
         model['sets'] = sets
     for _, more, _ in pieces:
         pool = pool if pool is not None else {}
@@ -376,6 +406,8 @@ def main():
         print('NOTE: no sets or pieces given, so piece counts weren’t checked.')
     for w in warns:
         print('WARNING: ' + w)
+    for was in sorted(READ_AS):
+        notes.append(f'part {was} was read as {READ_AS[was]}, the number the builder knows that piece by.')
     for n in notes:
         print('NOTE: ' + n)
     for p in res['problems']:

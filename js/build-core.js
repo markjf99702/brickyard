@@ -8,6 +8,14 @@
 (function (root) {
   'use strict';
 
+  // Other numbers for the same piece (parts/aliases.json): the everyday number BrickLink and Rebrickable use,
+  // which LDraw keeps as "moved to" its current one. shapes.json knows each piece under one number only, so a
+  // part number is read as that one wherever it comes in: a model's parts, and the pieces of a set or a lot.
+  // check_model.py reads the same table the same way (canon).
+  var ALIAS = {};
+  function useAliases(map) { ALIAS = map && typeof map === 'object' ? map : {}; }
+  function canon(p) { return Object.prototype.hasOwnProperty.call(ALIAS, p) && typeof ALIAS[p] === 'string' ? ALIAS[p] : p; }
+
   function turnSize(sh, r) { return r === 90 || r === 270 ? { w: sh.d, d: sh.w } : { w: sh.w, d: sh.d }; }
 
   // A cell of the part's own footprint (cx along its width, cz along its depth) → a cell of the turned footprint.
@@ -54,7 +62,7 @@
       var r = int(q.r, 0, 270); if (r === null) r = 0;
       var s = int(q.s, 1, 2000);
       if (!p || c === null || x === null || y === null || z === null || r % 90) return;
-      parts.push([p, c, x, y, z, r, s || 0]);
+      parts.push([canon(p), c, x, y, z, r, s || 0]);
     });
     if (!parts.length) return null;
     // No steps given: one step per height, bottom up.
@@ -74,11 +82,12 @@
     };
   }
 
-  // Pieces available: the sum of the chosen sets' inventories, keyed "part/colour".
+  // Pieces available: the sum of the chosen sets' inventories and lots, keyed "part/colour". A lot keeps the part
+  // numbers it came with; they are read as the builder's here, each time.
   function poolOf(inventories) {
     var pool = {};
     inventories.forEach(function (inv) {
-      (inv.parts || []).forEach(function (row) { var k = row[0] + '/' + row[1]; pool[k] = (pool[k] || 0) + row[2]; });
+      (inv.parts || []).forEach(function (row) { var k = canon(String(row[0])) + '/' + row[1]; pool[k] = (pool[k] || 0) + row[2]; });
     });
     return pool;
   }
@@ -218,7 +227,7 @@
     });
   }
 
-  var api = { turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, check: check, sizeCm: sizeCm,
+  var api = { useAliases: useAliases, canon: canon, turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, check: check, sizeCm: sizeCm,
     modelText: modelText, isModelLink: isModelLink, parseModel: parseModel };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BuildCore = api;
 })(this);

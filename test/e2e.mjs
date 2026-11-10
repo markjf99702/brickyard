@@ -1619,6 +1619,32 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// Everyday part numbers, the ones BrickLink and Rebrickable use (3023 for a 1x2 plate, 4073 for a round 1x1 plate),
+// are the pieces the builder knows under LDraw's current numbers (3023b, 6141): loose pieces counted under them
+// can be used, are in what's copied for Claude, and a model written with them opens and builds.
+{
+  const tub = { id: 'tub', name: 'Blue tub', box: '4', parts: [['3023', 15, 50], ['3660', 4, 10], ['60481', 4, 6], ['4073', 14, 20], ['3001', 4, 12], ['3003', 1, 6], ['2780', 0, 4, 'Technic Pin']] };
+  const { c, p } = await withSets({ sets: {} }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  await p.goto(base + '#l1z' + deflateRawSync(JSON.stringify({ brickyard: 1, loose: tub })).toString('base64url'));
+  await p.waitForSelector('#ls-add');
+  await p.waitForFunction(() => document.getElementById('ls-use').textContent !== '');
+  assert.equal(await p.textContent('#ls-use'), 'The builder can use 104 of them today. The rest are kept, and count once Brickyard learns their shapes.', 'Add loose pieces counts pieces under their everyday numbers');
+  await p.click('#ls-add');
+  await p.waitForSelector('li.lot');
+  assert.match(await p.textContent('li.lot'), /Loose · 108 pieces · box 4 · the builder can use 104/, 'and so does Your pieces');
+  assert.deepEqual((await p.evaluate(() => window.brickyard.doc().loose.tub.parts)).map(r => r[0]).sort(), ['2780', '3001', '3003', '3023', '3660', '4073', '60481'], 'the lot keeps the numbers it came with');
+  await p.click('#copy-pool');
+  await p.waitForSelector('.toast:not([hidden])');
+  const copied = await p.evaluate(() => navigator.clipboard.readText());
+  assert.match(copied, /Pieces the builder knows, as LDraw part\/colour ×count:\n3001\/4 ×12, 3003\/1 ×6, 3023b\/15 ×50, 3660b\/4 ×10, 60481a\/4 ×6, 6141\/14 ×20\n\(1 more kinds/, 'what’s copied for Claude has them, under the builder’s numbers');
+  const model = { brickyard: 1, model: { name: 'Bare stack', parts: [['3023', 15, 0, 0, 0, 0, 1], ['3023', 15, 0, 1, 0, 0, 2], ['4073', 14, 0, 2, 0, 0, 3]] } };
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(model)).toString('base64url'));
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  assert.deepEqual([await p.locator('#model-check .flag.bad').count(), await p.textContent('#model-check .note.ok'), await p.textContent('#step-parts li')],
+    [0, '✓ You have every piece for this, from loose pieces (Blue tub).', '1× Plate 1x2White'], 'a model written with everyday numbers opens and can be built');
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

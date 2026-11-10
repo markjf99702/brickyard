@@ -16,7 +16,7 @@ const example = JSON.parse(await read('test/fixtures/sample.json'));
 example.name = 'Example sets';
 const script = s => s.replace(/<\/script/gi, '<\\/script');
 const THREE = 'https://cdn.jsdelivr.net/npm/three@0.186.1/';
-const files = ['parts/shapes.json', 'parts/colors.json', 'parts/index.json', 'models/cottage.json'];
+const files = ['parts/shapes.json', 'parts/colors.json', 'parts/index.json', 'parts/aliases.json', 'models/cottage.json'];
 for (const n of Object.keys(JSON.parse(await read('parts/index.json')))) files.push('parts/sets/' + n + '.json');
 const data = {};
 for (const f of files) data[f] = JSON.parse(await read(f));

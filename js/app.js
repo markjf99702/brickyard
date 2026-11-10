@@ -861,9 +861,17 @@
 
   // A lot of loose pieces, from a scanner or from Claude. Opening the same lot again replaces it, so nothing is
   // ever counted twice.
+  // The parts the builder can draw, and the other numbers some of them go by (3023 is 3023b: parts/aliases.json,
+  // which js/build-core.js reads the same way).
+  function partsFile(name) {
+    if (window.BRICKYARD_DATA) return Promise.resolve(window.BRICKYARD_DATA['parts/' + name] || {});
+    return fetch('parts/' + name).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  }
   function shapeIds() {
-    if (window.BRICKYARD_DATA) return Promise.resolve(window.BRICKYARD_DATA['parts/shapes.json'] || {});
-    return fetch('parts/shapes.json').then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+    return Promise.all([partsFile('shapes.json'), partsFile('aliases.json')]).then(function (f) {
+      var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+      return { knows: function (p) { return has(f[0], has(f[1], p) ? f[1][p] : p); } };
+    });
   }
   function looseSheet(lot) {
     var had = DOC.loose[lot.id] && !DOC.loose[lot.id].del ? DOC.loose[lot.id] : null, n = C.lotTotals(lot);
@@ -876,7 +884,7 @@
       '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove a lot there.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace it' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
     shapeIds().then(function (shapes) {
-      var use = lot.parts.reduce(function (k, r) { return k + (shapes[r[0]] ? r[2] : 0); }, 0);
+      var use = lot.parts.reduce(function (k, r) { return k + (shapes.knows(r[0]) ? r[2] : 0); }, 0);
       if ($('ls-use')) $('ls-use').textContent = use === n.pieces ? 'The builder can use all of them.'
         : 'The builder can use ' + use.toLocaleString() + ' of them today. The rest are kept, and count once Brickyard learns their shapes.';
     });
