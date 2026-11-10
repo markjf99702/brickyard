@@ -1683,6 +1683,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const cdp = await c.newCDPSession(p);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x + 195, y: s.y + 380 }] });
   for (let k = 1; k <= 12; k++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x + 195, y: s.y + 380 - k * 25 }] });
+  // The finger rests before it lifts: a drag, not a flick. Lifted at speed, about one run in thirty the browser
+  // sent no click for the next tap (on Reset view, below), and the wait for the button to go timed out.
+  await p.waitForTimeout(150);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: s.x + 195, y: s.y + 80 }] });
+  await p.waitForTimeout(60);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await p.waitForFunction(() => window.BrickyardBuild.inView().moved);
   await p.waitForTimeout(600); // the turn eases out
