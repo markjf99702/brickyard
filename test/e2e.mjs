@@ -1991,6 +1991,44 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// After a batch is added the screen shows it: the message says how many are to check, the chip row is moved along
+// so the To check chip is on the screen (on a phone it was off the side), and the first new row is in view, not
+// thousands of pixels down a list still at its top. Not when the search in force hides the new sets.
+{
+  const sets = {};
+  for (let i = 0; i < 40; i++) sets['s' + i] = { id: 's' + i, t: 1, num: (10200 + i) + '-1', name: 'Set number ' + (i + 1), state: ['built', 'apart', 'partial', 'sealed'][i % 4], room: ['Office', 'Hall', 'Garage'][i % 3], missing: i === 3 ? 'a tile' : '' };
+  const { c, p } = await withSets({ sets });
+  const link = (list, more) => base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { sets: list, ...more } })).toString('base64url');
+  const seen = sel => p.evaluate(s => {
+    const r = document.querySelector(s).getBoundingClientRect(), top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top;
+    return r.left >= 0 && r.right <= innerWidth && r.top >= top && r.bottom <= bottom;
+  }, sel);
+  await p.goto(link([{ num: '31058', name: 'Mighty Dinosaurs' }, { num: '60198', name: 'Cargo Train', check: 'number partly hidden' }, { num: '10334', name: 'Retro Radio', check: 'blurry' }], { room: 'Zoo', id: 'zoo' }));
+  await p.click('#rv-add');
+  assert.equal(await p.textContent('.toast span'), 'Added 3 sets. 2 to check.');
+  assert.equal(await p.locator('.toast button').textContent(), 'Undo', 'Undo is still offered');
+  await p.waitForFunction(() => !(history.state && history.state.sheet));
+  await p.waitForTimeout(300);
+  const first = await p.$eval('#list-wrap .item:has-text("Cargo Train")', el => el.dataset.id); // Zoo: Cargo Train, Mighty Dinosaurs, Retro Radio
+  assert.ok(await p.evaluate(() => scrollY) > 1000, 'the list has moved down to the new sets');
+  assert.equal(await seen(`.item[data-id="${first}"]`), true, 'the first new row is on the screen, clear of the bars');
+  const chip = await p.$eval('.chip[data-f="check"]', el => { const r = el.getBoundingClientRect(); return [r.left >= 0, r.right <= innerWidth, el.textContent]; });
+  assert.deepEqual(chip, [true, true, 'To check2'], 'and so is the To check chip');
+  assert.deepEqual(await p.$$eval('.chip', cs => cs.map(c => c.dataset.f)), ['all', 'built', 'partial', 'apart', 'sealed', 'missing', 'check'], 'the chips are in the order they were');
+  // None to check: no word about it, and the chip row stays where it is. A search that hides the new sets leaves the list alone.
+  await p.goto('about:blank');
+  await p.goto(base + '#catalog');
+  await p.fill('#q', 'office');
+  await p.goto(link([{ num: '21318', name: 'Tree House' }], { room: 'Zoo', id: 'zoo2' }));
+  await p.fill('#q', 'office');
+  await p.click('#rv-add');
+  assert.equal(await p.textContent('.toast span'), 'Added 1 set');
+  await p.waitForFunction(() => !(history.state && history.state.sheet));
+  await p.waitForTimeout(300);
+  assert.deepEqual(await p.evaluate(() => [scrollY, document.getElementById('chips').scrollLeft]), [0, 0]);
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

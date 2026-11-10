@@ -859,7 +859,7 @@
     $('rv').onclick = tickRow;
     $('rv-add').onclick = function () {
       var room = $('rv-room').value.trim(), spot = $('rv-spot').value.trim(), box = $('rv-box').value.trim(), n = 0, day = today();
-      var took = Object.assign({}, before), ids = [], seenWas = DOC.seen[batch.id];
+      var took = Object.assign({}, before), ids = [], seenWas = DOC.seen[batch.id], nc = 0;
       rows.forEach(function (r, i) {
         if (!r.on) return;
         var y = Object.assign({}, r.x);
@@ -872,13 +872,18 @@
         y = C.cleanSet(Object.assign(y, { added: day }));
         if (!y) return;
         y.id = newId(); putSet(y); n++; took[i] = y.id; ids.push(y.id);
+        if (y.check) nc++;
       });
       DOC.seen[batch.id] = Date.now();
       tookFrom(batch.id, took);
-      save(); closeSheet(); renderCatalog();
+      // What the screen shows next is the new sets, and that some need a look: the list used to stay at its top,
+      // with the new rows far down it, "To check" off the side of the chip row and no word about it in the message.
+      // Once the sheet's place in history is gone, and a moment after: as it goes, the browser puts the page back
+      // where it was when the sheet opened.
+      save(); renderCatalog(); closeSheet(function () { setTimeout(function () { showNew(ids, nc); }, 0); });
       // Undo takes out the sets this tap added (a batch with the wrong box typed for all of them was fourteen sets
       // to put right or remove by hand), and forgets that the link was opened, so it's offered whole again.
-      toast('Added ' + plural(n, 'set'), false, { label: 'Undo', run: function () {
+      toast('Added ' + plural(n, 'set') + (nc ? '. ' + nc.toLocaleString() + ' to check.' : ''), false, { label: 'Undo', run: function () {
         ids.forEach(function (id) { if (DOC.sets[id] && !DOC.sets[id].del) removeSet(id); });
         if (seenWas === undefined) delete DOC.seen[batch.id]; else DOC.seen[batch.id] = seenWas;
         tookFrom(batch.id, before);
@@ -887,6 +892,18 @@
       } });
     };
     count();
+  }
+
+  // After a batch is added: the first of its rows that the search and filter in force show is brought to the middle
+  // of the screen, and when any of the sets are to check, the chip row is moved along so the To check chip shows.
+  function showNew(ids, checks) {
+    var chips = $('chips'), chip = checks && chips.querySelector('[data-f="check"]');
+    if (chip) {
+      var cr = chips.getBoundingClientRect(), r = chip.getBoundingClientRect();
+      if (r.right > cr.right - 16) chips.scrollLeft += r.right - cr.right + 16;
+    }
+    var row = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; })[0];
+    if (row) row.scrollIntoView({ block: 'center' });
   }
 
   // What this device has added from each link of sets: { batch id: { row in the link: the set's id here } }, kept
