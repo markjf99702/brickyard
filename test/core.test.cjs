@@ -128,6 +128,35 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   check(!C.matches(x, 'castle'), 'search misses');
   check(C.matches(C.cleanSet({ name: 'Bonsai Tree', box: 'Kitchen 2' }), 'box kitchen 2'), 'a box label of two words, with no list of labels');
 }
+// Search reads a name the way it's said, not the way it's punctuated: an accent, a curly or straight apostrophe, a
+// hyphen or a full stop in the name (or in what's typed) doesn't stop a set being found.
+{
+  const sets = ['Lamborghini Sián FKP 37', 'Parisian Restaurant', 'Real Madrid – Santiago Bernabéu Stadium', 'Luke Skywalker\'s X-wing Fighter',
+    'Lion Knights’ Castle', 'Dom’s Dodge Charger', 'Santa\'s Visit', 'Detective\'s Office', 'AT-AT', 'PAC-MAN Arcade', 'R2-D2', 'Fantasy Forest Creatures 3-in-1',
+    'Typewriter'].map(name => C.cleanSet({ name }));
+  const find = q => sets.filter(x => C.matches(x, q, [])).map(x => x.name);
+  eq(find('sian'), ['Lamborghini Sián FKP 37', 'Parisian Restaurant'], 'an accent in the name: sian finds Sián');
+  eq(find('SIÁN'), ['Lamborghini Sián FKP 37', 'Parisian Restaurant'], 'and one typed finds the name with or without it');
+  eq(find('bernabeu'), ['Real Madrid – Santiago Bernabéu Stadium'], 'bernabeu');
+  eq(find('skywalker’s'), ['Luke Skywalker\'s X-wing Fighter'], 'a curly apostrophe typed (as an iPhone does) finds a straight one');
+  eq(find('dom\'s'), ['Dom’s Dodge Charger'], 'and a straight one finds a curly one');
+  eq(find('knights’'), ['Lion Knights’ Castle'], 'knights’');
+  eq(find('doms'), ['Dom’s Dodge Charger'], 'no apostrophe at all');
+  eq(find('santas visit'), ['Santa\'s Visit'], 'santas');
+  eq(find('detectives office'), ['Detective\'s Office'], 'detectives office');
+  eq(find('xwing'), ['Luke Skywalker\'s X-wing Fighter'], 'xwing without its hyphen');
+  eq(find('x-wing'), ['Luke Skywalker\'s X-wing Fighter'], 'and with it');
+  eq(find('atat'), ['AT-AT'], 'atat');
+  eq(find('pacman'), ['PAC-MAN Arcade'], 'pacman');
+  eq(find('r2d2'), ['R2-D2'], 'r2d2');
+  eq(find('3in1'), ['Fantasy Forest Creatures 3-in-1'], '3in1');
+  eq(find('3-in-1 forest'), ['Fantasy Forest Creatures 3-in-1'], 'several words, one with hyphens');
+  eq(find('type-writer'), ['Typewriter'], 'a hyphen typed where the name has none');
+  eq(find('-'), ['Real Madrid – Santiago Bernabéu Stadium', 'Luke Skywalker\'s X-wing Fighter', 'AT-AT', 'PAC-MAN Arcade', 'R2-D2', 'Fantasy Forest Creatures 3-in-1'], 'punctuation alone still has to be there (a dash of any kind)');
+  eq(find('castle xwing'), [], 'every word still has to match');
+  const boxed = C.cleanSet({ name: 'Dom’s Dodge Charger', box: 'Café 2' });
+  check(C.matches(boxed, 'box café 2 doms', ['Café 2']), 'words after a box label are read the same way');
+}
 // Moving boxes by label: labels of more than one word, "#" before a number, words after the label, and the
 // longest label in the catalog winning, so "box kitchen 2" isn't box "Kitchen" plus a 2 somewhere.
 {

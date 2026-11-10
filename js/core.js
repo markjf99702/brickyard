@@ -326,10 +326,23 @@
       if (!b.label || boxName(x.box).toLowerCase() !== b.label) return false;
       q = b.rest;
     }
-    var hay = [x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
-      .join(' ').toLowerCase();
-    return String(q).toLowerCase().split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; });
+    var hay = fold([x.num, shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '']
+      .join(' ')), plain = unpunct(hay);
+    return fold(q).split(/\s+/).filter(Boolean).every(function (w) {
+      var u = unpunct(w);
+      return hay.indexOf(w) >= 0 || (!!u && plain.indexOf(u) >= 0);
+    });
   }
+  // Search reads a name the way it's said. Both what's typed and what's searched are put in lower case, without
+  // accents ("sian" finds Sián), with curly quotes straightened (a phone types ’ where the name has ') and every
+  // kind of dash a hyphen. A word that isn't found as typed is tried again with the punctuation left out of both,
+  // so "xwing", "doms" and "r2d2" find X-wing, Dom's and R2-D2.
+  function fold(t) {
+    t = String(t == null ? '' : t).toLowerCase();
+    if (t.normalize) t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return t.replace(/[\u2018\u2019\u201b\u02bc\u2032]/g, "'").replace(/[\u201c\u201d\u201f\u2033]/g, '"').replace(/[\u2010-\u2015\u2212]/g, '-');
+  }
+  function unpunct(t) { return t.replace(/[!-\/:-@\[-`{-~\u00b7]/g, ''); }
 
   // Box labels sort the way people count them: "2" before "10".
   function natural(a, b) {
