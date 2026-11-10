@@ -2625,6 +2625,35 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   }
 }
 
+// The buttons in the bar stuck to the top and in the row stuck to the bottom are always in view, so the page stays
+// where it is when one of them takes the focus. They stand in the room kept clear for the rows (the case above),
+// and the browser moved the page half a screen to "show" them: the list jumped when a sheet opened by + Add a set,
+// Add from photos or the menu button closed and gave the focus back, and when Tab reached one.
+{
+  const sets = {};
+  for (let i = 0; i < 40; i++) sets['s' + i] = { id: 's' + i, t: 1, num: (10200 + i) + '-1', name: 'Set number ' + (i + 1), room: ['Office', 'Hall', 'Garage'][i % 3] };
+  const { c, p } = await withSets({ sets }, { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  await p.goto(base + '#catalog');
+  const at = () => p.evaluate(() => [document.activeElement.id || document.activeElement.className, Math.round(scrollY)]);
+  // A press with the mouse where the button is: Playwright's own click moves the page to its target first.
+  const press = async sel => { const b = await p.locator(sel).boundingBox(); await p.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+  for (const id of ['add-btn', 'claude-btn', 'menu-btn']) {
+    await p.evaluate(() => scrollTo(0, 1500));
+    await press('#' + id);
+    await p.waitForSelector('.scrim');
+    await press('.sheet [data-close]');
+    await p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+    await p.waitForTimeout(200);
+    assert.deepEqual(await at(), [id, 1500], 'closing the sheet gives the focus back to the button that opened it, and the list stays where it was');
+  }
+  await p.evaluate(() => { const rows = document.querySelectorAll('#list-wrap .item'); rows[rows.length - 1].focus({ preventScroll: true }); scrollTo(0, 1500); });
+  await p.keyboard.press('Tab');
+  assert.deepEqual(await at(), ['claude-btn', 1500], 'Tab from the last set to the buttons at the bottom');
+  await p.evaluate(() => document.querySelector('#catalog .back').focus());
+  assert.deepEqual(await at(), ['back', 1500], 'and the focus on the Back arrow in the bar');
+  await c.close();
+}
+
 // A mistake in a sheet is said in a line under the box that's wrong, and stays there until the box is changed
 // (WCAG 2.2, 3.3.1 Error Identification: it was a message at the bottom of the screen, gone in four seconds, and
 // in the planner's sheets no box was marked). The box is marked, has the line as its description and takes the

@@ -48,6 +48,12 @@ html { -webkit-text-size-adjust: 100%; }
    clear of the two buttons stuck to the bottom: it used to stop under them, down to a sliver of its focus ring. */
 html { scroll-padding-top: calc(env(safe-area-inset-top) + 76px); }
 html:has(#catalog:not([hidden])) { scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
+/* The buttons in those bars are always in view, but they stand in the room kept clear above, so the browser moved
+   the page to "show" one whenever it took the focus: half a screen up or down, when a sheet opened by the menu
+   button or by + Add a set closed and gave the focus back, or when Tab reached one. Their own margins take the
+   room back. */
+.bar a, .bar button { scroll-margin-top: calc(-1 * (env(safe-area-inset-top) + 76px)); }
+.fab-row .btn { scroll-margin-bottom: calc(-1 * (env(safe-area-inset-bottom) + 84px)); }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 400 16px/1.45 'Rubik', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -392,6 +398,7 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
   .sumline { flex-wrap: wrap; }
   .fab-row { position: static; flex-wrap: wrap; } /* at the end of the list: stuck to the bottom they covered a third of it */
   html:has(#catalog:not([hidden])) { scroll-padding-bottom: 0; }
+  .fab-row .btn { scroll-margin-bottom: 0; }
   .fab-row .btn { padding: 7px 12px; font-size: 14px; }
   .stepbar .btn { min-width: 0; }
   ul.need { grid-template-columns: 1fr; }
