@@ -300,9 +300,12 @@
     var s = openScrim;
     if (!s) { offEntry(); return; }
     // Back with a sheet open: its place is gone, and the address is still its screen's. (Anywhere else, route()
-    // closes it.) With changes in it, it takes its place back and asks first, like Close.
+    // closes it.) With changes in it, Back asks first, like Close, and the sheet stays without a place: the next
+    // Back in a row leaves the screen and the changes. It can't take its place back here. Chrome's Back skips
+    // every place a page adds without a tap since the last Back, which would leave Brickyard altogether; the next
+    // tap or keystroke in the sheet takes it back instead (openSheet).
     if (!s._placed || onEntry() || s._at !== location.hash) return;
-    if (!changed(s) || sure(s)) dropSheet(); else s._placed = pushEntry();
+    if (!changed(s) || sure(s)) dropSheet();
   });
 
   // dirty, when given, says whether the sheet holds changes that closing would throw away. While it does, a tap on
@@ -317,12 +320,17 @@
     var x = scrim.querySelector('[data-close]');
     // Going back to the changes after "Discard changes?" puts Close back, so a later slip is a first tap again.
     var calm = function () { if (x && x.dataset.sure) { delete x.dataset.sure; x.textContent = x.dataset.label; } };
+    // And a sheet that lost its place to a Back that asked gets one again, so the next Back asks again.
+    var back = function (e) {
+      calm();
+      if (e.isTrusted && openScrim === scrim && scrim._placed && !going && !onEntry() && scrim._at === location.hash) pushEntry();
+    };
     scrim.addEventListener('click', function (e) {
       if (e.target === scrim) askClose(true);
       else if (x && x.contains(e.target)) askClose();
-      else calm();
+      else back(e);
     });
-    scrim.addEventListener('input', calm);
+    scrim.addEventListener('input', back);
     scrim._dirty = typeof dirty === 'function' ? dirty : null;
     scrim._at = location.hash; // the screen it belongs to (route)
     scrim._placed = onEntry() || pushEntry();

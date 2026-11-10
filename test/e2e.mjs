@@ -582,16 +582,37 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Back steps over where the menu was');
   await back();
   assert.deepEqual(await at(), ['', 0, '', 'home', false], 'and then home');
-  // With changes in the sheet, Back asks first, like Close, and the next Back discards them.
+  // With changes in the sheet, Back asks first, like Close. Going on typing gives Back the sheet to ask about again;
+  // a second Back in a row leaves the screen, and the changes with it.
   await p.click('#go-catalog');
   await p.click('.item:has-text("Set 03")');
   await p.fill('#e-missing', 'a grey 1×2 plate');
   await back();
-  assert.deepEqual([await at(), await p.textContent('[data-close]'), await p.inputValue('#e-missing')], [['#catalog', 1, 'hidden', 'catalog', true], 'Discard changes?', 'a grey 1×2 plate'], 'Back with something typed keeps the sheet and asks');
-  await p.waitForTimeout(700);
+  assert.deepEqual([await at(), await p.textContent('[data-close]'), await p.inputValue('#e-missing')], [['#catalog', 1, 'hidden', 'catalog', false], 'Discard changes?', 'a grey 1×2 plate'], 'Back with something typed keeps the sheet and asks');
+  await p.locator('#e-missing').pressSequentially(', and a tile');
+  assert.deepEqual([await at(), await p.textContent('[data-close]')], [['#catalog', 1, 'hidden', 'catalog', true], 'Close'], 'typing on puts Close back, and the sheet back in Back’s way');
   await back();
-  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'the next Back closes it, still on My sets');
+  assert.deepEqual([await at(), await p.textContent('[data-close]'), await p.inputValue('#e-missing')], [['#catalog', 1, 'hidden', 'catalog', false], 'Discard changes?', 'a grey 1×2 plate, and a tile'], 'so Back asks again');
+  await p.waitForTimeout(700);
+  await p.click('[data-close]');
+  assert.deepEqual(await at(), ['#catalog', 0, '', 'catalog', false], 'Discard changes? closes it, still on My sets');
   assert.equal(await p.evaluate(() => window.brickyard.doc().sets.s3.missing), undefined);
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false], 'and one Back from there goes home');
+  await p.click('#go-catalog');
+  await p.click('.item:has-text("Set 03")');
+  await p.fill('#e-missing', 'a grey 1×2 plate');
+  await back();
+  await back();
+  assert.deepEqual(await at(), ['', 0, '', 'home', false], 'Back twice in a row with something typed: home, the sheet gone');
+  assert.equal(await p.evaluate(() => window.brickyard.doc().sets.s3.missing), undefined);
+  await p.click('#go-catalog');
+  await p.click('.item:has-text("Set 03")');
+  await p.fill('#e-missing', 'a grey 1×2 plate');
+  await back();
+  await p.click('#e-save');
+  await settled();
+  assert.deepEqual([await at(), await p.evaluate(() => window.brickyard.doc().sets.s3.missing)], [['#catalog', 0, '', 'catalog', false], 'a grey 1×2 plate'], 'Save after Back asked still saves, and stays');
   await back();
   assert.deepEqual(await at(), ['', 0, '', 'home', false]);
   // The shelf planner: Back closes a set's sheet and stays; See in My sets goes there, and Back comes back.
