@@ -751,6 +751,68 @@ await p2.click('#cs-go');
 assert.equal(await p2.locator('.item').count(), 6);
 await fresh.close();
 
+// A backup can bring back a set removed since it was saved. Merging keeps the later change, and the removal is the
+// later one, so the set used to stay removed while the sheet said "Nothing here is lost". The sheet now counts those
+// sets and offers to bring them back; left unticked, the merge is as before. A catalog that came by link says link.
+{
+  const { c, p } = await withSets({ sets: {
+    t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', notes: 'a gift', room: 'Living room' }, o: { id: 'o', t: 1, name: 'Orchid' }, b: { id: 'b', t: 1, name: 'Bonsai Tree' } } });
+  const file = text => p.setInputFiles('#file', { name: 'Brickyard.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+  const names = async () => (await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del).map(x => x.name))).sort();
+  await p.goto(base + '#catalog');
+  const saved = await p.evaluate(() => JSON.stringify({ brickyard: 1, catalog: window.brickyard.doc() }));
+  await file(saved);
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.textContent('#sheetTitle'), 'Open a Brickyard file');
+  assert.equal(await p.textContent('.sheet .lede'), 'This file has 3 sets. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.');
+  assert.equal(await p.locator('#cs-back').count(), 0, 'with nothing removed since, there is nothing to bring back');
+  await p.click('[data-close]');
+  await p.click('.item:has-text("Tree House")');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  const gone = await p.evaluate(() => window.brickyard.doc().sets.t);
+  await file(saved);
+  await p.waitForSelector('#cs-go');
+  assert.deepEqual([await p.isChecked('#cs-back'), await p.textContent('.sheet .check')], [false, 'Bring back the set removed here since this file was savedTree House'], 'the sheet offers to bring the removed set back, unticked');
+  await p.click('#cs-go');
+  assert.deepEqual([await p.textContent('.toast'), await names()], ['Merged. You have 2 sets.', ['Bonsai Tree', 'Orchid']], 'left unticked, the removal stands');
+  await file(saved);
+  await p.waitForSelector('#cs-go');
+  await p.click('.sheet .check');
+  await p.click('#cs-go');
+  assert.deepEqual([await p.textContent('.toast'), await names()], ['Merged. 1 set brought back. You have 3 sets.', ['Bonsai Tree', 'Orchid', 'Tree House']], 'ticked, the set is back');
+  const back = await p.evaluate(() => window.brickyard.doc().sets.t);
+  assert.deepEqual([back.notes, back.room, back.t > gone.t], ['a gift', 'Living room', true], 'as the backup had it, and timed after its removal');
+  assert.equal(await p.locator('.item:has-text("Tree House")').count(), 1);
+  await file(saved);
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.locator('#cs-back').count(), 0, 'once back, there is nothing more to bring back');
+  await p.click('[data-close]');
+  // Two removed: the box counts them. The same catalog by link, or pasted as a link, is called a link.
+  for (const name of ['Orchid', 'Bonsai Tree']) { await p.click(`.item:has-text("${name}")`); await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del'); }
+  const link = '#b1z' + deflateRawSync(saved).toString('base64url');
+  await p.goto(base + link);
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.textContent('#sheetTitle'), 'Your catalog from a link');
+  assert.match(await p.textContent('.sheet .lede'), /^This link has 3 sets\. Bringing it in merges/);
+  assert.equal(await p.textContent('.sheet .check'), 'Bring back the 2 sets removed here since this link was copiedOrchid, Bonsai Tree');
+  await p.click('[data-close]');
+  await p.click('#claude-btn');
+  await p.fill('#paste', 'https://brickyard.junkdrawer.works/' + link);
+  await p.click('#p-go');
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.textContent('#sheetTitle'), 'Your catalog from a link', 'a pasted link is a link too');
+  await p.click('[data-close]');
+  await p.click('#claude-btn');
+  await p.fill('#paste', saved);
+  await p.click('#p-go');
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.textContent('#sheetTitle'), 'Open a Brickyard file', 'and a file’s text is a file');
+  await p.click('#cs-back');
+  await p.click('#cs-go');
+  assert.deepEqual([await p.textContent('.toast'), await names()], ['Merged. 2 sets brought back. You have 3 sets.', ['Bonsai Tree', 'Orchid', 'Tree House']]);
+  await c.close();
+}
+
 // The spreadsheet.
 await page.click('#menu-btn');
 const [csv] = await Promise.all([page.waitForEvent('download'), page.click('#m-csv')]);

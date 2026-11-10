@@ -469,12 +469,16 @@
       '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>' +
       '</div><div class="ft"><button class="btn quiet" type="button" id="p-file">Open a file</button><button class="btn" type="button" id="p-go">Open</button></div>');
     $('p-file').onclick = function () { $('file').click(); };
-    $('p-go').onclick = function () { var t = $('paste').value; if (!t.trim()) { $('paste').focus(); return; } takeIncoming(C.parseIncoming(t)); };
+    $('p-go').onclick = function () {
+      var t = $('paste').value; if (!t.trim()) { $('paste').focus(); return; }
+      takeIncoming(C.parseIncoming(t), /^\s*[{[]/.test(t) ? 'file' : 'link'); // a file's text starts with a bracket
+    };
   }
 
-  function takeIncoming(p) {
+  // from is where it came from, 'link' or 'file', for the words on the sheet.
+  function takeIncoming(p, from) {
     return p.then(function (r) {
-      if (r.kind === 'catalog') catalogSheet(r.doc);
+      if (r.kind === 'catalog') catalogSheet(r.doc, from);
       else if (r.kind === 'loose') looseSheet(r.lot);
       else if (r.kind === 'sizes') takeSizes(r.doc);
       else if (r.kind === 'model') takeModel(r.doc);
@@ -500,13 +504,13 @@
     var to = h.charAt(1) === 'l' ? '#build' : '#catalog'; // loose pieces belong to Build from your box
     try { history.replaceState(null, '', location.pathname + location.search + to); } catch (e) { location.hash = to; }
     route();
-    takeIncoming(C.linkText(h).then(function (t) { if (!t) throw new Error('empty'); return C.parseIncoming(t); }));
+    takeIncoming(C.linkText(h).then(function (t) { if (!t) throw new Error('empty'); return C.parseIncoming(t); }), 'link');
     return true;
   }
   $('file').addEventListener('change', function () {
     var f = this.files && this.files[0]; this.value = '';
     if (!f) return;
-    f.text().then(function (t) { takeIncoming(C.parseIncoming(t)); });
+    f.text().then(function (t) { takeIncoming(C.parseIncoming(t), 'file'); });
   });
 
   function reviewSheet(batch) {
@@ -596,13 +600,25 @@
     };
   }
 
-  function catalogSheet(doc) {
-    var incoming = C.live(doc).length;
-    openSheet('<div class="hd"><h2 id="sheetTitle">Open a Brickyard file</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
-      '<p class="lede">This file has ' + plural(incoming, 'set') + (C.liveLots(doc).length ? ' and ' + plural(C.liveLots(doc).length, 'lot') + ' of loose pieces' : '') + '. Bringing it in merges it with what’s here, set by set, keeping whichever copy was changed last. Nothing here is lost.</p></div>' +
+  // A whole catalog, from a backup file or from Copy everything as a link on another device. Merging keeps the
+  // later change to each set, and removing a set is a change: one removed here after the file was saved would stay
+  // removed. Those are counted, and a box offers to bring them back (timed now, so they win the merge everywhere).
+  function catalogSheet(doc, from) {
+    var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
+    var gone = C.live(doc).filter(function (x) { return DOC.sets[x.id] && DOC.sets[x.id].del && merged.sets[x.id].del; });
+    var names = gone.slice(0, 3).map(function (x) { return x.name || 'Set ' + C.shortNum(x.num); }).join(', ') + (gone.length > 3 ? ' and ' + (gone.length - 3) + ' more' : '');
+    openSheet('<div class="hd"><h2 id="sheetTitle">' + (link ? 'Your catalog from a link' : 'Open a Brickyard file') + '</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
+      '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + plural(incoming, 'set') + (C.liveLots(doc).length ? ' and ' + plural(C.liveLots(doc).length, 'lot') + ' of loose pieces' : '') +
+      '. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.</p>' +
+      (gone.length ? '<label class="check"><input type="checkbox" id="cs-back"><span>Bring back the ' + (gone.length === 1 ? 'set' : gone.length.toLocaleString() + ' sets') + ' removed here since this ' + (link ? 'link was copied' : 'file was saved') +
+        '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') + '</div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
     $('cs-go').onclick = function () {
-      DOC = C.mergeDocs(DOC, doc); save(); closeSheet(); renderCatalog(); toast('Merged. You have ' + plural(C.live(DOC).length, 'set') + '.');
+      var back = $('cs-back') && $('cs-back').checked ? gone : [];
+      DOC = C.mergeDocs(DOC, doc);
+      back.forEach(function (x) { putBack('sets', JSON.parse(JSON.stringify(x))); });
+      save(); closeSheet(); renderCatalog();
+      toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + 'You have ' + plural(C.live(DOC).length, 'set') + '.');
     };
   }
 
