@@ -16,7 +16,7 @@ What matters, in order:
 
 Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `parts/sets/` (`data/sets/` when this skill is used outside the repo) and `parts/index.json` says which sets have one. A set without a list can't be used yet; say so.
 
-When the pasted list includes loose pieces, the sets alone are not the budget. Save what they pasted to a text file and give it to the script with `--pieces pieces.txt --sets` (an empty `--sets`, so the sets aren't counted twice: the pasted list already includes them). A `.brickyard-loose.json` file works with `--pieces` too, on top of `--sets`.
+When they pasted a list, that list is the whole budget, loose pieces and all. Save what they pasted to a text file and give it to the script with `--pieces pieces.txt`. The pasted list already counts the sets it names, so the script leaves the model's own `sets` out of the count and says so in a NOTE. Don't put `--sets` beside a pasted list unless they have sets the list doesn't name: those are counted on top, and the script warns that they are. A `.brickyard-loose.json` file works with `--pieces` too; that one is added on top of the sets.
 
 Part shapes are in `parts/shapes.json` (name, `w` × `d` studs, `h` in plates, kind, which cells have studs on top `top` and take studs underneath `bot`). Colours are LDraw codes in `parts/colors.json`. Only parts in shapes.json can be used; wheels, hinges and other specials can't yet.
 
@@ -55,10 +55,11 @@ For anything bigger than a handful of parts, write a small Python script that ge
 python3 skill/brickyard-designer/scripts/check_model.py lighthouse.json --layers --out OUTDIR
 ```
 
-- It prints any problems with the parts they concern (numbered from 1) and exits 1. Fix and run again until it's clean.
+- It prints any problems with the parts they concern (numbered from 1), then `NOT READY`, and exits 1. For a model with problems it writes no file and prints no link, so there's nothing to hand over by mistake. (A file left in `--out` by an earlier run is not this model; the script points it out.) Fix and run again until it's clean.
 - `--layers` draws every plate-height layer from above, one letter per part, with a key. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
-- `--sets` overrides the model's own `sets`, and `--pieces FILE` adds loose pieces or a pasted list. Without any sets or pieces it can't check counts, so always give them.
-- When it passes it writes `NAME.brickyard-model.json` to `--out` and prints a link starting `https://brickyard.junkdrawer.works/#d1z`.
+- Put the model file first: `--sets` and `--pieces` take everything after them. `--sets 10698-1` replaces the model's own `sets`, `--no-sets` counts no set at all, and `--pieces FILE` is a pasted list (the whole budget) or a loose-pieces file (added to the sets). Without any sets or pieces it can't check counts, so always give them.
+- When it passes it writes `NAME.brickyard-model.json` to `--out`, prints a link starting `https://brickyard.junkdrawer.works/#d1z`, and exits 0.
+- `--force` writes the file and prints the link for a model that failed, to look at what's wrong in Brickyard. That one is never for handing over.
 
 Write the JSON and outputs to a scratch folder, not the repo.
 

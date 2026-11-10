@@ -52,6 +52,11 @@ eq(B.check(M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), shapes, null).notes.
 eq(B.cleanModel({ parts: [['3001', 1, 0, 3, 0], ['3001', 1, 0, 0, 0]] }).parts.map(q => q[6]), [2, 1], 'no steps: one per height');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 0, 0, 45]] }), null, 'turns are whole quarter turns');
 check(B.cleanModel({ model: { parts: [{ p: '3001.dat', c: '1', x: 0, y: 0, z: 0 }] } }).parts[0][0] === '3001', 'objects and .dat names work');
+// "sets" is a list of set numbers, or one on its own: a single string is one set, not a set per letter.
+const one = [['3001', 4, 0, 0, 0, 0, 1]];
+const SETS = { string: '10698-1', list: ['10698-1', ' 10696 '], number: [10698], mixed: [null, '10698-1', {}, true, 1.5, ['x'], ''], 'a number alone': 5, object: { a: 1 }, none: null };
+const WANT = { string: ['10698-1'], list: ['10698-1', '10696'], number: ['10698'], mixed: ['10698-1'], 'a number alone': [], object: [], none: [] };
+for (const k in SETS) eq(B.cleanModel({ sets: SETS[k], parts: one }).sets, WANT[k], 'sets given as ' + k);
 
 // The example cottage can be built from the box.
 const cottage = B.cleanModel(json('models/cottage.json'));
@@ -96,19 +101,27 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
 import json, sys, importlib.util
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('cm', sys.argv[1]); cm = importlib.util.module_from_spec(spec); spec.loader.exec_module(cm)
+import contextlib, io
 shapes = json.load(open(sys.argv[2])); pool = {}
 for p, c, n in json.load(open(sys.argv[3]))['parts']: pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
-out = {}
-for k, m in json.loads(sys.stdin.read()).items():
+src = json.loads(sys.stdin.read()); out = {}
+for k, m in src['cases'].items():
     r = cm.check(cm.clean_model(m), shapes, pool)
     out[k] = dict(problems=[(p['kind'], sorted(p['parts'])) for p in r['problems']], notes=[n['step'] for n in r['notes']], size=r['size'], steps=r['steps'])
-print(json.dumps(out))`, script, path.join(root, 'parts/shapes.json'), path.join(root, 'parts/sets/10698-1.json')], { input: JSON.stringify(cases) }).toString());
+sets = {}
+for k, v in src['sets'].items():
+    said = io.StringIO()
+    with contextlib.redirect_stdout(said):
+        sets[k] = [cm.clean_model(dict(sets=v, parts=[['3001', 4, 0, 0, 0, 0, 1]]))['sets'], 'WARNING' in said.getvalue()]
+print(json.dumps(dict(cases=out, sets=sets)))`, script, path.join(root, 'parts/shapes.json'), path.join(root, 'parts/sets/10698-1.json')], { input: JSON.stringify({ cases, sets: SETS }) }).toString());
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (py) eq(bytecode(), bytecodeBefore, 'checking the script leaves no bytecode behind in the repo');
   if (py) for (const k in cases) {
     const r = B.check(cases[k], shapes, pool);
-    eq({ problems: r.problems.map(p => [p.kind, p.parts.slice().sort((a, b) => a - b)]), notes: r.notes.map(n => n.step), size: r.size, steps: r.steps }, py[k], 'script and page agree: ' + k);
+    eq({ problems: r.problems.map(p => [p.kind, p.parts.slice().sort((a, b) => a - b)]), notes: r.notes.map(n => n.step), size: r.size, steps: r.steps }, py.cases[k], 'script and page agree: ' + k);
   } else console.log('  (python3 not found; skipped the skill script)');
+  // The script reads "sets" as the page does, and warns when it's neither a list nor one set number.
+  if (py) for (const k in SETS) eq(py.sets[k], [WANT[k], ['a number alone', 'object'].includes(k)], 'script reads sets given as ' + k);
 
   // Loose pieces join the pool, and the script counts them the same way from a lot file or from pasted text.
   const lot = { id: 'sf1', name: 'Blue tub', parts: [['3001', 4, 5], ['3020', 15, 2], ['2780', 0, 40, 'Technic Pin']] };
@@ -126,13 +139,54 @@ print(json.dumps(out))`, script, path.join(root, 'parts/shapes.json'), path.join
     fs.writeFileSync(lotFile, JSON.stringify({ brickyard: 1, loose: lot }));
     fs.writeFileSync(pasted, 'My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub).\nPieces the builder knows, as LDraw part/colour ×count:\n' +
       Object.keys(both).filter(k => shapes[k.split('/')[0]]).sort().map(k => k + ' ×' + both[k]).join(', ') + '\n');
-    const run = args => { try { return [0, execFileSync('python3', [script, model, '--out', dir, '--no-link'].concat(args), { encoding: 'utf8' })]; } catch (e) { return [e.status, String(e.stdout)]; } };
+    // The script as Claude runs it: [exit code, what it printed, what it said went wrong].
+    const sh = args => { const r = require('child_process').spawnSync('python3', ['-B', script].concat(args), { encoding: 'utf8' }); return [r.status, r.stdout, r.stderr]; };
+    const run = args => sh([model, '--out', dir, '--no-link'].concat(args));
     const alone = run([]);
     check(alone[0] === 1 && /Needs \d+ of 3001\/4/.test(alone[1]), 'script: the box alone is short');
     eq(run(['--pieces', lotFile])[0], 0, 'script: the box plus a lot file is enough');
     eq(run(['--sets', '--pieces', pasted])[0], 0, 'script: the pasted list on its own is enough');
     const lotOnly = run(['--sets', '--pieces', lotFile]);
     check(lotOnly[0] === 1 && /you have 5\b/.test(lotOnly[1]), 'script: with no sets, a lot file is the whole budget');
+    eq(run(['--no-sets', '--pieces', lotFile]).slice(0, 2), lotOnly.slice(0, 2), 'script: --no-sets is an empty --sets');
+
+    // A pasted list already counts the sets it names, so the model's own sets aren't added on top of it: one
+    // brick more than the list has is one too many, with or without the empty --sets.
+    const most = both['3001/4'], over = path.join(dir, 'over.json');
+    fs.writeFileSync(over, JSON.stringify({ name: 'Over', sets: ['10698-1'], parts: Array.from({ length: most + 1 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) }));
+    const short = new RegExp('Needs ' + (most + 1) + ' of 3001/4, you have ' + most + '\\b');
+    for (const [args, what] of [[['--pieces', pasted, '--sets'], 'with an empty --sets'], [['--pieces', pasted, '--no-sets'], 'with --no-sets'], [['--pieces', pasted], 'with the pasted list alone']]) {
+      const r = sh([over, '--out', dir].concat(args));
+      check(r[0] === 1 && short.test(r[1]), 'script: one brick more than the pasted list is short, ' + what + (r[0] === 1 ? '' : '\n    ' + r[1].split('\n').slice(0, 3).join(' | ')));
+    }
+    const noted = run(['--pieces', pasted]);
+    check(noted[0] === 0 && /NOTE: .*whole budget.*10698-1/.test(noted[1]), 'script: it says the model’s own sets were left out');
+    const onTop = sh([over, '--out', dir, '--no-link', '--pieces', pasted, '--sets', '10698-1']);
+    check(onTop[0] === 0 && /WARNING: 10698-1 counted on top of the pasted list/.test(onTop[1]), 'script: sets named beside a pasted list are added, with a warning');
+    eq(sh([over, '--out', dir, '--no-sets', '--sets', '10698-1'])[0], 1, 'script: --no-sets and --sets together are refused');
+
+    // A model with problems is not handed over: no file, no link, and it says so. --force makes them anyway.
+    const made = path.join(dir, 'over.brickyard-model.json');
+    fs.rmSync(made, { force: true });
+    const failing = sh([over, '--out', dir, '--pieces', pasted]);
+    check(failing[0] === 1 && /NOT READY: 1 problem\./.test(failing[1]) && !/https:|File:/.test(failing[1]) && !fs.existsSync(made), 'script: a failing model gets no file and no link');
+    const forced = sh([over, '--out', dir, '--pieces', pasted, '--force']);
+    check(forced[0] === 1 && /NOT READY/.test(forced[1]) && /https:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(forced[1]) && fs.existsSync(made), 'script: --force makes the file and link, and still exits 1');
+    check(/from an earlier run/.test(sh([over, '--out', dir, '--pieces', pasted])[1]), 'script: a file left by an earlier run is pointed out');
+    const passing = sh([model, '--out', dir, '--pieces', lotFile]);
+    check(passing[0] === 0 && !/NOT READY/.test(passing[1]) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(passing[1]) && fs.existsSync(path.join(dir, 'tower.brickyard-model.json')), 'script: a passing model gets its file and link');
+
+    // --sets and --pieces take every word after them. A model file put last is named, not "file is required".
+    for (const [args, says] of [[['--pieces', pasted, '--sets', model], /No model file\. .*tower\.json came after --sets.*Put the model first/], [['--pieces', pasted, model], /No model file\. .*--pieces takes everything after it.*tower\.json/], [[], /No model file\. Put the model first/]]) {
+      const r = sh(args);
+      check(r[0] === 1 && says.test(r[2]), 'script: a model file that isn’t first: ' + (args.join(' ').replace(dir, '').replace(dir, '') || 'none at all') + (says.test(r[2]) ? '' : '\n    ' + r[2].trim().split('\n').pop()));
+    }
+    // "sets": "10698-1" is that set, as on the page.
+    const texted = path.join(dir, 'texted.json');
+    fs.writeFileSync(texted, JSON.stringify({ name: 'Texted', sets: '10698-1', parts: greedy.parts.slice(0, 2) }));
+    const asText = sh([texted, '--out', dir, '--no-link']);
+    check(asText[0] === 0 && !/No parts list|weren’t checked/.test(asText[1] + asText[2]), 'script: "sets" as one string is that set' + (asText[0] === 0 ? '' : '\n    ' + (asText[1] + asText[2]).trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);

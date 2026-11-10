@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Check a LEGO model against the pieces someone owns, show it layer by layer, and make a Brickyard link.
 
-    python3 check_model.py model.json [--sets 10698-1 ...] [--pieces FILE ...] [--data DIR] [--out DIR] [--layers] [--no-link]
+    python3 check_model.py model.json [--pieces FILE ...] [--sets 10698-1 ... | --no-sets] [--data DIR] [--out DIR]
+                                      [--layers] [--no-link] [--force]
+
+Put the model file first: --sets and --pieces take everything that follows them.
 
 model.json:
 
@@ -19,19 +22,45 @@ x runs left to right and z back to front, both in studs; y runs up in plates (a 
 A part's x, y, z is the back-left-bottom corner of its footprint after turning; turn is 0, 90, 180 or 270 and at
 90 or 270 the part's width runs front to back. Parts and colours are LDraw numbers (3001 is a 2x4 brick, 4 is red).
 
---pieces adds pieces that aren't from a set's parts list: a loose-pieces lot (a .brickyard-loose.json file from
-Stud Finder or Brickyard), or a text file holding what "Copy my pieces for Claude" gave (part/colour ×count,
-…). Given with no --sets and a model that names none, the pieces files are the whole budget.
+The budget is the parts lists of the model's own "sets" (or of --sets, which replaces them; --no-sets for none),
+plus every --pieces file:
+- a loose-pieces lot (a .brickyard-loose.json file from Stud Finder or Brickyard) is added on top of the sets;
+- a text file holding what "Copy my pieces for Claude" gave (part/colour ×count, …) is the whole budget: that
+  list already counts the sets it names, so the model's own sets are left out (a NOTE says so). Sets given with
+  --sets beside it are still added, with a WARNING.
 
 It checks what Brickyard checks, the same way (js/build-core.js): every part is one the builder knows, there
 are enough of each part in each colour, no two parts overlap, everything is joined by studs, and every step
-joins onto what's already built. It exits 1 if anything fails. With --layers it prints each layer from above.
+joins onto what's already built. With --layers it prints each layer from above.
+
+When everything passes it writes NAME.brickyard-model.json to --out, prints the link and exits 0. When anything
+fails it prints the problems and NOT READY, writes no file, prints no link and exits 1. --force writes the file
+and prints the link anyway (still exit 1), for looking at a broken model in Brickyard.
 """
 import argparse, base64, json, re, sys, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_BASE = 'https://brickyard.junkdrawer.works/'
+
+
+def set_names(v):
+    """A model's "sets" as a list of names, the same as cleanModel in js/build-core.js: a list of set numbers,
+    or one set number on its own. The second value says whether it was something else, and so ignored."""
+    if isinstance(v, str):
+        v = [v]
+    if not isinstance(v, list):
+        return [], v is not None
+    out = []
+    for x in v:
+        if isinstance(x, float) and x.is_integer() and abs(x) < 1e15:
+            x = int(x)
+        if isinstance(x, bool) or not isinstance(x, (str, int)):
+            continue
+        x = ' '.join(str(x).split())[:20]
+        if x:
+            out.append(x)
+    return out[:50], False
 
 
 def find_data(arg):
@@ -105,8 +134,10 @@ def clean_model(o):
                 q[6] = ys.index(q[3]) + 1
     def text(v, n):
         return ' '.join(v.split())[:n] if isinstance(v, str) else ''
-    return {'name': text(m.get('name'), 80) or 'Untitled model', 'about': text(m.get('about'), 600),
-            'sets': [text(str(v), 20) for v in m.get('sets') or [] if text(str(v), 20)][:50], 'parts': parts}
+    sets, odd = set_names(m.get('sets'))
+    if odd:
+        print(f'WARNING: "sets" should be a list of set numbers, like ["10698-1"]; {json.dumps(m.get("sets"))[:60]} was ignored')
+    return {'name': text(m.get('name'), 80) or 'Untitled model', 'about': text(m.get('about'), 600), 'sets': sets, 'parts': parts}
 
 
 def check(model, shapes, pool):
@@ -230,8 +261,12 @@ def layers(model, shapes, colors):
 
 
 def read_pieces(path):
-    """Pieces from a loose-pieces lot (JSON) or from pasted "My Brickyard pieces" text: {"part/colour": count}."""
-    text = Path(path).read_text(encoding='utf-8')
+    """Pieces from a loose-pieces lot (JSON) or from pasted "My Brickyard pieces" text: {"part/colour": count},
+    and which of the two it was ('lot' or 'text')."""
+    try:
+        text = Path(path).read_text(encoding='utf-8')
+    except (OSError, ValueError) as e:
+        sys.exit(f'Can’t read the pieces file {path}: {e}')
     pool = {}
     try:
         doc = json.loads(text)
@@ -251,44 +286,75 @@ def read_pieces(path):
                 if n > 0:
                     k = f'{str(r[0]).lower()}/{int(r[1])}'
                     pool[k] = pool.get(k, 0) + n
-        return pool
+        return pool, 'lot'
     for p, c, n in re.findall(r'\b([0-9a-z]{1,24})/(\d{1,5})\s*[×x]\s*(\d+)', text):
         pool[f'{p}/{int(c)}'] = pool.get(f'{p}/{int(c)}', 0) + int(n)
     if not pool:
         sys.exit(f'{path}: no pieces found. Expected a loose-pieces file or "part/colour ×count" text.')
-    return pool
+    return pool, 'text'
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('file')
-    ap.add_argument('--sets', nargs='*', help='sets whose pieces it may use (default: the model’s own "sets")')
-    ap.add_argument('--pieces', nargs='*', default=[], help='loose-pieces files, or pasted "My Brickyard pieces" text files, to add')
+    ap.add_argument('file', nargs='?', help='the model, as JSON. Put it first')
+    ap.add_argument('--sets', nargs='*', help='sets whose pieces it may use, instead of the model’s own "sets"')
+    ap.add_argument('--no-sets', action='store_true', help='count no set’s parts list: the --pieces files are the whole budget')
+    ap.add_argument('--pieces', nargs='*', default=[], help='loose-pieces files to add, or a pasted "My Brickyard pieces" text file (the whole budget)')
     ap.add_argument('--data')
     ap.add_argument('--out', default='.')
     ap.add_argument('--base', default=DEFAULT_BASE)
     ap.add_argument('--layers', action='store_true')
     ap.add_argument('--no-link', action='store_true')
+    ap.add_argument('--force', action='store_true', help='write the file and print the link even when the model has problems')
     a = ap.parse_args()
+    if a.file is None:
+        # --sets and --pieces take every word after them, the model file too when it comes last.
+        files = [v for v in a.sets or [] if v.lower().endswith('.json') or Path(v).is_file()]
+        hint = ''
+        if files:
+            hint = f' {files[-1]} came after --sets, which takes everything after it as set numbers.'
+        elif a.pieces:
+            hint = f' --pieces takes everything after it as pieces files ({", ".join(a.pieces)}), the model too.'
+        sys.exit(f'No model file.{hint} Put the model first: check_model.py model.json --pieces pieces.txt')
+    if a.no_sets and a.sets:
+        sys.exit('--no-sets and --sets ' + ' '.join(a.sets) + ' can’t both be given.')
     data = find_data(a.data)
     shapes = json.loads((data / 'shapes.json').read_text())
     colors = json.loads((data / 'colors.json').read_text())
-    model = clean_model(json.loads(Path(a.file).read_text(encoding='utf-8')))
-    sets = a.sets if a.sets is not None else model['sets']
-    sets = [s if '-' in s else s + '-1' for s in sets]
+    try:
+        src = json.loads(Path(a.file).read_text(encoding='utf-8'))
+    except (OSError, ValueError) as e:
+        sys.exit(f'Can’t read the model file {a.file}: {e}')
+    model = clean_model(src)
+    pieces = [(f,) + read_pieces(f) for f in a.pieces]
+    pasted = [f for f, _, kind in pieces if kind == 'text']
+    notes, warns = [], []
+    if a.no_sets or a.sets is not None:
+        sets = a.sets or []
+        if sets and pasted:
+            warns.append(f'{", ".join(sets)} counted on top of the pasted list in {pasted[0]}. A pasted list already includes the sets it names; '
+                         'leave --sets out unless these are extra sets.')
+    elif pasted:
+        sets = []
+        if model['sets']:
+            notes.append(f'{pasted[0]} is a pasted “My Brickyard pieces” list, so it is the whole budget: '
+                         f'the model’s own sets ({", ".join(model["sets"])}) weren’t added on top.')
+    else:
+        sets = model['sets']
+    sets = [x if '-' in x else x + '-1' for x in sets]
     pool = None
     if sets:
         pool = {}
-        for s in sets:
-            f = data / 'sets' / f'{s}.json'
+        for x in sets:
+            f = data / 'sets' / f'{x}.json'
             if not f.exists():
-                sys.exit(f'No parts list for set {s} in {data / "sets"}.')
+                sys.exit(f'No parts list for set {x} in {data / "sets"}.')
             for p, c, n in json.loads(f.read_text())['parts']:
                 pool[f'{p}/{c}'] = pool.get(f'{p}/{c}', 0) + n
         model['sets'] = sets
-    for f in a.pieces:
+    for _, more, _ in pieces:
         pool = pool if pool is not None else {}
-        for k, n in read_pieces(f).items():
+        for k, n in more.items():
             pool[k] = pool.get(k, 0) + n
     res = check(model, shapes, pool)
     cm = dict(w=res['size']['w'] * 0.8, d=res['size']['d'] * 0.8, h=round(res['size']['h'] * 0.32, 1))
@@ -296,6 +362,10 @@ def main():
           f'{res["size"]["w"]}x{res["size"]["d"]} studs, {res["size"]["h"]} plates tall ({cm["w"]:g} x {cm["d"]:g} x {cm["h"]:g} cm)')
     if pool is None:
         print('NOTE: no sets or pieces given, so piece counts weren’t checked.')
+    for w in warns:
+        print('WARNING: ' + w)
+    for n in notes:
+        print('NOTE: ' + n)
     for p in res['problems']:
         print('PROBLEM: ' + p['text'] + f'  (parts {", ".join(str(i + 1) for i in p["parts"][:12])})')
     for n in res['notes']:
@@ -304,15 +374,23 @@ def main():
         print(layers(model, shapes, colors))
     doc = {'brickyard': 1, 'model': model}
     out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
     stem = ''.join(ch if ch.isalnum() else '-' for ch in model['name'].lower()).strip('-')[:40] or 'model'
     path = out / f'{stem}.brickyard-model.json'
+    if not res['ok']:
+        n = len(res['problems'])
+        if not a.force:
+            print(f'NOT READY: {n} problem{"s" if n != 1 else ""}. No file was written and no link made. Fix the model and run this again.')
+            if path.exists():
+                print(f'NOTE: {path} is from an earlier run. It isn’t this model; don’t hand it over.')
+            sys.exit(1)
+        print(f'NOT READY: {n} problem{"s" if n != 1 else ""}. --force made the file and link anyway; Brickyard will show the same problems.')
+    out.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, ensure_ascii=False) + '\n', encoding='utf-8')
     print(f'File: {path}')
     if not a.no_link:
         c = zlib.compressobj(9, zlib.DEFLATED, -15)
-        data = c.compress(json.dumps(doc, ensure_ascii=False, separators=(',', ':')).encode()) + c.flush()
-        link = a.base + '#d1z' + base64.urlsafe_b64encode(data).decode().rstrip('=')
+        packed = c.compress(json.dumps(doc, ensure_ascii=False, separators=(',', ':')).encode()) + c.flush()
+        link = a.base + '#d1z' + base64.urlsafe_b64encode(packed).decode().rstrip('=')
         print(f'Link ({len(link)} characters):')
         print(link)
     sys.exit(0 if res['ok'] else 1)

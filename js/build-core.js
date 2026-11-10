@@ -63,9 +63,13 @@
       parts.forEach(function (q) { if (!q[6]) q[6] = ys.indexOf(q[3]) + 1; });
     }
     var str = function (v, n) { return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : ''; };
+    // The sets it's built from: a list of set numbers, or one on its own ("10698-1" is not seven sets, one a
+    // letter). Anything else is no sets; check_model.py (set_names) reads them the same way, and warns.
+    var sets = typeof m.sets === 'string' ? [m.sets] : Array.isArray(m.sets) ? m.sets : [];
     return {
       name: str(m.name, 80) || 'Untitled model', about: str(m.about, 600),
-      sets: (Array.isArray(m.sets) ? m.sets : []).map(function (v) { return str(String(v), 20); }).filter(Boolean).slice(0, 50),
+      sets: sets.filter(function (v) { return typeof v === 'string' || (typeof v === 'number' && isFinite(v) && v % 1 === 0 && Math.abs(v) < 1e15); })
+        .map(function (v) { return str(String(v), 20); }).filter(Boolean).slice(0, 50),
       parts: parts,
     };
   }
