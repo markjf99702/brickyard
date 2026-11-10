@@ -89,7 +89,13 @@
       b.type = 'button'; b.textContent = action.label;
       // Ctrl+Z (Cmd+Z on a Mac) presses Undo while it shows: by keyboard the button is past every set in the list.
       if (action.label === 'Undo') { b.dataset.undo = '1'; b.title = 'Undo (' + (MAC ? '⌘Z' : 'Ctrl+Z') + ')'; }
-      b.onclick = function () { hideToast(true); action.run(); };
+      // Pressed with a sheet open, the sheet closes first: Undo could take away the very set the sheet was showing
+      // ("Added 7 sets", open one of them, Undo), and Save then put that one set back. A sheet with changes typed in
+      // it stays, and its own Save works out what to do with what's left (editSheet).
+      b.onclick = function () {
+        hideToast(true);
+        if (openScrim && !changed(openScrim)) closeSheet(action.run); else action.run();
+      };
     }
     var ms = Math.min(3200 + Math.max(0, String(msg).length - 40) * 50, 10000);
     if (hold || stay) ms = Math.max(ms, 6000);

@@ -1472,6 +1472,59 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Undo pressed while a sheet is open closes the sheet first. It used to leave the sheet showing what Undo had just
+// taken away: after "Added 7 sets", with one of them open, Undo emptied the list behind the sheet, and the sheet's
+// Save put that one set back. A sheet with changes typed in it stays open.
+{
+  const example = { brickyard: 1, batch: JSON.parse(await readFile(join(root, 'test/fixtures/sample.json'), 'utf8')) };
+  const link = '#b1z' + deflateRawSync(JSON.stringify(example)).toString('base64url');
+  const { c, p } = await withSets({ sets: { o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' } } });
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
+  const rows = () => p.locator('#list-wrap .item').count();
+  const undo = async () => { const b = await p.locator('.toast button').boundingBox(); await p.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); };
+  const add = async () => { await p.goto(base + link); await p.click('#rv-add'); await p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet)); };
+  await add();
+  assert.deepEqual([await rows(), await says()], [8, 'Added 7 sets. 1 to check.Undo']);
+  await p.click('.item:has-text("Lamborghini")');
+  await p.waitForSelector('#e-save');
+  await undo();
+  await p.waitForFunction(() => /out again/.test(document.querySelector('.toast').textContent));
+  assert.deepEqual([await rows(), await p.locator('.scrim').count(), await says(), await p.evaluate(() => !!(history.state && history.state.sheet))],
+    [1, 0, 'Took those 7 sets out again', false], 'Undo with one of the new sets open: the sets are gone, and so is the sheet');
+  await p.goBack();
+  await p.waitForSelector('#home:not([hidden])');
+  assert.equal(await p.locator('.scrim').count(), 0, 'and the sheet left no place of its own behind: Back goes home');
+  // With something typed in the sheet, it stays: what's typed isn't thrown away by a tap on a message.
+  await add();
+  await p.click('.item:has-text("Typewriter")');
+  await p.fill('#e-notes', 'on loan to Sam');
+  await undo();
+  await p.waitForFunction(() => /out again/.test(document.querySelector('.toast').textContent));
+  assert.deepEqual([await rows(), await p.locator('.scrim').count(), await p.inputValue('#e-notes')], [1, 1, 'on loan to Sam'], 'Undo with changes typed in the open sheet leaves the sheet');
+  await discard(p);
+  await c.close();
+}
+{
+  const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), d: set('d', 'Set D', 20), w: set('w', 'Too wide', 90) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
+  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
+  const undo = async () => { const b = await p.locator('.toast button').boundingBox(); await p.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); };
+  await p.goto(base + '#shelves');
+  await p.tap('[data-act="fill"]');
+  await p.tap('.sv-set[data-set="b"]');
+  await p.waitForSelector('#z-save');
+  assert.match(await p.textContent('#z-where option:checked'), /Billy · shelf 1/);
+  await undo();
+  await p.waitForFunction(() => /off again/.test(document.querySelector('.toast').textContent));
+  assert.deepEqual([await on(), await p.locator('.sv-set').count(), await p.locator('.scrim').count(), await says()], ['', 0, 0, 'Took those 3 sets off again'],
+    'Undo of Fit with a set’s sheet open: every set is off, and no sheet is left saying the set is on shelf 1');
+  await p.waitForFunction(() => !(history.state && history.state.sheet));
+  assert.equal(await p.evaluate(() => location.hash), '#shelves');
+  await c.close();
+}
+
 // Messages can be read and acted on by everyone. The place they're shown in is on the page from the start (a screen
 // reader tends to miss one that arrives with its first words in it). A message stays longer the more there is to
 // read, 10 seconds with a button, and waits while the mouse is on it or its button has the keyboard's focus. Ctrl+Z
