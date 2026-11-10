@@ -80,8 +80,8 @@ eq(B.cleanModel({ parts: [['3001', 1, 0, 0, 0, 45]] }), null, 'turns are whole q
 check(B.cleanModel({ model: { parts: [{ p: '3001.dat', c: '1', x: 0, y: 0, z: 0 }] } }).parts[0][0] === '3001', 'objects and .dat names work');
 // "sets" is a list of set numbers, or one on its own: a single string is one set, not a set per letter.
 const one = [['3001', 4, 0, 0, 0, 0, 1]];
-const SETS = { string: '10698-1', list: ['10698-1', ' 10696 '], number: [10698], mixed: [null, '10698-1', {}, true, 1.5, ['x'], ''], 'a number alone': 5, object: { a: 1 }, none: null };
-const WANT = { string: ['10698-1'], list: ['10698-1', '10696'], number: ['10698'], mixed: ['10698-1'], 'a number alone': [], object: [], none: [] };
+const SETS = { string: '10698-1', list: ['10698-1', ' 10696 '], number: [10698], mixed: [null, '10698-1', {}, true, 1.5, ['x'], ''], 'a number too big to be one': [1e16, -1e16, 10698], 'a number alone': 5, object: { a: 1 }, none: null };
+const WANT = { string: ['10698-1'], list: ['10698-1', '10696'], number: ['10698'], mixed: ['10698-1'], 'a number too big to be one': ['10698'], 'a number alone': [], object: [], none: [] };
 for (const k in SETS) eq(B.cleanModel({ sets: SETS[k], parts: one }).sets, WANT[k], 'sets given as ' + k);
 
 // Models made up from a seed, for comparing the page with the script further down: each is built so that it can

@@ -61,6 +61,8 @@ def set_names(v):
             x = int(x)
         if isinstance(x, bool) or not isinstance(x, (str, int)):
             continue
+        if isinstance(x, int) and abs(x) >= 1e15:  # the page drops a number that big too
+            continue
         x = ' '.join(str(x).split())[:20]
         if x:
             out.append(x)
