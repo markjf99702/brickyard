@@ -2077,6 +2077,30 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// My sets on paper: the list under a line saying what it is, without the search, the chips, Group by or the buttons.
+// One moving box's sets (a search for the box, then print) come out on one page: the page was as tall as the screen
+// at least, which added a blank sheet.
+{
+  const sets = {};
+  for (let i = 0; i < 12; i++) sets['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), state: 'built', box: String(1 + i % 3), room: 'Hall' };
+  const { c, p } = await withSets({ sets }, { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+  await p.goto(base + '#catalog');
+  await p.selectOption('#group', 'box');
+  await p.fill('#q', 'box 2');
+  const pages = async () => ((await p.pdf({ format: 'Letter' })).toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+  assert.equal(await pages(), 1, 'one box’s sets print on one page');
+  await p.emulateMedia({ media: 'print' });
+  const day = await p.evaluate(() => new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+  assert.deepEqual([await p.textContent('#print-head'), await p.isVisible('#print-head')], ['Brickyard · Box 2 · ' + day + ' · 4 sets', true], 'under a line that says which box, when, and how many');
+  assert.deepEqual(await p.$$eval('#q, #chips, #group, #add-btn, #catalog .bar, .jd-foot', els => els.filter(e => e.getClientRects().length).map(e => e.id || e.className)), [], 'without the search, the chips, Group by, the buttons or the bars');
+  assert.deepEqual(await p.evaluate(() => [getComputedStyle(document.querySelector('.group')).breakAfter, getComputedStyle(document.querySelector('.list li')).breakInside]), ['avoid', 'avoid'], 'a heading stays with its first set, and no set is cut in two');
+  await p.emulateMedia({ media: 'screen' });
+  assert.equal(await p.isVisible('#print-head'), false, 'the line is for paper only');
+  await p.fill('#q', '');
+  assert.equal(await p.textContent('#print-head'), 'Brickyard · My sets by moving box · ' + day + ' · 12 sets');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);

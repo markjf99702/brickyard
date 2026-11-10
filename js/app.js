@@ -295,6 +295,11 @@
     var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), shown.length > 0) : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
+    // The line at the top of a printed list (it shows only on paper): what's listed, the day, and how many.
+    var onlyBox = bs && bs.label && !bs.rest.trim() && shown.length ? 'Box ' + C.boxName(shown[0].box) : '';
+    $('print-head').textContent = ['Brickyard', onlyBox || 'My sets ' + ({ box: 'by moving box', theme: 'by theme', state: 'by state', 'new': 'newest first' }[prefs.group] || 'by room'),
+      q && !onlyBox ? '“' + q + '”' : '', show === 'all' ? '' : (FILTERS.filter(function (f) { return f[0] === show; })[0] || [])[1],
+      new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }), plural(shown.length, 'set')].filter(Boolean).join(' · ');
     if (!shown.length) {
       // Nothing under the filter that's on, when the same search finds sets with it off: say so, with the way to
       // them. ("Nothing matches" under To check, with two Millennium Falcons owned, read as not having one.)

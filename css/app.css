@@ -322,4 +322,19 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
   ul.need { grid-template-columns: 1fr; }
   .bar h1 { font-size: 19px; overflow-wrap: anywhere; }
 }
-@media print { .jd-foot, .bar, .fab-row { display: none; } }
+
+/* On paper: the list, under a line that says what it's a list of (js/app.js fills it in). Not the search, the
+   chips or the buttons; a group's heading stays with its first set, and no set is cut across two pages. The page
+   is as tall as the list (as tall as the screen at least, it ended on a blank sheet). */
+.print-head { display: none; }
+@media print {
+  .jd-foot, .bar, .fab-row, .tools, .chips, .sumline, .toast, .scrim { display: none !important; }
+  body { min-height: 0; background: #fff; }
+  .print-head { display: block; margin: 0 0 8px; font-weight: 600; }
+  .group { break-after: avoid; margin-top: 10px; }
+  .list { gap: 4px; }
+  .list li { break-inside: avoid; }
+  .item { grid-template-columns: 40px 1fr auto; padding: 4px 8px 4px 4px; }
+  .item .pic { width: 40px; height: 32px; }
+}
+
