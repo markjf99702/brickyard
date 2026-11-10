@@ -73,24 +73,40 @@
 
   // A bookcase from the front, drawn to scale in cm. A shelf that's overfull, or holds a set taller than the space
   // above it (its size or the shelf's height changed after it was placed), is marked in red.
+  var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
   function caseHtml(c, ids) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], over = 0, high = 0;
+    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = 0, high = 0;
     c.levels.forEach(function (l) { H += l.h + T; });
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
-      var x0 = T, u = S.used(l, ids), tall = 0;
+      var x0 = T, u = S.used(l, ids), tall = 0, row = [];
       if (u > c.w + 0.01) over++;
+      // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
+      // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
+      var text = (li + 1) + ' · ' + cm(l.h) + ' cm', tw = text.length * 1.28 + 1.6;
+      var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 };
+      tags.push('<rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + tag.h + '" rx="1.85" class="sv-tag"/>' +
+        '<text x="' + (T + c.w - 1.2) + '" y="' + (y + 3.1) + '" class="sv-h" text-anchor="end">' + text + '</text>');
       l.sets.forEach(function (p) {
         var x = ids[p.id]; if (!x || !S.hasSize(x)) return;
         if (x.size.h > l.h) tall++;
-        var f = S.footprint(x, p.turn), top = y + l.h - f.h, col = colourOf(x);
-        parts.push('<g class="sv-set" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
-          '<rect x="' + (x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8" fill="' + col + '"' + (p.turn ? ' stroke-dasharray="1.2 0.8" class="turned"' : '') + '/>' +
-          label(x, x0, top, f) + '</g>');
+        var f = S.footprint(x, p.turn);
+        row.push({ x: x, p: p, f: f, x0: x0 });
         x0 += f.along + S.GAP;
       });
-      parts.push('<text x="' + (T + c.w - 0.8) + '" y="' + (y + 3) + '" class="sv-h" text-anchor="end">' + (li + 1) + ' · ' + cm(l.h) + ' cm</text>');
+      row.forEach(function (r, i) {
+        var x = r.x, f = r.f, top = y + l.h - f.h, next = row[i + 1];
+        // A small set is hard to hit with a thumb, so each takes taps on a clear rectangle at least HIT wide and
+        // tall: up into the empty shelf above it, and sideways as far as halfway to its neighbours or the shelf's end.
+        var left = i ? r.x0 - S.GAP / 2 : T, right = next ? next.x0 - S.GAP / 2 : Math.max(T + c.w, r.x0 + f.along);
+        var hw = Math.max(f.along, Math.min(HIT, right - left)), hx = Math.min(Math.max(left, r.x0 - (hw - f.along) / 2), right - hw);
+        var hh = Math.max(f.h, Math.min(HIT, l.h)), hy = y + l.h - hh;
+        parts.push('<g class="sv-set" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc((x.name || x.num) + ', ' + shelfName(c, li)) + '">' +
+          '<rect x="' + hx.toFixed(2) + '" y="' + hy + '" width="' + hw.toFixed(2) + '" height="' + hh + '" class="sv-hit"/>' +
+          '<rect x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + Math.max(0.5, f.along - 0.3) + '" height="' + f.h + '" rx="0.8" fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
+          label(x, r.x0, top, f, tag) + '</g>');
+      });
       y += l.h; high += tall;
       parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board"' + (u > c.w + 0.01 || tall ? ' style="fill:var(--red)"' : '') + '/>');
       y += T;
@@ -101,16 +117,63 @@
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '">Edit</button></div>' +
       (over ? '<p class="flag bad"><span>' + (over === 1 ? 'A shelf is' : over + ' shelves are') + ' overfull, marked in red. Move a set off, or turn one side-on.</span></p>' : '') +
       (high ? '<p class="flag bad"><span>' + (high === 1 ? 'A set is too tall for its shelf, marked in red. Move it to a taller shelf.' : high + ' sets are too tall for their shelves, marked in red. Move them to taller shelves.') + '</span></p>' : '') +
-      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + '</svg></section>';
+      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="img" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
   }
 
-  // A name in the set's rectangle if it fits, else its number, else nothing.
-  function label(x, x0, top, f) {
-    var fs = Math.min(2.6, Math.max(1.6, f.along / 9)), cx = x0 + f.along / 2;
-    var name = x.name || '', num = C.shortNum(x.num), room = f.along - 1;
-    var t = name.length * fs * 0.55 <= room ? name : (num && num.length * fs * 0.6 <= room ? num : '');
-    if (!t || f.h < fs + 1) return '';
-    return '<text x="' + cx + '" y="' + (top + Math.min(f.h / 2 + fs / 3, fs + 1.4)) + '" font-size="' + fs + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
+  // About how wide a piece of text is in the drawing's font (Rubik), in ems: a little over, so what's said to fit does.
+  function ems(t) {
+    var n = 0;
+    for (var i = 0; i < t.length; i++) {
+      var ch = t.charAt(i);
+      n += ch > '\u2e7f' ? 1.05 : /[mwMW…@%]/.test(ch) ? 0.88 : /[iIjl.,:;'’!| ]/.test(ch) ? 0.29 : /[frt()\-·\/]/.test(ch) ? 0.45 : /[0-9]/.test(ch) ? 0.65 : /[A-Z&]/.test(ch) ? 0.7 : 0.61;
+    }
+    return n;
+  }
+  // The start of a name that fits in room ems, ending in an ellipsis: the whole name if it fits, '' if under five
+  // letters of it would.
+  function shorten(name, room) {
+    if (ems(name) <= room) return name;
+    var k = name.length;
+    while (k > 0 && ems(name.slice(0, k).replace(/[\s,·-]+$/, '') + '…') > room) k--;
+    var cut = name.slice(0, k).replace(/[\s,·-]+$/, '');
+    return cut.length >= 5 ? cut + '…' : '';
+  }
+
+  // A name on two lines, split at the space that leaves the longer line shortest: [first, second], or null if
+  // there's no space or a line is over room ems.
+  function halves(name, room) {
+    var best = null, words = name.split(' ');
+    for (var i = 1; i < words.length; i++) {
+      var a = words.slice(0, i).join(' '), b = words.slice(i).join(' '), w = Math.max(ems(a), ems(b));
+      if (w <= room && (!best || w < best.w)) best = { w: w, lines: [a, b] };
+    }
+    return best && best.lines;
+  }
+
+  // A set's name in its rectangle, never under 2.3 units tall (about 10 px where a Billy fills a phone's width; it
+  // went down to 1.6, under 7 px). In order: the whole name across, on one line or two; the whole name up the side
+  // of a set that's taller than it's wide; the start of the name with an ellipsis, across or up; the set's number;
+  // nothing. `tag` is the shelf's label: a set standing under it keeps its name below it.
+  function label(x, x0, top, f, tag) {
+    var name = x.name || '', num = C.shortNum(x.num);
+    var y0 = x0 + f.along > tag.x && top < tag.y + tag.h ? Math.min(top + f.h, tag.y + tag.h) : top, free = top + f.h - y0;
+    var fs = Math.min(2.6, Math.max(2.3, f.along / 9)), across = free >= fs + 1 ? (f.along - 1) / fs : 0;
+    var vs = Math.min(2.6, f.along - 1), up = f.h > f.along && vs >= 2.3 ? (free - 1.6) / vs : 0;
+    var a = across ? shorten(name, across) : '', b = up ? shorten(name, up) : '', t, stand = false;
+    var two = across && a !== name && free >= 2.2 * fs + 2 ? halves(name, across) : null, cx = x0 + f.along / 2;
+    if (two) {
+      return '<text y="' + (y0 + fs + 1.4).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t"><tspan x="' + cx + '">' + esc(two[0]) + '</tspan><tspan x="' + cx + '" dy="1.15em">' + esc(two[1]) + '</tspan></text>';
+    }
+    if (a && a === name) t = a;
+    else if (b && b === name) { t = b; stand = true; }
+    else if (a) t = a;
+    else if (b) { t = b; stand = true; }
+    else if (num && ems(num) <= across) t = num;
+    else if (num && ems(num) <= up) { t = num; stand = true; }
+    else return '';
+    if (!stand) return '<text x="' + cx + '" y="' + (y0 + Math.min(free / 2 + fs / 3, fs + 1.4)).toFixed(2) + '" font-size="' + fs.toFixed(2) + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
+    var cy = (y0 + free / 2).toFixed(2);
+    return '<text x="' + cx + '" y="' + cy + '" dy="0.35em" transform="rotate(-90 ' + cx + ' ' + cy + ')" font-size="' + vs.toFixed(2) + '" text-anchor="middle" class="sv-t">' + esc(t) + '</text>';
   }
 
   // ---------- doing things ----------

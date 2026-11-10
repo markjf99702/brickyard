@@ -1354,6 +1354,51 @@ await page.click('[data-close]');
   }
 }
 
+// A full shelf can be read and tapped on a phone. The shelf's label sits on a tag drawn over the sets (a tall set at
+// that end of the shelf used to run through the words) and that set's name starts below it. A set's name is never
+// under 9 px and stays inside its rectangle: across on one line or two, up the side of a tall narrow set, cut short
+// with an ellipsis, or the set's number. A small set takes taps on about 44 px each way, into the empty shelf beside
+// and above it.
+{
+  const set = (id, name, w, d, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d, h }, ...more });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Motorised Lighthouse', 25, 25, 31.5), b: set('b', 'Orchid', 30, 24, 31), w: set('w', 'Wildflower Bouquet', 26, 13, 31),
+    n: set('n', 'A set with quite a long name', 6, 6, 21), g: set('g', '', 9, 9, 5, { num: '20915-1' }) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }, { id: 'b' }, { id: 'w', turn: true }] }, { h: 32, sets: [{ id: 'n' }] }, { h: 32, sets: [{ id: 'g' }] }] } } });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.sv-set');
+  await p.evaluate(() => document.fonts.ready);
+  const drawn = await p.evaluate(() => {
+    const box = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
+    const inside = (a, b) => a[0] >= b[0] - 1 && a[1] >= b[1] - 1 && a[2] <= b[2] + 1 && a[3] <= b[3] + 1, apart = (a, b) => a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1];
+    const svg = document.querySelector('svg.shelf'), kids = [...svg.children], tags = [...svg.querySelectorAll('.sv-tag')].map(box);
+    const sets = [...svg.querySelectorAll('.sv-set')].map(g => {
+      const t = g.querySelector('.sv-t'), hit = g.querySelector('.sv-hit').getBoundingClientRect();
+      if (!t) return { id: g.dataset.set, says: '', px: 0, hit: [0, 0] };
+      const tb = box(t);
+      return { id: g.dataset.set, says: [...t.querySelectorAll('tspan')].map(s => s.textContent).join(' / ') || t.textContent, px: Math.min(tb[2] - tb[0], tb[3] - tb[1]) > 0 ? parseFloat(getComputedStyle(t).fontSize) * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width : 0,
+        inside: inside(tb, box(g.querySelector('.sv-box'))), clear: tags.every(k => apart(tb, k)), hit: [Math.round(hit.width), Math.round(hit.height)] };
+    });
+    return { sets, tagsLast: kids.findIndex(k => k.classList.contains('sv-tag')) > kids.map(k => k.classList.contains('sv-set')).lastIndexOf(true), labels: [...svg.querySelectorAll('.sv-h')].map(t => t.textContent) };
+  });
+  assert.deepEqual(drawn.sets.map(s => [s.id, s.says]), [['a', 'Motorised / Lighthouse'], ['b', 'Orchid'], ['w', 'Wildflower Bouquet'], ['n', 'A set with q…'], ['g', '20915']], 'what each set is called in the drawing');
+  for (const s of drawn.sets) assert.deepEqual([s.id, s.px >= 9, s.inside, s.clear, s.hit[0] >= 43 && s.hit[1] >= 43], [s.id, true, true, true, true], 'a name of ' + s.px.toFixed(1) + ' px, inside its set, clear of the shelf’s label, with ' + s.hit.join(' × ') + ' px to tap');
+  assert.deepEqual([drawn.tagsLast, drawn.labels], [true, ['1 · 32 cm', '2 · 32 cm', '3 · 32 cm']], 'the shelves’ labels are drawn over the sets');
+  // Beside the narrow set, and above the low one, still opens it.
+  for (const [id, title, where] of [['n', 'A set with quite a long name', 'beside'], ['g', 'Set 20915', 'above']]) {
+    const [x, y] = await p.evaluate(([id, where]) => {
+      const g = document.querySelector('.sv-set[data-set="' + id + '"]'), b = g.querySelector('.sv-box').getBoundingClientRect(), h = g.querySelector('.sv-hit').getBoundingClientRect();
+      g.scrollIntoView({ block: 'center' });
+      const b2 = g.querySelector('.sv-box').getBoundingClientRect(), h2 = g.querySelector('.sv-hit').getBoundingClientRect();
+      return where === 'beside' ? [b2.right + (h2.right - b2.right) * 0.7, (b2.top + b2.bottom) / 2] : [(b2.left + b2.right) / 2, h2.top + (b2.top - h2.top) * 0.3];
+    }, [id, where]);
+    await p.touchscreen.tap(x, y);
+    await p.waitForSelector('#z-save');
+    assert.equal(await p.textContent('#sheetTitle'), title, 'a tap ' + where + ' a small set opens it');
+    await p.click('[data-close]');
+  }
+  await c.close();
+}
+
 // Every size box says what it is, above the box, where it stays once the box holds a number: a bookcase opened on
 // a bare "76" and "26", and a set's size was a bare "50 8 16" (the words were only placeholders).
 {

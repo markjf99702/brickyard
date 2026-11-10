@@ -252,11 +252,13 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
 .sv-frame, .sv-board { fill: #a8865f; }
 .sv-back { fill: color-mix(in srgb, #a8865f 16%, var(--card)); }
 .sv-set { cursor: pointer; }
-.sv-set rect { stroke: rgba(0, 0, 0, .25); stroke-width: .25; }
-.sv-set:hover rect, .sv-set:focus-visible rect { stroke: var(--ink); stroke-width: .5; }
+.sv-box { stroke: rgba(0, 0, 0, .25); stroke-width: .25; }
+.sv-set:hover .sv-box, .sv-set:focus-visible .sv-box { stroke: var(--ink); stroke-width: .5; }
+.sv-hit { fill: transparent; }
 .sv-set:focus { outline: none; }
 .sv-t { fill: #fff; font-weight: 600; pointer-events: none; }
-.sv-h { fill: var(--muted); font-size: 2.6px; }
+.sv-h { fill: var(--muted); font-size: 2.6px; pointer-events: none; }
+.sv-tag { fill: color-mix(in srgb, var(--card) 88%, transparent); pointer-events: none; }
 .pic.swatch { width: 64px; height: 52px; border-radius: 8px; box-shadow: inset 0 -5px 0 rgba(0, 0, 0, .18); }
 .rv .pic.swatch { width: 56px; height: 46px; }
 
