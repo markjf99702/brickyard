@@ -1335,7 +1335,8 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
 }
 
 // A message at the bottom uses the screen's width (it was squeezed into half of it, four lines tall), stays centred,
-// and can carry a button. One left showing goes when a sheet opens, unless it's a held warning.
+// and can carry a button. A plain one left showing goes when a sheet opens. One that stays (a held warning, or one
+// with Undo) is kept, clear of the sheet: the case after this one.
 {
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', room: 'Living room', spot: 'Bookcase' } } });
   const box = () => p.locator('.toast').boundingBox();
@@ -1355,14 +1356,119 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.equal(await p.textContent('.toast button'), 'Undo');
   await p.click('.toast button');
   assert.deepEqual([await p.evaluate(() => window.undone), await p.locator('.toast').isHidden()], [1, true], 'its button runs once and the message goes');
-  await p.evaluate(() => window.brickyard.toast('Added 7 sets'));
+  // A plain message the page really makes. (This was tried with a made-up "Added 7 sets"; the page's own has Undo.)
+  await p.click('.item:has-text("Tree House")');
+  await p.click('#e-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.equal(await p.textContent('.toast'), 'Saved');
   assert.equal(await p.locator('.toast button').count(), 0, 'the next message has no button left in it');
   await p.click('#menu-btn');
-  assert.equal(await p.locator('.toast').isHidden(), true, 'a message left showing goes when a sheet opens');
+  assert.equal(await p.locator('.toast').isHidden(), true, 'a plain message left showing goes when a sheet opens');
   await p.click('[data-close]');
   await p.evaluate(() => window.brickyard.toast('This browser wouldn’t save.', true));
   await p.click('#menu-btn');
   assert.equal(await p.locator('.toast').isVisible(), true, 'a held warning stays');
+  await c.close();
+}
+
+// A message never sits on an open sheet. One with Undo stays 10 seconds and is kept when a sheet opens, and at the
+// bottom of a phone's screen that put it over the sheet's own controls: after Fit, a tap on Move right in a set's
+// sheet pressed Undo and took every set off again; after adding sets from a link, "Added 7 sets" covered the Missing
+// pieces box of the next set. While a sheet is open on a phone every message shows at the top of the screen, above the
+// sheet, which gives way when the message needs more room than it leaves; on a wide screen, where the sheet is in
+// the middle, the message goes below it.
+{
+  const example = { brickyard: 1, batch: JSON.parse(await readFile(join(root, 'test/fixtures/sample.json'), 'utf8')) };
+  const link = '#b1z' + deflateRawSync(JSON.stringify(example)).toString('base64url');
+  const LONG = 'Removed The Lord of the Rings: Barad-dûr and its sets are back in Not on a shelf yet. 3 sets no longer say Hall Billy in My sets.';
+  // Where the message and the sheet are, and what a tap in the middle of each of the sheet's controls would land on.
+  const look = p => p.evaluate(() => {
+    const box = el => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) }; };
+    const t = document.querySelector('.toast'), sheet = document.querySelector('.sheet'), under = [];
+    if (sheet) sheet.querySelectorAll('button, input, select, textarea, a').forEach(el => {
+      const r = el.getBoundingClientRect(), b = sheet.querySelector('.bd').getBoundingClientRect();
+      if (!r.width || el.disabled || (el.closest('.bd') && (r.bottom < b.top + 4 || r.top > b.bottom - 4))) return; // scrolled out of the sheet
+      const hit = document.elementFromPoint(r.left + r.width / 2, Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 1));
+      if (hit && hit.closest('.toast')) under.push(el.id || el.textContent.trim());
+    });
+    return { says: t.hidden ? null : t.querySelector('span').textContent, toast: t.hidden ? null : box(t), sheet: sheet && box(sheet), close: sheet && box(sheet.querySelector('[data-close]')), under, h: innerHeight, w: innerWidth };
+  });
+  // The message is wholly above the sheet (or, on a wide screen, wholly below it), on the screen, and over none of
+  // the sheet's controls; the sheet's heading and Close are on the screen too.
+  const clear = async (p, what, below) => {
+    await p.waitForFunction(() => !document.getAnimations().length); // the sheet has come up
+    const l = await look(p);
+    assert.ok(l.toast && l.sheet, what + ': a message and a sheet are showing');
+    assert.ok(below ? l.toast.top >= l.sheet.bottom : l.toast.bottom <= l.sheet.top, what + ': the message is ' + (below ? 'below' : 'above') + ' the sheet ' + JSON.stringify([l.toast, l.sheet]));
+    assert.ok(l.toast.top >= 0 && l.toast.bottom <= l.h && l.toast.left >= 0 && l.toast.right <= l.w, what + ': and on the screen ' + JSON.stringify(l.toast));
+    assert.deepEqual(l.under, [], what + ': no control of the sheet is under it');
+    assert.ok(l.close.top >= (below ? 0 : l.toast.bottom) && l.close.bottom <= l.h, what + ': the sheet’s Close is on the screen');
+    return l;
+  };
+  for (const size of [{ width: 390, height: 844 }, { width: 390, height: 664 }, { width: 320, height: 568 }, { width: 1280, height: 800 }]) {
+    const wide = size.width >= 700, at = size.width + '×' + size.height;
+    const { c, p } = await withSets({ sets: { o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' } } }, wide ? { viewport: size, hasTouch: false, deviceScaleFactor: 1 } : { viewport: size });
+    await p.goto(base + link);
+    await p.click('#rv-add');
+    await p.waitForFunction(() => !document.querySelector('.scrim'));
+    let l = await look(p);
+    assert.equal(l.says, 'Added 7 sets. 1 to check.');
+    assert.ok(l.toast.top > l.h / 2, at + ': with no sheet open the message is at the bottom of the screen');
+    // The set marked Check, straight after: its sheet is the tallest there is.
+    await p.click('.item:has-text("Lamborghini")');
+    l = await clear(p, at + ', “Added 7 sets” over the next set’s sheet', wide);
+    assert.equal(l.says, 'Added 7 sets. 1 to check.', 'the message with Undo is still there');
+    // A message raised while the sheet is open goes to the same place.
+    await p.click('#e-ok');
+    l = await clear(p, at + ', “Marked as right”', wide);
+    assert.equal(l.says, 'Marked as right');
+    // Two or three lines of it, with a button.
+    await p.evaluate(t => window.brickyard.toast(t, false, { label: 'Undo', run() {} }), LONG);
+    l = await clear(p, at + ', a long message with Undo', wide);
+    if (!wide) assert.ok(l.toast.bottom - l.toast.top > 60, 'which takes more than one line (' + (l.toast.bottom - l.toast.top) + ' px)');
+    // The sheet gets its height back when the message goes, and the next message after it closes is at the bottom.
+    const tall = l.sheet.bottom - l.sheet.top;
+    await p.evaluate(() => document.querySelector('.toast span').click());
+    assert.ok((await look(p)).sheet.bottom - (await look(p)).sheet.top >= tall, 'the sheet is no shorter once the message has gone');
+    await p.click('.sheet [data-close]');
+    await p.waitForFunction(() => !document.querySelector('.scrim'));
+    await p.evaluate(t => window.brickyard.toast(t, false, { label: 'Undo', run() {} }), LONG);
+    l = await look(p);
+    assert.ok(l.toast.top > l.h / 2, at + ': and back at the bottom once the sheet is closed');
+    // Over the menu, and a cut link's message in Add from photos, which sat on the box the link was pasted in.
+    await p.click('#menu-btn');
+    await clear(p, at + ', over the menu', wide);
+    await p.click('#m-claude');
+    await p.fill('#paste', 'https://brickyard.junkdrawer.works/#b1zAAAAA');
+    await p.click('#p-go');
+    await p.waitForFunction(() => /cut short/.test(document.querySelector('.toast').textContent));
+    await clear(p, at + ', a cut link in Add from photos', wide);
+    await c.close();
+  }
+}
+
+// The same in the Shelf planner, where it did the most harm: after Fit, a set's sheet has Move left and Move right
+// where the message with Undo was. A real tap on Move right moves the set, and takes nothing off.
+{
+  const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), d: set('d', 'Set D', 20), w: set('w', 'Too wide', 90) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
+  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
+  await p.goto(base + '#shelves');
+  await p.tap('[data-act="fill"]');
+  assert.deepEqual([await on(), await says()], ['a+b+d', '3 sets placed; 1 didn’t fitUndo']);
+  await p.tap('.sv-set[data-set="a"]');
+  await p.waitForSelector('#z-right');
+  const hits = await p.evaluate(() => ['z-left', 'z-right', 'z-save', 'z-cat'].filter(id => !document.getElementById(id).disabled).map(id => {
+    const r = document.getElementById(id).getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return id + ':' + (hit && hit.closest('#' + id) ? 'itself' : hit && hit.closest('.toast') ? 'the message' : 'something else');
+  }));
+  assert.deepEqual(hits, ['z-right:itself', 'z-save:itself', 'z-cat:itself'], 'a tap in the middle of each of the sheet’s buttons lands on that button');
+  const r = await p.locator('#z-right').boundingBox();
+  await p.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2);
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.deepEqual([await on(), await p.locator('.sv-set').count()], ['b+a+d', 3], 'a real tap on Move right moves the set right, and every set is still on its shelf');
   await c.close();
 }
 

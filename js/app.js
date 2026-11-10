@@ -96,12 +96,14 @@
     if (action) ms = 10000;
     toastHeld = hold; toastStays = !!(hold || stay || action); toastN++; over = 0;
     runToast(ms);
+    fit();
   }
   // `pressed` is true when the message's own button put it away: a message that was waiting (toastAfter) waits on,
   // for whatever the button says next.
   function hideToast(pressed) {
     toastEl.hidden = true;
     clearTimeout(toastTimer); toastHeld = false; toastStays = false; over = 0;
+    fit();
     if (pressed === true || !queued) return;
     var next = queued; queued = null;
     setTimeout(function () { toastAfter(next[0], next[1]); }, 400);
@@ -111,6 +113,19 @@
   function toastAfter(msg, hold) {
     if (toastEl.hidden) toast(msg, hold); else queued = [msg, hold];
   }
+  // A message never sits on an open sheet. At the bottom of a phone's screen it lay over the sheet's own controls:
+  // after Fit, "3 sets placed · Undo" was on Move right in the set's sheet opened next, and a tap there took every
+  // set off again. While a sheet is open the message's wrapper is marked (openSheet, dropSheet) and the stylesheet
+  // shows every message clear of the sheet: at the top of a phone's screen, at the bottom edge of a wide one, where
+  // the sheet is in the middle. The sheet is told how tall the message is, and gives way where the two would meet.
+  function fit() {
+    var s = openScrim;
+    says.className = s ? 'over-sheet' : '';
+    if (!s) return;
+    s.classList.toggle('msg', !toastEl.hidden);
+    if (toastEl.hidden) s.style.removeProperty('--msg'); else s.style.setProperty('--msg', toastEl.offsetHeight + 'px');
+  }
+  window.addEventListener('resize', fit); // a narrower screen wraps the message onto more lines
   // Words for a screen reader only, such as a button's new words when its first press turned it into a question.
   var sayTimer = 0;
   function say(t) {
@@ -486,7 +501,9 @@
   // the page outside does nothing, and Close, Escape or Back ask first (askClose).
   function openSheet(html, dirty) {
     dropSheet();
-    if (!toastStays) hideToast(); // "Added 7 sets" would sit on top of the next sheet
+    // A plain message left showing ("Saved") goes when a sheet opens. One that stays (it has Undo, or it's a
+    // warning) is kept, and shown clear of the sheet (fit).
+    if (!toastStays) hideToast();
     lastFocus = document.activeElement;
     var scrim = document.createElement('div');
     scrim.className = 'scrim';
@@ -512,6 +529,7 @@
     document.body.style.overflow = 'hidden';
     behind(true);
     openScrim = scrim;
+    fit();
     var f = scrim.querySelector('[autofocus]') || scrim.firstChild;
     if (f === scrim.firstChild) f.tabIndex = -1;
     f.focus({ preventScroll: true });
@@ -537,7 +555,7 @@
   function dropSheet() {
     if (!openScrim) return;
     var s = openScrim; openScrim = null;
-    s.remove(); document.body.style.overflow = ''; behind(false);
+    s.remove(); document.body.style.overflow = ''; behind(false); fit();
     var back = lastFocus && lastFocus.focus && document.contains(lastFocus) ? lastFocus : null;
     // What opened the sheet has gone from the screen (the Drive offer, once sync is on): the focus goes to the sync
     // button that took its place, or to the screen's heading, not nowhere.
