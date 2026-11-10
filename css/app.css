@@ -127,7 +127,10 @@ a.item { color: inherit; text-decoration: none; }
 .pic { width: 64px; height: 52px; border-radius: 8px; background: #fff; display: grid; place-items: center; overflow: hidden; position: relative; }
 :root[data-theme="dark"] .pic:not(.none) { background: #f4f1ea; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pic:not(.none) { background: #f4f1ea; } }
-.pic img { width: 100%; height: 100%; object-fit: contain; }
+/* Laid over the box, so the picture is fitted into it whole. As a grid item its height came from the picture itself
+   and the bottom was cut off. Multiplied onto the box, so a picture's white ground takes the box's softer white in
+   dark mode instead of standing out as a square inside it. */
+.pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
 .pic.none { background: var(--soft); }
 .item .t { font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .item .m { color: var(--muted); font-size: 13.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -393,6 +393,35 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// A set's picture shows whole, inside its box: in the list, in a batch from Claude and at the top of the set's sheet,
+// on a phone and on a wide screen. Rebrickable's two sizes are stood in for by pictures of the same shapes.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House' } } });
+  const pic = (w, h) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#2f8a4e"/></svg>`;
+  await c.route('https://cdn.rebrickable.com/**', r => r.fulfill({ contentType: 'image/svg+xml', body: /1000x800p/.test(r.request().url()) ? pic(1000, 800) : pic(250, 250) }));
+  const whole = async (sel, what) => {
+    await p.waitForFunction(s => { const i = document.querySelector(s + ' img'); return i && i.complete && i.naturalWidth > 0; }, sel);
+    const [img, box] = await p.evaluate(s => {
+      const r = e => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom].map(Math.round); };
+      const el = document.querySelector(s);
+      return [r(el.querySelector('img')), r(el)];
+    }, sel);
+    assert.ok(img[0] >= box[0] && img[1] >= box[1] && img[2] <= box[2] && img[3] <= box[3], what + ': the picture ' + img + ' is inside its box ' + box);
+  };
+  for (const [width, height] of [[390, 844], [1280, 800]]) {
+    await p.setViewportSize({ width, height });
+    await p.goto(base + '#catalog');
+    await whole('.item .pic', 'the list at ' + width);
+    await p.click('.item:has-text("Tree House")');
+    await whole('.sheet .head-pic', 'the set’s sheet at ' + width);
+    await p.click('[data-close]');
+    await p.goto(base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { sets: [{ num: '10281', name: 'Bonsai Tree' }] } })).toString('base64url'));
+    await whole('.rv .pic', 'a batch from Claude at ' + width);
+    await p.click('[data-close]');
+  }
+  await c.close();
+}
+
 // Pictures can be turned off.
 await page.click('#menu-btn');
 await page.click('#m-pics');
