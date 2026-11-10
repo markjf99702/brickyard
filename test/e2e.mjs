@@ -3920,6 +3920,38 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// On a phone the pieces to find are in view under the picture: the picture is half the screen that's showing, and the
+// list is in two columns. At 390 x 664 (an iPhone with Safari's bars up) the picture was 385 px tall and the list one
+// column: two of the three kinds in the cottage's second step were on the screen, and four of the last step's six
+// at the full 844.
+{
+  const { c, p } = await withSets({ sets: {} }, { viewport: { width: 390, height: 664 } });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#step-parts .need li');
+  const seen = () => p.evaluate(() => {
+    const kinds = [...document.querySelectorAll('#step-parts .need li')];
+    return { picture: Math.round(document.querySelector('.stage').getBoundingClientRect().height), columns: getComputedStyle(document.querySelector('#step-parts .need')).gridTemplateColumns.split(' ').length,
+      whole: kinds.filter(l => l.getBoundingClientRect().bottom <= innerHeight).length + ' of ' + kinds.length, sideways: document.documentElement.scrollWidth > innerWidth };
+  });
+  await p.click('#step-next');
+  await p.waitForFunction(() => document.getElementById('step-n').textContent === 'Step 2');
+  assert.deepEqual(await seen(), { picture: 332, columns: 2, whole: '3 of 3', sideways: false }, 'step 2 of the cottage at 390 x 664: every kind of piece is on the screen');
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.evaluate(() => { const r = document.getElementById('step-range'); r.value = String(+r.max - 1); r.dispatchEvent(new Event('input')); });
+  await p.waitForFunction(() => document.getElementById('step-next').textContent === 'Finish');
+  assert.deepEqual(await seen(), { picture: 422, columns: 2, whole: '6 of 6', sideways: false }, 'the last step at 390 x 844: all six kinds');
+  // All the pieces, in the model's menu, stays one column; and a laptop keeps its wider columns.
+  await p.click('#model-menu');
+  await p.click('#mm-parts');
+  assert.equal(await p.$eval('.sheet .need', el => getComputedStyle(el).gridTemplateColumns.split(' ').length), 1, 'All the pieces is one column');
+  await p.click('[data-close]');
+  await p.setViewportSize({ width: 1280, height: 800 });
+  assert.deepEqual([(await seen()).columns, (await seen()).picture], [3, 400], 'on a laptop: three columns, under a picture half the window tall');
+  await p.setViewportSize({ width: 290, height: 600 });
+  assert.equal((await seen()).columns, 1, 'and one column on a very narrow screen');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);
