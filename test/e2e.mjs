@@ -1904,6 +1904,52 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// A set marked Check stops being To check when its number is put right and saved (it stayed To check, with a
+// toast that only said Saved, until the sheet was opened again for "It's right"). Any other change keeps the mark.
+// While the number differs and the name is as it was, a line under Name says the name, year and pieces are still
+// the old set's.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', year: 2024, pieces: 906, state: 'built', room: 'Hall', check: 'number read from a blurry corner' },
+    b: { id: 'b', t: 1, num: '10311-1', name: 'Orchid', state: 'built', room: 'Hall', check: 'or is it 10281?' },
+    d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart', room: 'Office' } } });
+  await p.goto(base + '#catalog');
+  const checks = () => p.textContent('.chip[data-f="check"] .n');
+  const kept = id => p.evaluate(i => window.brickyard.doc().sets[i], id);
+  assert.equal(await checks(), '2');
+  // Only its box changed: still To check.
+  await p.click('.item[data-id="b"]');
+  await p.fill('#e-box', '7');
+  await p.click('#e-save');
+  assert.deepEqual([await checks(), await p.textContent('.toast'), (await kept('b')).check, (await kept('b')).box], ['2', 'Saved', 'or is it 10281?', '7'], 'a change to its box keeps the mark');
+  // Its number changed.
+  await p.click('.item[data-id="a"]');
+  assert.equal(await p.isHidden('#e-still'), true, 'no line under Name as the sheet opens');
+  await p.fill('#e-num', '10340');
+  assert.equal(await p.textContent('#e-still'), 'The name, year and pieces are still set 10334’s. Change them too if this is a different set.');
+  assert.equal(await p.isVisible('#e-still'), true);
+  await p.fill('#e-num', '10334');
+  assert.equal(await p.isHidden('#e-still'), true, 'put back, the line goes');
+  await p.fill('#e-num', '10340');
+  await p.fill('#e-name', 'Retro Radios');
+  assert.equal(await p.isHidden('#e-still'), true, 'and once the name is changed');
+  await p.fill('#e-name', 'Retro Radio');
+  assert.equal(await p.isVisible('#e-still'), true);
+  await p.click('#e-save');
+  assert.deepEqual([await checks(), await p.textContent('.toast'), (await kept('a')).check, (await kept('a')).num], ['1', 'Saved. No longer marked to check.', undefined, '10340-1'], 'a corrected number takes the mark off');
+  assert.equal(await p.locator('.item[data-id="a"] .warn').count(), 0, 'and its row no longer says so');
+  // A set with no mark says only Saved, and a new set has no line.
+  await p.click('.item[data-id="d"]');
+  await p.fill('#e-num', '21328');
+  assert.equal(await p.isVisible('#e-still'), true);
+  await p.click('#e-save');
+  assert.equal(await p.textContent('.toast'), 'Saved');
+  await p.click('#add-btn');
+  await p.fill('#e-num', '10698');
+  assert.equal(await p.isHidden('#e-still'), true);
+  await c.close();
+}
+
 // A damaged entry among the saved models is skipped: the list still shows, and the home screen doesn't count it.
 {
   const { c, p } = await withSets({ sets: {} });

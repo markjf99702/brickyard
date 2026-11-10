@@ -204,6 +204,7 @@ a.item { color: inherit; text-decoration: none; }
 .flag .btn { flex: none; }
 .note { color: var(--muted); font-size: 14px; margin: 4px 0 12px; }
 .lede { margin: 0 0 12px; }
+.note.hint { margin-top: -6px; } /* a line about the box above it, close under it */
 .head-pic { width: 100%; height: 170px; border-radius: 12px; margin-bottom: 14px; }
 .head-pic.none { display: none; }
 .menu { list-style: none; padding: 0; margin: 0; }

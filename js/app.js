@@ -569,6 +569,7 @@
       (x.check ? '<p class="flag"><span><b>Check:</b> ' + esc(x.check) + '</span><button class="btn sm quiet" type="button" id="e-ok">It’s right</button></p>' : '') +
       '<div class="two">' + field('Set number', box('e-num', C.shortNum(x.num), ' inputmode="text" placeholder="e.g. 10698"' + (isNew ? ' autofocus' : ''))) + field('Year', box('e-year', x.year || '', ' inputmode="numeric"')) + '</div>' +
       field('Name', box('e-name', x.name, ' placeholder="e.g. Large Creative Brick Box"')) +
+      '<p class="note hint" id="e-still" role="status" hidden></p>' +
       '<div class="two">' + field('Pieces', box('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', box('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
       '<div class="field" role="group" aria-labelledby="e-state-l"><span class="lbl" id="e-state-l">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
         return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k].replace('Taken apart', 'Apart') + '</button>';
@@ -620,7 +621,19 @@
       var b = $('e-save');
       this.removeAttribute('aria-invalid');
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
+      still();
     });
+    // A number changed on a set that's already here leaves the name, year and pieces as they were: the row would
+    // show the new set's picture beside the old set's name, without a word. One line under Name says so, until the
+    // name is changed or the number is put back.
+    var nameWas = $('e-name').value;
+    function still() {
+      var el = $('e-still'), on = !isNew && !!numWas && !!(x.name || x.year || x.pieces) && C.setNum($('e-num').value.trim()) !== numWas && $('e-name').value === nameWas;
+      if (on === !el.hidden) return;
+      el.hidden = !on;
+      el.textContent = on ? 'The name, year and pieces are still set ' + C.shortNum(numWas) + '’s. Change them too if this is a different set.' : '';
+    }
+    $('e-name').addEventListener('input', still);
     // Space ticks a tick-box; Enter on one would save the sheet, like Enter in a box.
     $('e-form').onkeydown = function (e) { if (e.key === 'Enter' && e.target.type === 'checkbox') e.preventDefault(); };
     $('e-form').onsubmit = function (e) {
@@ -631,11 +644,15 @@
       // The sizes are cm unless they say inches; '14 1/8"' used to be saved as 14 cm.
       var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
       if (!z) return;
+      // A set marked Check whose number is changed has been put right: it stops being To check with this Save.
+      // (It stayed To check until the sheet was opened again for "It's right", words that don't fit a set that was
+      // wrong.) Any other change keeps the mark.
+      var righted = !isNew && !!x.check && num !== numWas;
       var y = C.cleanSet({
         num: num, name: $('e-name').value, year: $('e-year').value, pieces: $('e-pieces').value, theme: $('e-theme').value, state: st,
         room: $('e-room').value, spot: $('e-spot').value, box: $('e-box').value, missing: $('e-missing').value,
         instr: $('e-instr').checked ? true : (x.instr === false ? false : null), tags: $('e-tags').value, notes: $('e-notes').value,
-        size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] }, check: x.check, added: x.added || today(),
+        size: { w: z.v['e-w'], d: z.v['e-d'], h: z.v['e-h'] }, check: righted ? '' : x.check, added: x.added || today(),
       });
       if (!y) { toast('Give it a set number or a name.'); $('e-num').focus(); return; }
       // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
@@ -647,7 +664,7 @@
         return;
       }
       y.id = x.id; putSet(y); save(); closeSheet(); renderCatalog();
-      toast((isNew ? 'Added' : 'Saved') + (z.note ? '. ' + z.note : ''));
+      toast((isNew ? 'Added' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
     };
   }
 
