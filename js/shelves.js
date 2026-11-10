@@ -51,6 +51,11 @@
   function byId() { var m = {}; sets().forEach(function (x) { m[x.id] = x; }); return m; }
   function copy(c) { return JSON.parse(JSON.stringify(c)); }
   function shelfName(c, li) { return c.name + ', shelf ' + (li + 1); }
+  // The same, as it's written into a set's Shelf or spot in My sets, which keeps 60 characters (cleanSet): a long
+  // bookcase name gives way so the shelf number always fits. It was written whole, and the next time the catalog was
+  // read "The tall white Billy between the window and the door, shelf 1" lost its "1"; the planner then said the
+  // set was somewhere else in My sets, and pressing the button again didn't help.
+  function spotName(c, li) { var tail = ', shelf ' + (li + 1); return C.s(c.name, 60 - tail.length).trim() + tail; }
   function cm(v) { return String(v).replace(/\.0$/, ''); }
   function sizeText(z) { return cm(z.w) + ' × ' + cm(z.d) + ' × ' + cm(z.h) + ' cm'; }
   function colourOf(x) { var k = x.theme || x.name || ''; return COLOURS[parseInt(C.hash(k), 36) % COLOURS.length]; }
@@ -369,7 +374,7 @@
     all.forEach(function (c) { byCase[c.id] = c; });
     Object.keys(at).forEach(function (id) {
       var x = ids[id], c = byCase[at[id].c]; if (!x) return;
-      var spot = shelfName(c, at[id].l), room = c.room || x.room || '', skip = S.ON_SHELVES.indexOf(x.state) < 0;
+      var spot = spotName(c, at[id].l), room = c.room || x.room || '', skip = S.ON_SHELVES.indexOf(x.state) < 0;
       out.push({ x: x, spot: spot, room: room, skip: skip, differs: !skip && (x.spot !== spot || (x.room || '') !== room) });
     });
     return out;
@@ -620,11 +625,12 @@
       var c = kept(); if (!c) return; // as it's kept now, so Undo puts back the sets that stand on it now
       var before = copy(c), ids = byId(), n = Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length;
       // Sets that My sets says are on this bookcase, in the words Put these places in My sets writes ("Hall Billy,
-      // shelf 2"), stop saying so: the bookcase is gone. Not when another bookcase has the same name.
-      var twin = cases().some(function (k) { return k.id !== c.id && k.name === c.name; }), said = [];
+      // shelf 2", spotName), stop saying so: the bookcase is gone. Not when another bookcase has the same name (or
+      // one so long that it's written the same).
+      var twin = cases().some(function (k) { return k.id !== c.id && spotName(k, 0) === spotName(c, 0); }), said = [];
       if (!twin) sets().forEach(function (x) {
-        var m = /^(.*), shelf (\d+)$/.exec(x.spot || '');
-        if (!m || m[1] !== c.name || +m[2] < 1 || +m[2] > c.levels.length || (c.room && x.room && x.room !== c.room)) return;
+        var m = /, shelf (\d+)$/.exec(x.spot || '');
+        if (!m || +m[1] < 1 || +m[1] > c.levels.length || x.spot !== spotName(c, +m[1] - 1) || (c.room && x.room && x.room !== c.room)) return;
         said.push({ id: x.id, spot: x.spot });
         var y = copy(x); delete y.spot; app.putSet(y);
       });

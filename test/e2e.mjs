@@ -3959,6 +3959,37 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A bookcase with a long name: the place Put these places in My sets writes keeps its shelf number. A set's Shelf or
+// spot holds 60 characters, and "The tall white Billy between the window and the door, shelf 1" is 61: the next time
+// Brickyard opened, the spot had lost its "1", the card said the set was somewhere else in My sets, and pressing the
+// button again changed nothing. The name gives way now, in what's written and in what Remove looks for.
+{
+  const NAME = 'The tall white Billy between the window and the door, by Sam'; // 60 characters, the longest a bookcase's name can be
+  assert.equal(NAME.length, 60);
+  const set = (id, name) => ({ id, t: 1, name, state: 'built', size: { w: 12, d: 10, h: 10 } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree'), b: set('b', 'Typewriter') },
+    cases: { k: { id: 'k', t: 2, name: NAME, w: 76, d: 26, levels: Array.from({ length: 10 }, (_, i) => ({ h: 20, sets: i === 0 ? [{ id: 'a' }] : i === 9 ? [{ id: 'b' }] : [] })) } } });
+  const spots = () => p.evaluate(() => Object.values(window.brickyard.doc().sets).map(x => x.spot || ''));
+  const card = () => p.textContent('#apply-n');
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.equal(await card(), '2 sets are somewhere else in My sets.');
+  await p.click('[data-act="apply"]');
+  const wrote = ['The tall white Billy between the window and the doo, shelf 1', 'The tall white Billy between the window and the do, shelf 10'];
+  assert.deepEqual([await spots(), wrote.map(w => w.length), await card()], [wrote, [60, 60], 'My sets matches these shelves.'], 'the spot written is the name cut to leave room for the shelf number');
+  await p.reload();
+  await p.waitForSelector('.case');
+  assert.deepEqual([await spots(), await card()], [wrote, 'My sets matches these shelves.'], 'after Brickyard is opened again the spots still end in their shelf numbers, and the card still says My sets matches');
+  assert.match(await p.textContent('.case-hd h2'), new RegExp('^' + NAME), 'the bookcase keeps its whole name');
+  // Removing the bookcase takes those words out of My sets, as it does for a short name.
+  await p.click('[data-case="k"]');
+  await p.click('#k-del');
+  await p.waitForTimeout(650);
+  await p.click('#k-del');
+  assert.deepEqual([await spots(), /2 sets no longer say /.test(await p.textContent('.toast'))], [['', ''], true], 'and removing the bookcase clears them');
+  await c.close();
+}
+
 // Fits a phone: nothing scrolls sideways.
 for (const h of ['', '#catalog']) {
   await page.goto(base + h);
