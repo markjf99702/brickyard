@@ -1146,7 +1146,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.keyboard.press('Space');
   assert.deepEqual([await active(), await p.getAttribute('.chip[data-f="apart"]', 'aria-pressed')], ['apart', 'true'], 'a chip keeps the focus when it’s pressed');
   await p.keyboard.press('Tab');
-  assert.equal(await active(), 'group', 'so Tab goes on from it, not from the top');
+  assert.equal(await active(), 'tag-these', 'so Tab goes on from it (to Tag these, beside the count), not from the top');
   // A catalog arriving from sync, or another tab's save, redraws the list too.
   await p.focus('.chip[data-f="all"]');
   await p.keyboard.press('Enter');
@@ -3923,6 +3923,69 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.fill('#e-tags', twelve.slice(1).join(', ') + ', Christmas');
   await p.click('#e-save');
   assert.deepEqual(await p.evaluate(() => window.brickyard.doc().sets.a.tags), twelve.slice(1).concat('Christmas'), 'twelve save');
+  await c.close();
+}
+
+// Tag these, beside the count: one tag added to the sets the list is showing, or taken off them, with Undo. After a
+// search or a filter they start ticked; with every set showing, unticked. A set with 12 tags isn't given a 13th, and
+// the message says which.
+{
+  const twelve = Array.from({ length: 12 }, (_, i) => 'tag ' + (i + 1));
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', state: 'built', room: 'Office', tags: ['castle'] },
+    b: { id: 'b', t: 2, num: '10334-1', name: 'Retro Radio', state: 'built', room: 'Office', tags: ['On display'] },
+    d: { id: 'd', t: 3, num: '10294-1', name: 'Titanic', state: 'apart', room: 'Hall' },
+    e: { id: 'e', t: 4, num: '10497-1', name: 'Galaxy Explorer', state: 'built', room: 'Office', tags: twelve } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.querySelector('span').textContent : null; });
+  const tags = () => p.evaluate(() => Object.fromEntries(Object.values(window.brickyard.doc().sets).map(x => [x.id, (x.tags || []).join('|')])));
+  const ticks = () => p.$$eval('#tg li', ls => ls.map(l => l.querySelector('.t').textContent + (l.querySelector('input').checked ? ' (ticked)' : '')));
+  await p.goto(base + '#catalog');
+  assert.equal(await p.isVisible('#tag-these'), true, 'beside the count');
+  // Every set showing: listed unticked, with a way to tick them all.
+  await p.click('#tag-these');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.textContent('.tg-lede span'), await ticks(), await p.textContent('#tg-n'), await p.isDisabled('#tg-on'), await p.textContent('#tg-all')],
+    ['Tag these sets', 'All 4 sets. Search or filter My sets first to list fewer.', ['Titanic', 'Galaxy Explorer', 'Lion Knights’ Castle', 'Retro Radio'], '0 of 4 ticked', true, 'Tick all']);
+  await p.click('#tg-all');
+  assert.deepEqual([await p.textContent('#tg-n'), await p.textContent('#tg-all'), await p.isDisabled('#tg-on')], ['4 of 4 ticked', 'Untick all', false]);
+  await discard(p);
+  // A search for the room: its three sets, ticked. A tag tapped from those in use; one set has it, one is full.
+  await p.fill('#q', 'office');
+  await p.click('#tag-these');
+  assert.deepEqual([await p.textContent('.tg-lede span'), await ticks()], ['The 3 sets My sets is showing.', ['Galaxy Explorer (ticked)', 'Lion Knights’ Castle (ticked)', 'Retro Radio (ticked)']]);
+  await p.click('#tg-on');
+  assert.deepEqual(await p.locator('.sheet .err').allTextContents(), ['Type a tag, or tap one of yours.'], 'no tag: said under the box');
+  await p.fill('#tg-tag', 'a, b');
+  await p.click('#tg-on');
+  assert.deepEqual(await p.locator('.sheet .err').allTextContents(), ['One tag at a time: a comma or a semicolon would make it two.']);
+  await p.fill('#tg-tag', '');
+  await p.getByRole('group', { name: 'Tags on your sets' }).getByRole('button', { name: 'On display' }).click();
+  assert.equal(await p.inputValue('#tg-tag'), 'On display', 'a tag in use, tapped, goes in the box');
+  await p.click('#tg-on');
+  assert.deepEqual([await tags(), await toastSays(), await p.isVisible('.sheet')],
+    [{ a: 'castle|On display', b: 'On display', d: '', e: twelve.join('|') }, 'Tagged 1 set “On display”. 1 set had it already. Galaxy Explorer has 12 tags already, the most a set can have, so it wasn’t tagged.', false], 'added where there was room, and the message says what became of the others');
+  assert.deepEqual(await p.$$eval('.item[data-id="a"] .tag', ts => ts.map(t => t.textContent)), ['castle', 'On display'], 'the row shows it');
+  await p.click('.toast button');
+  assert.deepEqual([await tags(), await toastSays()], [{ a: 'castle', b: 'On display', d: '', e: twelve.join('|') }, 'Took “On display” off it again'], 'Undo');
+  // Taking a tag off, whatever its case; Enter in the box adds.
+  await p.click('#tag-these');
+  await p.fill('#tg-tag', 'ON DISPLAY');
+  await p.click('#tg-off');
+  assert.deepEqual([await tags(), await toastSays()], [{ a: 'castle', b: '', d: '', e: twelve.join('|') }, 'Took “On display” off 1 set.'], 'in any case, named as your sets spell it');
+  await p.click('.toast button');
+  assert.equal((await tags()).b, 'On display', 'Undo puts it back');
+  await p.fill('#q', '');
+  await p.click('[data-f="built"]');
+  await p.click('#tag-these');
+  assert.deepEqual(await ticks(), ['Galaxy Explorer (ticked)', 'Lion Knights’ Castle (ticked)', 'Retro Radio (ticked)'], 'a filter chooses them too');
+  await p.click('#tg li >> nth=0');
+  await p.fill('#tg-tag', 'Gift');
+  await p.press('#tg-tag', 'Enter');
+  assert.deepEqual([await tags(), await toastSays()], [{ a: 'castle|Gift', b: 'On display|Gift', d: '', e: twelve.join('|') }, 'Tagged 2 sets “Gift”.'], 'Enter adds it, to the ticked ones only');
+  await p.click('#tag-these');
+  await p.click('#tg li >> nth=0');
+  await p.fill('#tg-tag', 'nowhere');
+  await p.click('#tg-off');
+  assert.deepEqual([await toastSays(), await p.isVisible('.sheet')], ['None of the ticked sets has “nowhere”.', true], 'nothing to do: said, and the sheet stays');
   await c.close();
 }
 

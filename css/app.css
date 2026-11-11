@@ -258,6 +258,10 @@ a.item { color: inherit; text-decoration: none; }
 /* Under a set's Tags box: the tags on your sets, a tap each. */
 .tagpick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
 .tagpick .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.bulk .tagpick { margin: 0; }
+.tg-lede { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; }
+.tg-lede .rv-alt { margin: 0; }
+.ft-btns { display: flex; gap: 8px; }
 .print-only { display: none; }
 .note.lots { margin: 8px 2px 0; }
 .note.lots a { color: inherit; text-underline-offset: 2px; }

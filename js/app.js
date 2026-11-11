@@ -524,6 +524,7 @@
     $('group').value = prefs.group;
     fillLists(all);
     $('fold-all').hidden = true; // until there are groups to fold
+    $('tag-these').hidden = true; // until there are sets to tag
 
     if (!all.length) {
       $('list-wrap').innerHTML = '<div class="empty"><svg width="80" height="60" viewBox="0 0 88 72" aria-hidden="true"><rect x="14" y="30" width="60" height="34" rx="4" fill="var(--red)"/><rect x="21" y="22" width="14" height="9" rx="2" fill="var(--red)"/><rect x="53" y="22" width="14" height="9" rx="2" fill="var(--red)"/></svg>' +
@@ -599,6 +600,8 @@
     var noBox = bs && !bs.label ? '<p class="note" id="no-box">No moving box is labelled ' + esc(noLabel(q)) + '. These match the words.</p>' : '';
     // Under Missing pieces, a quiet button that copies what the rows say, for an order (copyMissing).
     lacking = show === 'missing' ? shown.slice() : [];
+    looking = { sets: shown.slice(), narrowed: !!q || show !== 'all' };
+    $('tag-these').hidden = false;
     var copyLine = lacking.length ? '<p class="boxline"><button class="btn sm quiet" type="button" data-act="missing">Copy this list</button></p>' : '';
     var canFold = !q && show === 'all' && !plain, nFolded = 0;
     $('list-wrap').innerHTML = noBox + boxLine + copyLine + groups.map(function (g) {
@@ -705,6 +708,7 @@
   function searchKey(e) { if (e.key === 'Enter' && window.matchMedia && matchMedia('(pointer: coarse)').matches) this.blur(); }
   $('q').addEventListener('keydown', searchKey);
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
+  $('tag-these').addEventListener('click', function () { tagSheet(); });
   $('fold-all').addEventListener('click', function () {
     var all = [].map.call(document.querySelectorAll('#list-wrap [data-fold]'), function (b) { return b.dataset.fold; }), open = this.textContent === 'Unfold all';
     setFolded(open ? [] : all);
@@ -1146,11 +1150,101 @@
       toast((gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (more ? '. ' + more : ''));
     };
   }
+  // Tag these, beside the count in My sets: one tag added to several sets, or taken off them, in one go (tags were
+  // given one set at a time, in each set's sheet). The sets are the ones the list is showing (`looking`), ticked
+  // when a search or a filter chose them, unticked when it's every set. A set that has 12 tags already isn't given
+  // a 13th, and the message says which. Undo puts every set's tags back as they were.
+  var looking = { sets: [], narrowed: false };
+  function tagSheet() {
+    var rows = looking.sets.filter(function (x) { return DOC.sets[x.id] && !DOC.sets[x.id].del; }).map(function (x) { return { x: DOC.sets[x.id], on: looking.narrowed }; });
+    if (!rows.length) return;
+    var n = {}, spelt = {};
+    C.live(DOC).forEach(function (y) { (y.tags || []).forEach(function (t) { var k = t.toLowerCase(); n[k] = (n[k] || 0) + 1; if (!spelt[k]) spelt[k] = t; }); });
+    var keys = Object.keys(n).sort(function (a, b) { return n[b] - n[a] || C.natural(spelt[a], spelt[b]); }).slice(0, 24);
+    var tagsOf = function (x) { return x.tags && x.tags.length ? 'Tags: ' + x.tags.join(', ') : 'No tags'; };
+    openSheet('<div class="hd"><h2 id="sheetTitle">Tag these sets</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      '<form class="bulk" id="tg-form" novalidate>' + field('Tag', input('tg-tag', '', ' enterkeyhint="done" placeholder="e.g. On display" aria-describedby="tg-hint"')) +
+      (keys.length ? '<div class="tagpick" id="tg-pick" role="group" aria-label="Tags on your sets">' + keys.map(function (k) {
+        return '<button type="button" class="chip" data-tag="' + esc(spelt[k]) + '" aria-pressed="false">' + esc(spelt[k]) + '</button>';
+      }).join('') + '</div>' : '') +
+      '<span class="note" id="tg-hint" style="margin:0">One tag, added to every ticked set or taken off them. A set keeps up to ' + C.MAX_TAGS + '.</span></form>' +
+      '<p class="lede tg-lede"><span>' + (looking.narrowed ? 'The ' + plural(rows.length, 'set') + ' My sets is showing.' : 'All ' + plural(rows.length, 'set') + '. Search or filter My sets first to list fewer.') + '</span>' +
+      '<button class="rv-alt" type="button" id="tg-all"></button></p>' +
+      '<ul class="rv" id="tg">' + rows.map(function (r, i) {
+        var x = r.x, title = x.name || 'Set ' + C.shortNum(x.num);
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Tag ' + esc(title) + '" aria-describedby="tg-d' + i + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
+          '<div><div class="t">' + esc(title) + '</div><div class="m" id="tg-d' + i + '">' + esc([metaLine(x), tagsOf(x)].filter(Boolean).join(' · ')) + '</div></div></li>';
+      }).join('') + '</ul></div>' +
+      '<div class="ft"><span class="note" id="tg-n" aria-live="polite" style="margin:0"></span><span class="ft-btns"><button class="btn quiet" type="button" id="tg-off">Take tag off</button><button class="btn" type="submit" form="tg-form" id="tg-on">Add tag</button></span></div>',
+      function () { return now() !== was; });
+    function now() { return fieldsOf(['tg-tag'], rows.map(function (r) { return r.on; })); }
+    var was = now();
+    function count() {
+      var on = rows.filter(function (r) { return r.on; }).length;
+      $('tg-n').textContent = on + ' of ' + rows.length + ' ticked';
+      $('tg-on').disabled = $('tg-off').disabled = !on;
+      $('tg-all').textContent = on === rows.length ? 'Untick all' : 'Tick all';
+    }
+    function lit() {
+      var k = $('tg-tag').value.trim().toLowerCase();
+      if ($('tg-pick')) $('tg-pick').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.tag.toLowerCase() === k); });
+    }
+    $('tg').onchange = function (e) {
+      var li = e.target.closest('li'); if (!li) return;
+      rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
+    };
+    $('tg').onclick = tickRow;
+    $('tg-all').onclick = function () {
+      var on = !rows.every(function (r) { return r.on; });
+      rows.forEach(function (r, i) { r.on = on; var li = $('tg').children[i]; li.classList.toggle('off', !on); li.querySelector('input').checked = on; });
+      count();
+    };
+    if ($('tg-pick')) $('tg-pick').onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      $('tg-tag').value = b.getAttribute('aria-pressed') === 'true' ? '' : b.dataset.tag;
+      $('tg-tag').dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    $('tg-tag').addEventListener('input', lit);
+    // The tag in the box, as a set keeps it, or null with the box saying what's wrong.
+    function theTag() {
+      var raw = $('tg-tag').value.trim();
+      if (!raw) { wrong($('tg-tag'), 'Type a tag, or tap one of yours.'); return null; }
+      if (/[,;]/.test(raw)) { wrong($('tg-tag'), 'One tag at a time: a comma or a semicolon would make it two.'); return null; }
+      if (raw.length > 40) { wrong($('tg-tag'), 'A tag can be 40 characters at most.'); return null; }
+      // Spelt as your sets have it already: "on display" typed here isn't a second tag beside "On display".
+      return spelt[raw.toLowerCase()] || C.names([raw], 1)[0];
+    }
+    var has = function (x, tag) { return (x.tags || []).some(function (t) { return t.toLowerCase() === tag.toLowerCase(); }); };
+    var named = function (xs) { return xs.length > 3 ? plural(xs.length, 'set') : andList(xs.map(function (x) { return x.name || 'Set ' + C.shortNum(x.num); })); };
+    function done(changed, msg, back) {
+      save(); closeSheet(); renderCatalog();
+      toast(msg, false, { label: 'Undo', run: function () { asWas(changed, []); toast(back); } });
+    }
+    $('tg-form').onsubmit = function (e) {
+      e.preventDefault();
+      var tag = theTag(); if (!tag) return;
+      var on = rows.filter(function (r) { return r.on; }).map(function (r) { return DOC.sets[r.x.id]; }).filter(function (x) { return x && !x.del; });
+      var had = on.filter(function (x) { return has(x, tag); }), full = on.filter(function (x) { return !has(x, tag) && (x.tags || []).length >= C.MAX_TAGS; });
+      var fullSays = full.length ? named(full) + (full.length === 1 ? ' has ' : ' have ') + C.MAX_TAGS + ' tags already, the most a set can have, so ' + (full.length === 1 ? 'it wasn’t' : 'they weren’t') + ' tagged.' : '';
+      var changed = on.filter(function (x) { return !has(x, tag) && (x.tags || []).length < C.MAX_TAGS; }).map(function (x) { return alter(x.id, { tags: (x.tags || []).concat(tag) }); }).filter(Boolean);
+      if (!changed.length) { toast(had.length === on.length ? (on.length === 1 ? 'That set has “' + tag + '” already.' : 'Every ticked set has “' + tag + '” already.') : [had.length ? plural(had.length, 'set') + ' had it already.' : '', fullSays].filter(Boolean).join(' ')); return; }
+      done(changed, ['Tagged ' + plural(changed.length, 'set') + ' “' + tag + '”.', had.length ? plural(had.length, 'set') + ' had it already.' : '', fullSays].filter(Boolean).join(' '),
+        'Took “' + tag + '” off ' + (changed.length === 1 ? 'it' : 'those ' + changed.length.toLocaleString()) + ' again');
+    };
+    $('tg-off').onclick = function () {
+      var tag = theTag(); if (!tag) return;
+      var on = rows.filter(function (r) { return r.on; }).map(function (r) { return DOC.sets[r.x.id]; }).filter(function (x) { return x && !x.del; });
+      var changed = on.filter(function (x) { return has(x, tag); }).map(function (x) { return alter(x.id, { tags: x.tags.filter(function (t) { return t.toLowerCase() !== tag.toLowerCase(); }) }); }).filter(Boolean);
+      if (!changed.length) { toast(on.length === 1 ? 'That set doesn’t have “' + tag + '”.' : 'None of the ticked sets has “' + tag + '”.'); return; }
+      done(changed, 'Took “' + tag + '” off ' + plural(changed.length, 'set') + '.', (changed.length === 1 ? 'It has' : 'Those ' + changed.length.toLocaleString() + ' have') + ' “' + tag + '” again');
+    };
+    count();
+  }
+  // "A set can have 12 tags, and this would be 13."
+  function tooMany(n) { return 'A set can have ' + C.MAX_TAGS + ' tags, and this would be ' + n + '.'; }
   // Under a set's Tags box, the tags used on your sets, most used first, each a button that adds it to the box or
   // takes it off: a tag typed again by hand comes out "display" on one set and "On display" on the next. Nothing
   // when no set has a tag yet.
-  // "A set can have 12 tags, and this would be 13."
-  function tooMany(n) { return 'A set can have ' + C.MAX_TAGS + ' tags, and this would be ' + n + '.'; }
   function tagPick(x) {
     var n = {}, name = {}, mine = {};
     (x.tags || []).forEach(function (t) { mine[t.toLowerCase()] = 1; });
