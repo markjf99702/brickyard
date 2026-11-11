@@ -1392,11 +1392,20 @@
   // (an iPad can say it's a Mac, but has a touch screen).
   var APP = navigator.standalone === true;
   var IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Copy a note for Claude: the request to send with the photos, so it works in any chat. It names Brickyard and
+  // its address, says where the format is for a Claude without the cataloger skill, and ends "They are in: " for
+  // the room and shelf, or the moving box, to be typed after it. (The other two hand-offs had a text to copy; this
+  // one had only "send them to Claude".)
+  var PHOTO_NOTE = 'Photos of my LEGO sets, to add to Brickyard (https://brickyard.junkdrawer.works/). Please work out which sets they are and send them back as a Brickyard link I can open to add them.\n' +
+    'If you don’t have the Brickyard cataloger skill, the format is at https://brickyard.junkdrawer.works/skill/brickyard-cataloger/references/brickyard-format.md: send the sets as that JSON, as text I can paste into Brickyard.\n' +
+    'They are in: ';
   function claudeSheet() {
     var box = '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>';
     var steps = function (third) {
       return '<div class="how"><b>With Claude</b><ol><li>Take photos of your set boxes, the instruction books, or the built models. The set number on a box is the best thing to get in the picture.</li>' +
-        '<li>Send them to Claude and say where they are (a room and shelf, or a moving box number).</li><li>' + third + '</li></ol></div>';
+        '<li>Send them to Claude with the note below, and finish it with where they are (a room and shelf, or a moving box number).</li><li>' + third + '</li></ol>' +
+        '<button class="btn sm quiet" type="button" id="p-note" style="margin-top:8px">Copy a note for Claude</button>' +
+        '<p class="note" style="margin:8px 0 0">Claude needs the Brickyard cataloger skill for this. Without it, the note says how to answer.</p></div>';
     };
     // From the home screen the paste box comes first, with a button that pastes and opens in one tap.
     openSheet('<div class="hd"><h2 id="sheetTitle">Add from photos</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
@@ -1409,6 +1418,16 @@
     var open = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file', true); };
     $('p-file').onclick = function () { $('file').click(); };
     $('p-go').onclick = open;
+    $('p-note').onclick = function () {
+      // Where the browser won't copy, the note takes the how-to's place, selected, to copy by hand.
+      var byHand = function () {
+        var how = $('p-note').parentNode;
+        how.innerHTML = '<b>A note for Claude</b><p class="note" style="margin:6px 0">Copy this and send it with the photos. Finish it with where they are.</p><textarea class="paste" id="p-note-text" readonly style="min-height:150px"></textarea>';
+        $('p-note-text').value = PHOTO_NOTE; $('p-note-text').focus(); $('p-note-text').select();
+      };
+      if (!navigator.clipboard || !navigator.clipboard.writeText) { byHand(); return; }
+      navigator.clipboard.writeText(PHOTO_NOTE).then(function () { toast('Copied. Paste it to Claude with the photos, and finish it with where they are.'); }, byHand);
+    };
     // Paste: what was copied goes in the box and is opened. A browser that won't hand it over (or a "Don't allow")
     // leaves the box ready for a paste by hand.
     if ($('p-paste')) $('p-paste').onclick = function () {

@@ -109,8 +109,9 @@
     }
     if (sorted.noSize.length) {
       html += '<h2 class="group" id="sv-nosize" tabindex="-1" aria-label="Needs a size, ' + plural(sorted.noSize.length, 'set') + '"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
-        '<p class="note">Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.</p>' +
-        '<div class="acts-row"><button class="btn quiet" type="button" data-act="ask-sizes">Copy these for Claude</button><button class="btn quiet" type="button" data-act="open-sizes">Open sizes from Claude</button></div>' +
+        '<p class="note">Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.' + bareLine(sorted.noSize) + '</p>' +
+        '<p class="note">Claude needs the Brickyard cataloger skill for this. Without it, what you copy says how to answer.</p>' +
+        '<div class="acts-row"><button class="btn quiet" type="button" data-act="ask-sizes"' + (sorted.noSize.some(function (x) { return x.num; }) ? '' : ' disabled') + '>Copy these for Claude</button><button class="btn quiet" type="button" data-act="open-sizes">Open sizes from Claude</button></div>' +
         '<ul class="list">' + sorted.noSize.map(function (x) {
           var at = S.placements(all)[x.id], c = at && all.filter(function (k) { return k.id === at.c; })[0];
           return setRow(x, '', c ? 'On ' + shelfName(c, at.l) : '');
@@ -808,11 +809,25 @@
   }
 
   // ---------- sizes from Claude ----------
+  // What's copied names the sets that have a number: a size comes back by its set's number, so one for "(no number)
+  // Bonsai tree" could never be matched, and Claude was asked for it all the same. Those are left out, and the
+  // screen says how many there are to measure (bareLine). The text says which way round width and depth go, and
+  // gives the plain form to answer in, for a Claude without the skill: pasted under Open sizes from Claude, it opens.
+  function bareLine(need) {
+    var n = need.filter(function (x) { return !x.num; }).length;
+    if (!n) return '';
+    if (n === need.length) return n === 1 ? ' This one has no set number, so Claude can’t look its size up: measure it.' : ' None of these has a set number, so Claude can’t look their sizes up: measure them.';
+    return ' ' + (n === 1 ? '1 of these has' : n.toLocaleString() + ' of these have') + ' no set number, so Claude can’t look ' + (n === 1 ? 'its size' : 'their sizes') + ' up: measure ' + (n === 1 ? 'that one' : 'those') + '.';
+  }
   function askSizes() {
-    var need = S.sort(sets(), cases()).noSize;
+    var need = S.sort(sets(), cases()).noSize, ask = need.filter(function (x) { return x.num; }), bare = need.length - ask.length;
+    if (!ask.length) return;
     var text = 'Built sizes for my Brickyard sets, please (width × depth × height in cm, as built and displayed). Send them as a Brickyard sizes link.\n' +
-      need.map(function (x) { return (C.shortNum(x.num) || '(no number)') + ' ' + (x.name || ''); }).join('\n') + '\n';
-    var done = function () { toast('Copied. Paste it to Claude.'); };
+      'Width is across the front as the set stands on display, depth is front to back, and height is to its top.\n' +
+      'If you don’t have the Brickyard cataloger skill, answer in this form, as text I can paste into Brickyard (the numbers here are an example): ' +
+      '{"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "where the size came from"}]}\n' +
+      ask.map(function (x) { return C.shortNum(x.num) + ' ' + (x.name || ''); }).join('\n') + '\n';
+    var done = function () { toast('Copied. Paste it to Claude.' + (bare ? ' The ' + (bare === 1 ? 'one' : bare.toLocaleString()) + ' with no set number ' + (bare === 1 ? 'isn’t' : 'aren’t') + ' in it.' : '')); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { showText(text); });
     else showText(text);
   }

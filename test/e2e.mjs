@@ -5242,7 +5242,8 @@ await page.click('[data-close]');
   const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree', 20, 15, 18), b: set('b', 'Typewriter', 27, 26, 11), g: set('g', 'Galaxy Explorer', 52, 32, 13), n: { id: 'n', t: 1, name: 'Orchid', state: 'built' } }, cases: billy });
   await p.goto(base + '#shelves');
   await p.waitForSelector('.case');
-  assert.deepEqual(await says(p), ['0 of 4 sets on shelves', 'Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.'], 'nothing placed yet: the count, and no word about tapping');
+  assert.deepEqual(await says(p), ['0 of 4 sets on shelves', 'Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets. This one has no set number, so Claude can’t look its size up: measure it.',
+    'Claude needs the Brickyard cataloger skill for this. Without it, what you copy says how to answer.'], 'nothing placed yet: the count, and no word about tapping');
   await p.click('[data-act="fill"]');
   assert.deepEqual((await says(p)).slice(0, 2), ['2 of 4 sets on shelves; the other 2 don’t fit or need a size', 'Tap a set to move it, turn it side-on or fix its size.']);
   assert.equal(await p.textContent('#shelves-body .list .item:has-text("Galaxy Explorer") .warn'), '32 cm deep; your bookcase is 26 cm deep');
@@ -5795,6 +5796,84 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   await p.goto(base + '#build');
   await p.waitForSelector('a[href="#model-x-cottage"]');
   assert.deepEqual([await row('a[href="#model-' + id + '"]'), await row('a[href="#model-x-cottage"]'), await p.locator('#built-note').count()], ['Can build', 'Can build', 0], 'both can be built again');
+  await c.close();
+}
+
+// The texts Brickyard copies for Claude work in a chat that hasn't the skills. Add from photos has a note to copy:
+// it names Brickyard and its address, says where the format is, and ends "They are in: " to be finished. Each
+// how-to says which skill Claude needs.
+{
+  const { c, p } = await withSets({ sets: {} }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  const says = async () => { await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden); return p.textContent('.toast span'); };
+  await p.goto(base + '#catalog');
+  await p.click('#menu-btn'); await p.click('#m-claude');
+  await p.waitForSelector('#p-note');
+  assert.equal(await p.textContent('.sheet .how li:nth-child(2)'), 'Send them to Claude with the note below, and finish it with where they are (a room and shelf, or a moving box number).');
+  assert.equal(await p.textContent('.sheet .how .note'), 'Claude needs the Brickyard cataloger skill for this. Without it, the note says how to answer.');
+  assert.ok((await p.locator('#p-note').boundingBox()).height >= 44, 'Copy a note for Claude is a finger tall');
+  await p.click('#p-note');
+  assert.equal(await says(), 'Copied. Paste it to Claude with the photos, and finish it with where they are.');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  assert.match(note, /^Photos of my LEGO sets, to add to Brickyard \(https:\/\/brickyard\.junkdrawer\.works\/\)\. Please work out which sets they are and send them back as a Brickyard link I can open to add them\.\n/);
+  assert.match(note, /\nIf you don’t have the Brickyard cataloger skill, the format is at https:\/\/brickyard\.junkdrawer\.works\/skill\/brickyard-cataloger\/references\/brickyard-format\.md: send the sets as that JSON, as text I can paste into Brickyard\.\nThey are in: $/, 'it ends ready to be finished');
+  assert.equal(await p.locator('.sheet #paste').count(), 1, 'and the sheet stays open for the link');
+  // Where the browser won't copy, the note is shown to copy by hand.
+  await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('no')); });
+  await p.click('#p-note');
+  await p.waitForSelector('#p-note-text');
+  assert.deepEqual(await p.$eval('#p-note-text', (t, n) => [t.value === n, t.selectionEnd - t.selectionStart === n.length, document.activeElement === t], note), [true, true, true], 'shown, selected');
+  await c.close();
+}
+// Copy these for Claude, in the Shelf planner, names the sets that have a number: a size comes back by its set's
+// number, so a set with none could never get one. The screen says how many are left to measure. The text says which
+// way round width and depth go, and gives the plain form to answer in, which opens when it's pasted back.
+{
+  const sets = { a: { id: 'a', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' }, b: { id: 'b', t: 1, name: 'Bonsai tree', state: 'built' }, d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'built' } };
+  const { c, p } = await withSets({ sets }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  const says = async () => { await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden); return p.textContent('.toast span'); };
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('[data-act="ask-sizes"]');
+  const notes = () => p.$$eval('#sv-nosize ~ p.note', ps => ps.map(x => x.textContent));
+  assert.deepEqual(await notes(), ['Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets. 1 of these has no set number, so Claude can’t look its size up: measure that one.',
+    'Claude needs the Brickyard cataloger skill for this. Without it, what you copy says how to answer.']);
+  await p.click('[data-act="ask-sizes"]');
+  assert.equal(await says(), 'Copied. Paste it to Claude. The one with no set number isn’t in it.');
+  const text = await p.evaluate(() => navigator.clipboard.readText());
+  assert.equal(text, 'Built sizes for my Brickyard sets, please (width × depth × height in cm, as built and displayed). Send them as a Brickyard sizes link.\n' +
+    'Width is across the front as the set stands on display, depth is front to back, and height is to its top.\n' +
+    'If you don’t have the Brickyard cataloger skill, answer in this form, as text I can paste into Brickyard (the numbers here are an example): {"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "where the size came from"}]}\n' +
+    '10497 Galaxy Explorer\n21327 Typewriter\n');
+  // The plain form, pasted back as a chat would send it, opens as sizes.
+  await p.click('[data-act="open-sizes"]');
+  await p.fill('#z-paste', 'Here you go:\n' + text.match(/\{"brickyard".*\}\]\}/)[0]);
+  await p.click('#z-go');
+  await p.waitForFunction(() => /Galaxy Explorer/.test((document.querySelector('.sheet') || {}).textContent || '') && /52/.test(document.querySelector('.sheet').textContent));
+  await p.click('.sheet [data-close]');
+  await c.close();
+  // With no numbered set to ask about, there is nothing to copy.
+  const bare = await withSets({ sets: { b: sets.b, e: { id: 'e', t: 1, name: 'Castle', state: 'built' } } });
+  await bare.p.goto(base + '#shelves');
+  await bare.p.waitForSelector('[data-act="ask-sizes"]');
+  assert.deepEqual([await bare.p.isDisabled('[data-act="ask-sizes"]'), await bare.p.$eval('#sv-nosize ~ p.note', x => x.textContent.split('. ').pop())], [true, 'None of these has a set number, so Claude can’t look their sizes up: measure them.']);
+  await bare.c.close();
+}
+// Copy my pieces for Claude ends with where a model's rules are, for a Claude without the designer skill, and the
+// script still reads the pasted text as the pieces it lists.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' } } }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  await p.goto(base + '#build');
+  await p.waitForSelector('#copy-pool');
+  assert.equal(await p.textContent('#build-list .how .note'), 'Claude needs the Brickyard designer skill for this. Without it, what you copy says where the rules are.');
+  await p.click('#copy-pool');
+  await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+  const text = await p.evaluate(() => navigator.clipboard.readText());
+  assert.match(text, /\n\(\d+ more kinds, such as wheels and hinges, that the builder doesn’t use yet\.\)\nHow a Brickyard model is written and checked, if you don’t have the Brickyard designer skill: https:\/\/brickyard\.junkdrawer\.works\/skill\/brickyard-designer\/SKILL\.md\n$/);
+  const dir = await mkdtemp(join(tmpdir(), 'brickyard-pieces-'));
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(join(dir, 'pieces.txt'), text);
+  const out = execSync(`python3 -B ${join(root, 'skill/brickyard-designer/scripts/check_model.py')} ${join(root, 'models/cottage.json')} --pieces ${join(dir, 'pieces.txt')} --out ${dir} --no-link`).toString();
+  assert.match(out, /^Cottage: 40 pieces, 7 steps/, 'check_model.py reads what was copied');
+  assert.doesNotMatch(out, /PROBLEM|NOT READY/);
   await c.close();
 }
 

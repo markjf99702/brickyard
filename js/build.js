@@ -273,7 +273,8 @@ const renderList = orSay(async () => {
       (r.added ? '<div class="m">' + r.added + '</div>' : '') + '</div>' + state + '</a></li>';
   }).join('') + '</ul>' +
     '<div class="how" style="margin-top:14px"><b>Get a new model from Claude</b><ol><li>Tap <b>Copy my pieces for Claude</b>.</li><li>Paste it to Claude and say what you’d like: “a lighthouse”, “something for the new house”.</li>' +
-    '<li>Claude designs it from those pieces only, checks it can really be built, and sends a link. Open it here.</li></ol></div>';
+    '<li>Claude designs it from those pieces only, checks it can really be built, and sends a link. Open it here.</li></ol>' +
+    '<p class="note" style="margin:8px 0 0">Claude needs the Brickyard designer skill for this. Without it, what you copy says where the rules are.</p></div>';
   $('build-list').innerHTML = html;
 
   if ($('add-box')) $('add-box').onclick = () => { app.addSet(BOX); toast('Added to My sets as taken apart'); renderList(); };
@@ -352,7 +353,9 @@ async function copyPool() {
     // The pieces standing in built models are already out of the list, and the first line says so.
     (built.length ? ', less the pieces in ' + listed(built.map(b => b.model.name)) + ', which ' + (built.length === 1 ? 'is' : 'are') + ' built' : '') + '.\n' +
     'Pieces the builder knows, as LDraw part/colour ×count:\n' + rows.map(k => k + ' ×' + pool[k]).join(', ') +
-    (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n';
+    (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n' +
+    // For a Claude without the designer skill: where the rules are. The live site serves the skill's own notes.
+    'How a Brickyard model is written and checked, if you don’t have the Brickyard designer skill: https://brickyard.junkdrawer.works/skill/brickyard-designer/SKILL.md\n';
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude with what you’d like built.'); }
   catch (e) {
     app.openSheet('<div class="hd"><h2 id="sheetTitle">Your pieces for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
