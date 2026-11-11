@@ -80,7 +80,7 @@ async function withSets(catalog, opts = {}) {
 
 await page.goto(base);
 await page.evaluate(() => document.fonts.ready);
-assert.match(await page.textContent('#home-stat'), /Nothing here yet/);
+assert.equal(await page.textContent('#home-stat'), 'No sets yet. Start here.');
 
 // A link cut short (as a chat app can leave it) says so when Brickyard opens on it, with what to do, on the screen
 // that kind of link belongs to; so does a link of a newer format than this copy of the page knows. Everything else
@@ -337,13 +337,13 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await p.selectOption('#group', 'box');
   const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.children[0].textContent + ' ' + h.children[1].textContent));
   assert.deepEqual(await heads(), ['Box 3 1', 'Box 14 1', 'Box 20 ', 'Not packed 1'], 'a box of only loose pieces has a group in its place');
-  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 42 loose pieces', 'In box 20: Red bag, 10 loose pieces'], 'each box’s loose pieces under its group');
+  assert.deepEqual(await lines(), ['Also in Box 14: Blue tub, 42 loose pieces', 'In Box 20: Red bag, 10 loose pieces'], 'each box’s loose pieces under its group');
   assert.equal(await p.locator('.group:has-text("Box 14") + .list + .note.lots').count(), 1, 'the line is under its box’s sets');
   await p.fill('#q', 'box 14');
   assert.deepEqual(await p.locator('#list-wrap .item .t').allTextContents(), ['Typewriter']);
-  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 42 loose pieces'], 'a search for the box shows its loose pieces');
+  assert.deepEqual(await lines(), ['Also in Box 14: Blue tub, 42 loose pieces'], 'a search for the box shows its loose pieces');
   await p.fill('#q', 'box 20');
-  assert.deepEqual([await p.locator('#list-wrap .item').count(), await lines()], [0, ['In box 20: Red bag, 10 loose pieces']], 'a box of only loose pieces is found, not "Nothing matches"');
+  assert.deepEqual([await p.locator('#list-wrap .item').count(), await lines()], [0, ['In Box 20: Red bag, 10 loose pieces']], 'a box of only loose pieces is found, not "Nothing matches"');
   await p.fill('#q', 'box 14 typewriter');
   assert.deepEqual(await lines(), [], 'looking for something in the box shows only that');
   await p.fill('#q', 'box 99');
@@ -355,7 +355,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await c.close();
 }
 // With a filter on (Built, Partly built…) a search for a box is for sets of that kind, so its loose pieces stay out,
-// as they do grouped by box: no "Also in box 14" under no sets, and nothing listed when none of them are in it.
+// as they do grouped by box: no "Also in Box 14" under no sets, and nothing listed when none of them are in it.
 {
   const { c, p } = await withSets({
     sets: { t: { id: 't', t: 1, name: 'Typewriter', box: '14', state: 'partial' }, g: { id: 'g', t: 1, name: 'Galaxy Explorer', box: '3', state: 'built' } },
@@ -363,7 +363,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   await p.goto(base + '#catalog');
   const lines = () => p.locator('#list-wrap .note.lots').allTextContents();
   await p.fill('#q', 'box 14');
-  assert.deepEqual(await lines(), ['Also in box 14: Blue tub, 40 loose pieces'], 'with All, a box’s loose pieces show');
+  assert.deepEqual(await lines(), ['Also in Box 14: Blue tub, 40 loose pieces'], 'with All, a box’s loose pieces show');
   await p.click('.chip[data-f="built"]');
   assert.deepEqual([await lines(), await p.textContent('#list-wrap .empty p')], [[], 'Nothing under Built. 1 set matches in all your sets.'], 'Built, with no built set in box 14: nothing under Built');
   await p.click('.chip[data-f="partial"]');
@@ -1883,6 +1883,65 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// One word for each thing. The State control says "Taken apart", like the chips, the badges and the planner (it
+// said "Apart"); each of its buttons is as wide as its words need, so at 320 px all four are still on one line,
+// none narrower than 44 px. Loose pieces are never called a "lot", the code's word ("You can untick or remove a lot there" read as "remove much"). A review
+// that came from a link or a file is put off with "Not now", whichever kind it is (the catalog's said Cancel, the
+// sizes' said Close). A moving box is "Box 7" wherever it's named. And the hint on the 3D picture says how the
+// thing in hand zooms: the wheel with a mouse, a pinch with fingers.
+{
+  const lot = { id: 'tub', t: 1, name: 'Blue tub', box: '7', parts: [['3001', 4, 40], ['3020', 15, 2]] };
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'apart', box: '7' } }, loose: { tub: lot } }, { viewport: { width: 320, height: 568 } });
+  const shown = () => p.$eval('.sheet', s => s.innerText.replace(/\s+/g, ' '));
+  const close = () => p.textContent('.sheet [data-close]');
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Tree House")');
+  const seg = await p.$$eval('#e-state button', bs => bs.map(b => { const r = b.getBoundingClientRect(); return [b.textContent, b.scrollWidth <= b.clientWidth, Math.round(r.width), Math.round(r.height)]; }));
+  assert.deepEqual(seg.map(b => b[0]), ['Built', 'Partly built', 'Taken apart', 'Sealed']);
+  assert.ok(seg.every(b => b[1] && b[2] >= 44 && b[3] === 44), 'at 320 px each name is inside its button, on one line, and no button is under 44 px ' + JSON.stringify(seg));
+  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.querySelector('.sheet').scrollWidth <= innerWidth), true, 'and nothing runs off the side');
+  await p.click('.sheet [data-close]');
+  await p.selectOption('#group', 'box');
+  assert.equal(await p.textContent('.note.lots'), 'Also in Box 7: Blue tub, 42 loose pieces');
+  await p.goto(base + '#build');
+  await p.waitForSelector('li.lot');
+  assert.match(await p.textContent('li.lot small'), /^Loose · 42 pieces · Box 7/);
+  await p.click('li.lot [data-lot]');
+  assert.match(await shown(), /opening their link or file again brings them back\./);
+  assert.doesNotMatch(await shown(), /\blots?\b/i, 'removing loose pieces');
+  await p.click('.sheet [data-close]');
+  // The same loose pieces, opened again.
+  await p.goto('about:blank');
+  await p.goto(base + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: lot })).toString('base64url'));
+  await p.waitForSelector('#ls-add');
+  assert.match(await shown(), /You already have these loose pieces \(42 pieces\)\. Adding them again replaces them, so nothing is counted twice\./);
+  assert.match(await shown(), /You can untick or remove them there\./);
+  assert.doesNotMatch(await shown(), /\blots?\b/i, 'adding loose pieces');
+  assert.deepEqual([await close(), await p.textContent('#ls-add')], ['Not now', 'Replace them']);
+  await p.click('.sheet [data-close]');
+  // A whole catalog from a link counts its loose pieces.
+  const other = { brickyard: 1, catalog: { sets: { x: { id: 'x', t: 5, num: '10311-1', name: 'Orchid' } }, loose: { bag: { id: 'bag', t: 5, name: 'Red bag', parts: [['3001', 4, 10]] }, tub: lot } } };
+  await p.goto('about:blank');
+  await p.goto(base + '#b1j' + Buffer.from(JSON.stringify(other)).toString('base64url'));
+  await p.waitForSelector('#cs-go');
+  assert.match(await shown(), /This link has 1 set and 52 loose pieces\. Bringing it in merges it/);
+  assert.doesNotMatch(await shown(), /\blots?\b/i, 'a catalog from a link');
+  assert.equal(await close(), 'Not now');
+  await p.click('.sheet [data-close]');
+  await p.goto('about:blank');
+  await p.goto(base + '#z1j' + Buffer.from(JSON.stringify({ brickyard: 1, sizes: [{ num: '21318', w: 27, d: 24, h: 37 }] })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await close()], ['Add sizes', 'Not now']);
+  await c.close();
+  for (const [opts, hint] of [[{ viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 }, 'Drag to turn · scroll to zoom'], [{ isMobile: true }, 'Drag to turn · pinch to zoom']]) {
+    const m = await withSets({ sets: {} }, opts);
+    await m.p.goto(base + '#model-x-cottage');
+    await m.p.waitForSelector('#model-view:not([hidden])');
+    assert.equal(await m.p.textContent('#stage-hint'), hint, opts.isMobile ? 'on a phone' : 'with a mouse');
+    await m.c.close();
+  }
+}
+
 // "You already have …" is said under the Set number box as well as in a message, and stays there until the number
 // changes. On a phone with the number box in use, the keyboard covers the bottom half of the screen: the message
 // showed at y 697 and the button that had turned into "Add another copy" at y 788, both under it, so pressing Done
@@ -2274,7 +2333,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.equal(await p.textContent('#ls-use'), 'The builder can use 104 of them today. The rest are kept, and count once Brickyard learns their shapes.', 'Add loose pieces counts pieces under their everyday numbers');
   await p.click('#ls-add');
   await p.waitForSelector('li.lot');
-  assert.match(await p.textContent('li.lot'), /Loose · 108 pieces · box 4 · the builder can use 104/, 'and so does Your pieces');
+  assert.match(await p.textContent('li.lot'), /Loose · 108 pieces · Box 4 · the builder can use 104/, 'and so does Your pieces');
   assert.deepEqual((await p.evaluate(() => window.brickyard.doc().loose.tub.parts)).map(r => r[0]).sort(), ['2780', '3001', '3003', '3023', '3660', '4073', '60481'], 'the lot keeps the numbers it came with');
   await p.click('#copy-pool');
   await p.waitForSelector('.toast:not([hidden])');
@@ -3123,7 +3182,7 @@ await page.fill('#ls-name', 'Blue tub (garage)');
 await page.click('#ls-add');
 await page.waitForSelector('li.lot [data-pool="sf-test"]');
 assert.equal(await page.evaluate(() => location.hash), '#build');
-assert.match(await page.textContent('li.lot'), /Blue tub \(garage\).*Loose · 72 pieces · box 14 · the builder can use 42/);
+assert.match(await page.textContent('li.lot'), /Blue tub \(garage\).*Loose · 72 pieces · Box 14 · the builder can use 42/);
 assert.equal(await page.isChecked('[data-pool="sf-test"]'), true, 'loose pieces count unless unticked');
 let stored = (await doc()).loose['sf-test'];
 assert.deepEqual([stored.name, stored.box, stored.parts.length], ['Blue tub (garage)', '14', 3]);
@@ -3156,8 +3215,8 @@ await page.waitForFunction(() => /862/.test(document.querySelector('.pieces .gro
 lot.loose.parts[0][2] = 45;
 await page.goto(lotLink(lot));
 await page.waitForSelector('#ls-add');
-assert.match(await page.textContent('.sheet .flag'), /already have this lot \(72 pieces\)/);
-assert.equal(await page.textContent('#ls-add'), 'Replace it');
+assert.match(await page.textContent('.sheet .flag'), /already have these loose pieces \(72 pieces\)\. Adding them again replaces them/);
+assert.equal(await page.textContent('#ls-add'), 'Replace them');
 await page.click('#ls-add');
 await page.waitForFunction(() => /77 pieces/.test(document.querySelector('li.lot').textContent));
 assert.equal(Object.keys((await doc()).loose).length, 1);

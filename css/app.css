@@ -225,6 +225,10 @@ a.item { color: inherit; text-decoration: none; }
 .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--soft); border-radius: 11px; padding: 4px; }
 .seg button { border: 0; background: none; border-radius: 8px; padding: 8px 2px; min-height: 44px; font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--muted); }
+/* A set's State: each button is as wide as its words, and they share what's left of the row. In four equal parts
+   "Taken apart" reached the edges of its button on a phone, and on a small one the two long names took two lines.
+   (At 200% zoom the row is two rows of two, below.) */
+@media (min-width: 301px) { #e-state { display: flex; } #e-state button { flex: 1 1 auto; min-width: 44px; } }
 /* In dark mode the card colour is darker than the track, so the chosen button looked pressed in and was hard to pick
    out: there it's lighter than the track instead (--seg-on). */
 .seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1.5px var(--muted); }

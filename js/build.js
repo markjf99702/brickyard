@@ -189,7 +189,7 @@ const renderList = orSay(async () => {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
       '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (!s.on && OFF[s.state] ? ' · ' + OFF[s.state] : '') + '</small></span></label></li>').join('') +
       lots.map(l => '<li class="lot"><label><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + '>' +
-        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · box ' + esc(window.BrickCore.boxName(l.box)) : '') +
+        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · Box ' + esc(window.BrickCore.boxName(l.box)) : '') +
         (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></label>' +
         '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
     if (!any) html += '<p class="flag"><span>' + (!lots.length ? 'Tick a set to build from its pieces.' : sets.length ? 'Tick a set or some loose pieces to build from them.' : 'Tick your loose pieces to build from them.') + '</span></p>';
@@ -237,7 +237,7 @@ document.addEventListener('brickyard:changed', () => { if (!$('build').hidden &&
 function dropLot(l) {
   if (!l) return;
   app.openSheet('<div class="hd"><h2 id="sheetTitle">Remove these loose pieces?</h2><button class="btn sm quiet" type="button" data-close>Keep them</button></div>' +
-    '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening the lot’s link or file again brings it back.</p></div>' +
+    '<div class="bd"><p class="lede"><b>' + esc(l.name) + '</b> · ' + plural(l.pieces, 'piece') + '</p><p class="note">They leave Your pieces. Your sets aren’t touched, and opening their link or file again brings them back.</p></div>' +
     '<div class="ft"><span></span><button class="btn" type="button" id="lot-drop">Remove</button></div>');
   $('lot-drop').onclick = () => {
     const kept = app.doc().loose[l.id], ids = poolLots().map(x => x.id), at = ids.indexOf(l.id);
@@ -534,6 +534,8 @@ function startStage() {
   if (!hintTimer && !$('stage-hint').hidden) hintTimer = setTimeout(hideHint, 4000);
 }
 let dropped = null, hintTimer = 0; // the hint as it was before "The picture was dropped" took its place
+// The hint is written for a finger ("pinch to zoom", index.html). With a mouse or a trackpad it's the wheel that zooms.
+if (window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches) $('stage-hint').textContent = 'Drag to turn · scroll to zoom';
 function hideHint(now) {
   const h = $('stage-hint');
   if (dropped) dropped.hidden = true;

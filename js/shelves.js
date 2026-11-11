@@ -741,7 +741,7 @@
         ' in My sets. Sizes only fill in sets you’ve already added.', false, { label: 'My sets', run: function () { location.hash = '#catalog'; } });
       return;
     }
-    app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">Add sizes</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="note">Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it.' +
         (doubts ? ' ' + (doubts === 1 ? 'One size looks wrong and is' : doubts.toLocaleString() + ' sizes look wrong and are') + ' unticked too: check ' + (doubts === 1 ? 'it' : 'them') + ' before you tick.' : '') +
         (dropped ? ' ' + (dropped === 1 ? 'One size in the list' : dropped.toLocaleString() + ' sizes in the list') + ' couldn’t be read.' : '') +

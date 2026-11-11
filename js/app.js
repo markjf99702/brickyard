@@ -300,7 +300,7 @@
   }
   function renderHome() {
     var t = C.totals(C.live(DOC));
-    $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'Nothing here yet. Start with your sets.';
+    $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'No sets yet. Start here.';
     if (listed) buildStat(listed);
     else if (!asking) {
       asking = true;
@@ -503,7 +503,7 @@
   // The loose pieces packed in a box, as one muted line that goes to Build from your box, where they live.
   // "Also" when the box has sets in it too.
   function lotsLine(lots, label, also) {
-    return '<p class="note lots"><a href="#build">' + (also ? 'Also in box ' : 'In box ') + esc(label) + ': ' +
+    return '<p class="note lots"><a href="#build">' + (also ? 'Also in Box ' : 'In Box ') + esc(label) + ': ' +
       lots.map(function (l) { return esc(l.name) + ', ' + plural(C.lotTotals(l).pieces, 'loose piece'); }).join('; ') + '</a></p>';
   }
 
@@ -758,7 +758,7 @@
       '<p class="note hint" id="e-still" role="status" hidden></p>' +
       '<div class="two">' + field('Pieces', box('e-pieces', x.pieces || '', ' inputmode="numeric"')) + field('Theme', box('e-theme', x.theme, ' list="dl-theme" placeholder="e.g. Classic"')) + '</div>' +
       '<div class="field" role="group" aria-labelledby="e-state-l"><span class="lbl" id="e-state-l">State</span><div class="seg" id="e-state">' + C.STATES.map(function (k) {
-        return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k].replace('Taken apart', 'Apart') + '</button>';
+        return '<button type="button" data-v="' + k + '" aria-pressed="' + (x.state === k) + '">' + C.STATE_NAMES[k] + '</button>';
       }).join('') + '</div></div>' +
       '<div class="two">' + field('Room', box('e-room', x.room, ' list="dl-room" placeholder="e.g. Office"')) + field('Shelf or spot', box('e-spot', x.spot, ' list="dl-spot" placeholder="e.g. Top shelf"')) + '</div>' +
       field('Moving box', box('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
@@ -1208,12 +1208,12 @@
     var had = DOC.loose[lot.id] && !DOC.loose[lot.id].del ? DOC.loose[lot.id] : null, n = C.lotTotals(lot);
     openSheet('<div class="hd"><h2 id="sheetTitle">Add loose pieces</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede"><b>' + esc(lot.name) + '</b> · ' + plural(n.pieces, 'piece') + ' of ' + plural(n.kinds, 'kind') + '</p>' +
-      (had ? '<p class="flag"><span>You already have this lot (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding it again replaces it, so nothing is counted twice.</span></p>' : '') +
+      (had ? '<p class="flag"><span>You already have these loose pieces (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding them again replaces them, so nothing is counted twice.</span></p>' : '') +
       '<p class="note" id="ls-use"></p>' +
       '<div class="bulk">' + field('Call it', input('ls-name', lot.name, ' maxlength="80"')) +
       field('Moving box', input('ls-box', lot.box || (had && had.box) || '', ' list="dl-box" maxlength="40" placeholder="Leave blank if it’s not packed"')) + '</div>' +
-      '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove a lot there.</p></div>' +
-      '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace it' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
+      '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove them there.</p></div>' +
+      '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace them' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
     shapeIds().then(function (shapes) {
       var use = lot.parts.reduce(function (k, r) { return k + (shapes.knows(r[0]) ? r[2] : 0); }, 0);
       if ($('ls-use')) $('ls-use').textContent = use === n.pieces ? 'The builder can use all of them.'
@@ -1235,10 +1235,11 @@
   // removed. Those are counted, and a box offers to bring them back (timed now, so they win the merge everywhere).
   function catalogSheet(doc, from) {
     var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
+    var loose = C.liveLots(doc).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     var gone = C.live(doc).filter(function (x) { return DOC.sets[x.id] && DOC.sets[x.id].del && merged.sets[x.id].del; });
     var names = gone.slice(0, 3).map(function (x) { return x.name || 'Set ' + C.shortNum(x.num); }).join(', ') + (gone.length > 3 ? ' and ' + (gone.length - 3) + ' more' : '');
-    openSheet('<div class="hd"><h2 id="sheetTitle">' + (link ? 'Your catalog from a link' : 'Open a Brickyard file') + '</h2><button class="btn sm quiet" type="button" data-close>Cancel</button></div><div class="bd">' +
-      '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + plural(incoming, 'set') + (C.liveLots(doc).length ? ' and ' + plural(C.liveLots(doc).length, 'lot') + ' of loose pieces' : '') +
+    openSheet('<div class="hd"><h2 id="sheetTitle">' + (link ? 'Your catalog from a link' : 'Open a Brickyard file') + '</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
+      '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + plural(incoming, 'set') + (loose ? ' and ' + plural(loose, 'loose piece') : '') +
       '. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.</p>' +
       (gone.length ? '<label class="check"><input type="checkbox" id="cs-back"><span>Bring back the ' + (gone.length === 1 ? 'set' : gone.length.toLocaleString() + ' sets') + ' removed here since this ' + (link ? 'link was copied' : 'file was saved') +
         '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') + '</div>' +
