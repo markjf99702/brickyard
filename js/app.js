@@ -41,7 +41,39 @@
   // Puts back a set, bookcase or lot ('sets', 'cases', 'loose') that was removed, as it was, timed after the
   // removal. When catalogs merge the later change wins, so the removal doesn't take it away again, here or on
   // another device.
-  function putBack(kind, x) { var gone = DOC[kind][x.id]; x.t = Math.max(Date.now(), gone ? gone.t + 1 : 0); DOC[kind][x.id] = x; }
+  function putBack(kind, x) {
+    var gone = DOC[kind][x.id]; x.t = Math.max(Date.now(), gone ? gone.t + 1 : 0); DOC[kind][x.id] = x;
+    if (kind === 'sets') forget(x.id);
+  }
+
+  // Recently removed: the sets removed on this device in the last 30 days, as they were, so one can be put back
+  // from the menu (recentSheet). Undo lasts ten seconds; after that the catalog keeps only the fact of the removal,
+  // with no name, number, place or notes. Kept beside the catalog, under its own key, so the catalog, backups and
+  // what syncs to Drive are as they were, and only the device that removed a set can put it back. A set that's in
+  // the catalog again (Undo, a backup, another device) is off the list.
+  var GONE = 'brickyard.removed', DAY = 86400000, KEEP = 30 * DAY;
+  function recent() {
+    var list = read(GONE), now = Date.now();
+    return (Array.isArray(list) ? list : []).map(function (r) {
+      var x = r && r.set && C.stamp(r.set, r.set.id, r.set.t);
+      return x && x.id && typeof r.at === 'number' && now - r.at < KEEP && DOC.sets[x.id] && DOC.sets[x.id].del ? { set: x, at: r.at } : null;
+    }).filter(Boolean);
+  }
+  function remember(sets) {
+    var ids = {}, now = Date.now();
+    sets.forEach(function (x) { ids[x.id] = 1; });
+    write(GONE, sets.map(function (x) { return { set: x, at: now }; }).concat(recent().filter(function (r) { return !ids[r.set.id]; })).slice(0, 500));
+  }
+  function forget(id) {
+    var list = read(GONE);
+    if (Array.isArray(list) && list.length) write(GONE, list.filter(function (r) { return r && r.set && r.set.id !== id; }));
+  }
+  // "today", "yesterday", "12 days ago": how long since `t`, by the calendar's days.
+  function daysAgo(t) {
+    var d = new Date(), then = new Date(t);
+    var n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(then.getFullYear(), then.getMonth(), then.getDate())) / DAY);
+    return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n.toLocaleString() + ' days ago';
+  }
 
   // ---------- little helpers ----------
   function $(id) { return document.getElementById(id); }
@@ -838,7 +870,7 @@
       var kept = DOC.sets[x.id] && !DOC.sets[x.id].del ? DOC.sets[x.id] : x, name = kept.name || 'Set ' + C.shortNum(kept.num);
       // With another set of the same name (three Millennium Falcons), the message says which one went.
       if (kept.name && kept.num && C.live(DOC).some(function (o) { return o.id !== kept.id && C.fold(o.name || '') === C.fold(kept.name); })) name += ' ' + C.shortNum(kept.num);
-      removeSet(x.id); save(); closeSheet(); renderCatalog();
+      removeSet(x.id); remember([kept]); save(); closeSheet(); renderCatalog();
       toast('Removed ' + name, false, { label: 'Undo', run: function () { putBack('sets', kept); save(); refresh(); toast(name + ' is back'); } });
     };
     // The picture at the top follows the number: one put right showed the old set until Save.
@@ -1687,8 +1719,34 @@
     if (moved) write('brickyard.pool', pool);
   }
 
+  // The sets removed here in the last 30 days, newest first, each with Put back. A set put back is as it was, and
+  // wins over its removal on every device (putBack).
+  function recentSheet() {
+    var draw = function () {
+      return recent().map(function (r) {
+        var x = r.set, name = x.name || 'Set ' + C.shortNum(x.num);
+        return '<li><div class="main"><div class="t">' + esc(name) + '</div><div class="m">' + esc([C.shortNum(x.num), C.where(x), 'Removed ' + daysAgo(r.at)].filter(Boolean).join(' · ')) + '</div></div>' +
+          '<button class="btn sm quiet" type="button" data-back="' + esc(x.id) + '" aria-label="Put back ' + esc(name) + '">Put back</button></li>';
+      }).join('');
+    };
+    openSheet('<div class="hd"><h2 id="sheetTitle">Recently removed</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      '<p class="lede">Sets removed on this device in the last 30 days. Only this device can put them back; after 30 days they’re gone from this list.</p>' +
+      '<ul class="gone" id="gone">' + draw() + '</ul></div>');
+    $('gone').onclick = function (e) {
+      var b = e.target.closest('[data-back]'); if (!b) return;
+      var r = recent().filter(function (y) { return y.set.id === b.dataset.back; })[0];
+      if (!r) return;
+      var name = r.set.name || 'Set ' + C.shortNum(r.set.num);
+      putBack('sets', r.set); save();
+      if (recent().length) { $('gone').innerHTML = draw(); refresh(); document.querySelector('.sheet').focus({ preventScroll: true }); }
+      else { closeSheet(); refresh(); }
+      toast(name + ' is back');
+    };
+  }
+
   // ---------- menu ----------
   function menuSheet() {
+    var gone = recent().length;
     openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
       '<li><button type="button" id="m-claude"><span>Add from photos<small>Send Claude pictures of your sets and open its link</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
@@ -1696,6 +1754,7 @@
       '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets, sizes or a model from Claude</small></span></button></li>' +
       (FRAMED ? '' : '<li><button type="button" id="m-csv"><span>Download a spreadsheet<small>CSV, for Excel, Numbers or Google Sheets</small></span></button></li>') +
+      (gone ? '<li><button type="button" id="m-gone"><span>Recently removed (' + gone.toLocaleString() + ')<small>Put back a set removed on this device in the last 30 days</small></span></button></li>' : '') +
       // A copy on a phone's home screen has no browser menu to print from. Not in the preview, which is a frame.
       (FRAMED || !C.live(DOC).length ? '' : '<li><button type="button" id="m-print"><span>Print this list<small>What My sets is showing now: search for a box first to print its packing list</small></span></button></li>') +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
@@ -1704,6 +1763,7 @@
     $('m-claude').onclick = claudeSheet;
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
     $('m-link').onclick = copyAll;
+    if ($('m-gone')) $('m-gone').onclick = recentSheet;
     if ($('m-sync')) $('m-sync').onclick = function () { window.BrickyardSync.sheet(); };
     if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1), 'Backup'); };
     if ($('m-csv')) $('m-csv').onclick = function () {

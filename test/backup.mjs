@@ -69,6 +69,45 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await c.close();
 }
 
+// ---------- Recently removed ----------
+// A removed set can be put back from the menu for 30 days, as it was, on the device that removed it. The list is
+// kept beside the catalog, so the catalog (and with it a backup and what syncs) holds only the removal, as before.
+{
+  const tree = { id: 't', t: 1, num: '21318-1', name: 'Tree House', notes: 'a gift', room: 'Living room', spot: 'Top shelf', box: '7', state: 'built' };
+  const { c, p } = await withSets({ sets: { t: tree, o: { id: 'o', t: 1, name: 'Orchid' }, old: { id: 'old', t: 1, del: 1 }, x: { id: 'x', t: 1, del: 1 } } },
+    { 'brickyard.removed': [{ set: { id: 'old', t: 1, name: 'Typewriter' }, at: Date.now() - 31 * DAY }, { set: { id: 'x', t: 1, name: 'Bonsai Tree', room: 'Office' }, at: Date.now() - 3 * DAY }] });
+  await p.goto(base + '#catalog');
+  await p.click('#menu-btn');
+  assert.equal(await p.textContent('#m-gone span'), 'Recently removed (1)Put back a set removed on this device in the last 30 days', 'a set removed 31 days ago is off the list; one from 3 days ago is on it');
+  await p.click('[data-close]');
+  await p.click('.item:has-text("Tree House")');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  await p.click('.toast span'); // the ten seconds of Undo, gone
+  assert.deepEqual(await p.evaluate(() => [window.brickyard.doc().sets.t, Object.keys(JSON.parse(localStorage.getItem('brickyard.v1')).catalog)].flat().map(x => typeof x === 'object' ? Object.keys(x).sort().join() : x)),
+    ['del,id,t', 'sets', 'seen', 'cases', 'loose'], 'the catalog keeps only the removal, as it did');
+  await p.click('#menu-btn');
+  await p.click('#m-gone');
+  assert.deepEqual(await p.evaluate(() => [document.querySelector('.sheet .lede').textContent, ...[...document.querySelectorAll('#gone li')].map(li => li.querySelector('.t').textContent + ' | ' + li.querySelector('.m').textContent)]),
+    ['Sets removed on this device in the last 30 days. Only this device can put them back; after 30 days they’re gone from this list.', 'Tree House | 21318 · Living room › Top shelf · Box 7 · Removed today', 'Bonsai Tree | Office · Removed 3 days ago'],
+    'the list says whose it is, and each set with where it was and when it went');
+  await p.click('[data-back="t"]');
+  assert.equal(await toast(p), 'Tree House is back');
+  const back = await p.evaluate(() => window.brickyard.doc().sets.t);
+  assert.deepEqual([{ ...back, t: 0 }, back.t > 1], [{ ...tree, t: 0 }, true], 'put back as it was, timed after its removal');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('#gone .t')].map(e => e.textContent)), ['Bonsai Tree'], 'and off the list, which stays open for the next');
+  await p.click('[data-back="x"]');
+  assert.deepEqual([await p.locator('.sheet').count(), await names(p)], [0, ['Bonsai Tree', 'Orchid', 'Tree House']], 'the last one put back closes the list');
+  await p.click('#menu-btn');
+  assert.equal(await p.locator('#m-gone').count(), 0, 'with nothing removed lately the menu has no row for it');
+  // Undo within its ten seconds takes the set off the list too.
+  await p.click('[data-close]');
+  await p.click('.item:has-text("Orchid")');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  await p.click('.toast button');
+  assert.deepEqual([await names(p), await p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.removed')).length)], [['Bonsai Tree', 'Orchid', 'Tree House'], 0], 'a removal that was undone is not on the list');
+  await c.close();
+}
+
 assert.deepEqual(problems, [], 'problems while using it');
 await browser.close();
 server.close();
