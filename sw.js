@@ -8,7 +8,7 @@
 // fingerprint of every file in SHELL: change any of them and test/e2e.mjs fails until FILES is changed to match (it
 // says what to), which changes this file, so every copy is made whole again at once.
 const CACHE = 'brickyard-v6'; // bump the number when the file list changes
-const FILES = '8c3dd26d'; // test/e2e.mjs checks this
+const FILES = '7853797d'; // test/e2e.mjs checks this
 const SHELL = [
   './', 'index.html', 'css/app.css', 'js/core.js', 'js/shelf-core.js', 'js/app.js', 'js/shelves.js', 'js/sync.js', 'js/build-core.js', 'js/build.js',
   'js/vendor/three.module.js', 'js/vendor/three.core.js', 'js/vendor/OrbitControls.js',

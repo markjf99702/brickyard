@@ -1910,6 +1910,9 @@
     var saved = backup(true);
     var before = JSON.parse(JSON.stringify(DOC)), listWas = read(GONE), r = C.restoreDoc(DOC, doc, Date.now());
     DOC = r.doc; remember(r.went);
+    // The catalog is now the file just opened, which is a backup itself, so what going back changed isn't counted as
+    // changes since the last backup: the home screen said "25 changes since your last backup, today" right after one.
+    if (saved) write(BACKUP, { t: Date.now() });
     if (more && more.models && window.BrickyardBuild) window.BrickyardBuild.addModels(more.models);
     save(); closeSheet(); refresh();
     toast('Everything is back the way the file has it: ' + restoreSays(r.n).says + '.' + (saved ? ' How things were is in your downloads: ' + fileName(saved) + '.' : ''), false, { label: 'Undo', run: function () {

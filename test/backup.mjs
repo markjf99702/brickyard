@@ -235,6 +235,9 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   assert.deepEqual([await p.textContent('#cs-old-go'), await state(), downloads], ['Tap again to put everything back', mistake, 0], 'one tap asks, and changes nothing');
   await p.waitForTimeout(650);
   const now = await p.evaluate(() => JSON.parse(JSON.stringify(window.brickyard.doc())));
+  // A clock that moves on at every reading, so the backup made first and the changes going back makes aren't timed
+  // the same millisecond, as they are on a quick computer with a small catalog (and not on a phone with a big one).
+  await p.evaluate(() => { const real = Date.now; let k = 0; Date.now = () => real() + k++; });
   const got = p.waitForEvent('download');
   await p.click('#cs-old-go');
   // Before anything changes, a backup of how things were, under a name of its own, so a set moved to the wrong box
@@ -245,6 +248,9 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   assert.equal(await toast(p), 'Everything is back the way the file has it: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes. How things were is in your downloads: Brickyard ' + today.replace(/-/g, '-\u2060') + ' before going back.json.');
   assert.deepEqual(await state(), ['Bonsai Tree in 3, Orchid, Typewriter', 'Billy'], 'the catalog is the way the file has it: the box, the removed set and the bookcase are back, and the set added since is gone');
   assert.equal(await p.evaluate(() => { const d = window.brickyard.doc(); return Math.min(d.sets.b.t, d.sets.t.t, d.sets[Object.keys(d.sets).find(k => d.sets[k].del && k !== 't')].t, d.cases.k.t) > Date.now() - 60000; }), true, 'timed now, so it wins on every device');
+  assert.equal(await p.evaluate(() => { const d = window.brickyard.doc(), last = JSON.parse(localStorage.getItem('brickyard.backup')).t;
+    return ['sets', 'cases', 'loose', 'places'].every(k => Object.values(d[k]).every(x => x.t <= last)); }), true,
+    'what going back changed isn’t counted as changes since the last backup: the catalog is the file just opened');
   await p.click('.toast button');
   assert.deepEqual([await toast(p), await state()], ['Undone. Your catalog is as it was before.', mistake], 'Undo puts the catalog back as it was before');
   assert.deepEqual(await listed(), ['Typewriter'], 'and Recently removed is as it was');
