@@ -3215,6 +3215,8 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const stage = await p.locator('.stage').boundingBox(), hint = await p.locator('#stage-hint').boundingBox(), first = await p.locator('#stage-keys button >> nth=0').boundingBox();
   assert.ok(keys[1][4] < keys[2][3] && hint.y + hint.height < first.y && first.y + first.height <= stage.y + stage.height, 'the buttons are inside the picture, apart, and under the hint');
   const home = await box();
+  // A phone's picture is taller than the cottage fitted to its width: the model sits in the room above the buttons.
+  assert.ok(home[3] * stage.height <= first.y - stage.y + 1 && home[1] >= 0.05, 'the model sits above the buttons, inside the picture: ' + home + ', buttons from ' + ((first.y - stage.y) / stage.height).toFixed(3));
   assert.equal(await p.isHidden('#stage-reset'), true);
   await p.tap('[data-turn="left"]');
   const left = await box();

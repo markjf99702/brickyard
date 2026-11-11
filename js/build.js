@@ -952,12 +952,23 @@ function fit(box) {
   const right = UP.clone().cross(LOOK).normalize(), up = LOOK.clone().cross(right);
   const tv = Math.tan(camera.fov * Math.PI / 360) * FILL, th = tv * camera.aspect, centre = box.getCenter(new THREE.Vector3());
   let dist = 0;
-  corners(box).forEach(p => {
-    const v = p.sub(centre), along = v.dot(LOOK);
+  const cs = corners(box).map(p => p.sub(centre));
+  cs.forEach(v => {
+    const along = v.dot(LOOK);
     dist = Math.max(dist, along + Math.abs(v.dot(right)) / th, along + Math.abs(v.dot(up)) / tv);
   });
+  // Where there is room to spare above the box (a phone's stage is taller than most models fitted to its width),
+  // the box sits higher, clear of the turn and zoom buttons along the picture's bottom edge (KEYS px of it) as far
+  // as that room allows. The camera looks at a point straight below the box's centre, so a turn still goes round
+  // the model's own middle. Heights here are shares of half the picture, 0 at its middle.
+  const tan = Math.tan(camera.fov * Math.PI / 360), h = renderer.domElement.clientHeight || 1;
+  let low = Infinity, high = -Infinity;
+  cs.forEach(v => { const y = v.dot(up) / ((dist - v.dot(LOOK)) * tan); low = Math.min(low, y); high = Math.max(high, y); });
+  const rise = Math.min(-1 + 2 * KEYS / h - low, FILL - 0.04 - high); // (a little short of the margin: a nearer part grows as it rises)
+  if (rise > 0.005) centre.y -= rise * dist * tan / UP.dot(up);
   return { target: centre, dist };
 }
+const KEYS = 60; // the buttons' 44 px, the 10 under them and a little air
 // What the picture is framed on: the finished model on the picture a model opens on and at Done, and at a step
 // what is built so far, so the first pieces of a tall model aren't a small patch at the bottom of an empty picture.
 // Never nearer than NEAR of the way in from where the whole model fits: one plate doesn't fill the stage.
