@@ -58,6 +58,10 @@ const server = createServer(async (req, res) => {
 }).listen(0);
 const base = `http://localhost:${server.address().port}/`;
 const browser = await pw.chromium.launch();
+// Chromium's language here is US English, where Brickyard starts in inches; every page is opened in British
+// English, so it starts in cm, unless a check says otherwise.
+const newContext = browser.newContext.bind(browser);
+browser.newContext = (o = {}) => newContext({ locale: 'en-GB', ...o });
 await mkdir(join(root, 'docs'), { recursive: true });
 
 async function open(viewport, deviceScaleFactor, hash = '', seed = true) {

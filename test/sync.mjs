@@ -16,6 +16,10 @@ const SITE = 'https://brickyard.junkdrawer.works/';
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 
 const browser = await pw.chromium.launch();
+// Chromium's language here is US English, where Brickyard starts in inches; every page is opened in British
+// English, so it starts in cm, unless a check says otherwise.
+const newContext = browser.newContext.bind(browser);
+browser.newContext = (o = {}) => newContext({ locale: 'en-GB', ...o });
 const g = fakeGoogle();
 const problems = [];
 async function device(sets) {

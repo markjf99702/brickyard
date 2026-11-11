@@ -24,8 +24,11 @@
   var show = 'all';
   if ('show' in prefs) { delete prefs.show; write(PREFS, prefs); }
   // The unit sizes are shown and typed in on this device (prefs.unit: 'cm', or 'in' for inches). They're kept in
-  // cm whichever it is, so changing it changes nothing kept.
-  S.setUnit(prefs.unit);
+  // cm whichever it is, so changing it changes nothing kept. Until one is chosen on the device, it's inches where
+  // the device's language is US English (en-US), and cm everywhere else; nothing is saved until it's chosen, so a
+  // device that has chosen keeps its choice.
+  S.setUnit(prefs.unit || (usEnglish() ? 'in' : 'cm'));
+  function usEnglish() { var n = window.navigator || {}; return /^en-us$/i.test((n.languages && n.languages[0]) || n.language || ''); }
   function setUnit(u) { prefs.unit = S.setUnit(u); savePrefs(); refresh(); }
   function save() {
     // Held, so the "Added" or "Saved" that follows in the same tap doesn't cover it: it's the only sign the change

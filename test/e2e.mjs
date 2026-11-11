@@ -46,6 +46,10 @@ const until = async (ok, ms, what) => {
 };
 
 const browser = await pw.chromium.launch();
+// Chromium's language here is US English, where Brickyard starts in inches; every page is opened in British
+// English, so it starts in cm, unless a check says otherwise.
+const newContext = browser.newContext.bind(browser);
+browser.newContext = (o = {}) => newContext({ locale: 'en-GB', ...o });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true });
 // Set pictures come from Rebrickable; here they all fail, which shows the plain brick instead.
 // `told` is what a picture request said about where it came from (its Referer), which should be nothing.
@@ -3853,7 +3857,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.fill('#q', '');
   // Newest first: a heading for each day, newest at the top; sets with no date come last.
   await p.selectOption('#group', 'new');
-  const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const day = iso => new Date(iso + 'T12:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); // as the page writes it, in British English
   assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.querySelectorAll('span')].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
   assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
   assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Office · Added ' + day('2026-10-21'), 'Tags: display'], ['10305', 'Hall · Added ' + day('2026-10-20'), 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long, 'Tags: display, space']], 'each row says where it is, then the day it was added (the part a phone cuts is the part the heading says); a set with no day says where it is');
@@ -4668,6 +4672,32 @@ await page.click('[data-close]');
   await p.goto(base + '#shelves');
   assert.deepEqual([await pressed(), (await p.textContent('.case-hd .m')).slice(0, 18)], [['cm:true', 'inches:false'], '76 × 26 cm inside '], 'back in cm');
   await c.close();
+}
+
+// A device whose language is US English starts in inches, until cm or inches is chosen on it; nothing is saved until
+// then. A choice made on it stays, whatever the language. Any other language starts in cm.
+{
+  const sets = { sets: { a: { id: 'a', t: 1, name: 'Typewriter', state: 'built', size: { w: 32, d: 10, h: 12 } } }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } };
+  const look = p => p.evaluate(() => [[...document.querySelectorAll('.units button')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed')).join(' '), document.querySelector('.case-hd .m').textContent.split(' inside')[0], (JSON.parse(localStorage.getItem('brickyard.prefs') || '{}')).unit || null]);
+  const { c, p } = await withSets(sets, { locale: 'en-US' });
+  await p.goto(base + '#shelves');
+  assert.deepEqual(await look(p), ['cm:false inches:true', '29⅞ × 10¼ in', null], 'US English: inches to start with, and nothing saved');
+  await p.goto(base + '#catalog');
+  await p.click('.item[data-id="a"]');
+  assert.equal(await p.textContent('label:has(#e-w) span'), 'Width, inches', 'a set’s sheet is in inches too');
+  await p.click('[data-close]');
+  await p.goto(base + '#shelves');
+  await p.getByRole('group', { name: 'Sizes in' }).getByRole('button', { name: 'cm' }).click();
+  await p.reload();
+  assert.deepEqual(await look(p), ['cm:true inches:false', '76 × 26 cm', 'cm'], 'cm chosen on it stays cm');
+  await c.close();
+  const uk = await withSets(sets, { locale: 'en-GB' });
+  await uk.p.goto(base + '#shelves');
+  assert.deepEqual(await look(uk.p), ['cm:true inches:false', '76 × 26 cm', null], 'British English: cm');
+  await uk.p.evaluate(() => localStorage.setItem('brickyard.prefs', JSON.stringify({ pics: true, group: 'room', unit: 'in' })));
+  await uk.p.reload();
+  assert.deepEqual(await look(uk.p), ['cm:false inches:true', '29⅞ × 10¼ in', 'in'], 'and inches chosen on it stays inches');
+  await uk.c.close();
 }
 
 // Fit keeps 1 cm clear above a set. One that only a shelf of its own height could take is left, says what it needs on
