@@ -1942,6 +1942,52 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   }
 }
 
+// The Shelf planner says, under its count, how many sets are in each of the two lists below the bookcases, as words
+// to tap that go there: "22 not on a shelf yet", "12 need a size". With 300 sets and three bookcases, Needs a size
+// and its two buttons (Copy these for Claude, Open sizes from Claude) were a dozen screens down, and the line at
+// the top said only "29 of 174 sets on shelves". A tap brings the list's heading to the top of the screen, clear
+// of the bar, and gives it the focus. A list with nothing in it is left out, and with no bookcase yet the same
+// words are under Add a bookcase.
+{
+  const sets = {};
+  for (let i = 0; i < 40; i++) sets['s' + i] = { id: 's' + i, t: 1, num: (10200 + i) + '-1', name: 'Set number ' + (i + 1), state: 'built', ...(i % 3 ? { size: { w: 30, d: 20, h: 20 } } : {}) };
+  sets.one = { id: 'one', t: 1, name: 'Small one', state: 'built', size: { w: 10, d: 10, h: 10 } };
+  const billy = { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 's1' }, { id: 's2' }] }, { h: 30, sets: [] }] };
+  for (const width of [390, 320]) {
+    const { c, p } = await withSets({ sets, cases: { k: billy } }, { viewport: { width, height: width === 320 ? 568 : 844 } });
+    const jumps = () => p.$$eval('#shelves-body .jump button', bs => bs.map(b => { const r = b.getBoundingClientRect(); return [b.textContent, r.height >= 44 && r.width >= 44, r.left >= 0 && r.right <= innerWidth]; }));
+    // Where the heading that has the focus is: its words, and how far under the bar its top is.
+    const landed = () => p.evaluate(() => { const h = document.activeElement, r = h.getBoundingClientRect(), bar = document.querySelector('#shelves .bar').getBoundingClientRect().bottom;
+      return [h.tagName, h.getAttribute('aria-label'), r.top >= bar && r.top - bar < 40 && r.bottom <= innerHeight]; });
+    await p.goto(base + '#shelves');
+    assert.deepEqual([await p.textContent('#shelves-body .sumline'), await jumps()], ['2 of 41 sets on shelves', [['25 not on a shelf yet↓', true, true], ['14 need a size↓', true, true]]], width + ' px: the two lists are counted under the line at the top, each 44 px tall and on the screen');
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.ok(await p.$eval('#sv-nosize', h => h.getBoundingClientRect().top) > 1500, 'Needs a size is far down the page');
+    await p.click('.jump [data-k="nosize"]');
+    assert.deepEqual(await landed(), ['H2', 'Needs a size, 14 sets', true], width + ' px: a tap brings Needs a size to the top of the screen, under the bar, with the focus');
+    assert.equal(await p.evaluate(() => { const r = document.querySelector('[data-act="ask-sizes"]').getBoundingClientRect(); return r.top > 0 && r.bottom < innerHeight; }), true, 'and Copy these for Claude is on the screen');
+    await p.evaluate(() => scrollTo(0, 0));
+    await p.focus('.jump [data-k="waiting"]');
+    await p.keyboard.press('Enter');
+    assert.deepEqual(await landed(), ['H2', 'Not on a shelf yet, 25 sets', true], 'the same for Not on a shelf yet, by keyboard');
+    // A list with nothing in it isn't counted: every set given a size.
+    await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); Object.values(d.sets).forEach(x => { if (!x.size) { x.size = { w: 30, d: 20, h: 20 }; x.t = Date.now(); } }); window.brickyard.takeDoc(d); });
+    assert.deepEqual((await jumps()).map(j => j[0]), ['39 not on a shelf yet↓']);
+    // With no bookcase the words are under Add a bookcase.
+    await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); d.cases.k = { id: 'k', t: Date.now(), del: 1 }; delete d.sets.one.size; d.sets.one.t = Date.now(); window.brickyard.takeDoc(d); });
+    assert.deepEqual([await p.locator('.empty .jump').count(), (await jumps()).map(j => j[0])], [1, ['40 not on a shelf yet↓', '1 needs a size↓']]);
+    await p.click('.jump [data-k="nosize"]');
+    // The last thing on the page comes as far up as the page goes: on the screen, under the bar.
+    assert.deepEqual([(await landed()).slice(0, 2), await p.$eval('#sv-nosize', h => { const r = h.getBoundingClientRect(); return r.top >= document.querySelector('#shelves .bar').getBoundingClientRect().bottom && r.bottom <= innerHeight; })], [['H2', 'Needs a size, 1 set'], true]);
+    await c.close();
+  }
+  // Nothing to go to: no words.
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, name: 'Set A', state: 'built', size: { w: 20, d: 20, h: 20 } } }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'a' }] }] } } });
+  await p.goto(base + '#shelves');
+  assert.deepEqual([await p.textContent('#shelves-body .sumline'), await p.locator('.jump').count()], ['Your set is on a shelf', 0]);
+  await c.close();
+}
+
 // "You already have …" is said under the Set number box as well as in a message, and stays there until the number
 // changes. On a phone with the number box in use, the keyboard covers the bottom half of the screen: the message
 // showed at y 697 and the button that had turned into "Add another copy" at y 788, both under it, so pressing Done

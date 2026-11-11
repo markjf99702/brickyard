@@ -66,7 +66,7 @@
     var html = '';
     if (!all.length) {
       html += '<div class="empty"><h2>Your bookcases go here</h2><p>Add each bookcase with its shelf heights, and Brickyard fits your built sets onto them, tallest first, so you know where everything goes before you unpack.</p>' +
-        '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div></div>';
+        '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div>' + jumps(sorted) + '</div>';
     } else {
       // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
       var placed = sorted.placed.filter(S.hasSize).length, total = placed + sorted.waiting.length + sorted.noSize.length;
@@ -75,7 +75,7 @@
       var rest = total - placed, stuck = !fitting && rest ? '; the other ' + (rest === 1 ? 'one ' : rest.toLocaleString() + ' ') +
         (!sorted.noSize.length ? (rest === 1 ? 'doesn’t fit' : 'don’t fit') : !sorted.waiting.length ? (rest === 1 ? 'needs a size' : 'need a size') : 'don’t fit or need a size') : '';
       // Nothing to count until there's a set the planner places (the note at the end says which those are).
-      if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' + stuck : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>';
+      if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' + stuck : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>' + jumps(sorted);
       html += '<div class="acts-row">' + (fitting ? '<button class="btn" type="button" data-act="fill">Fit ' + (fitting === sorted.waiting.length ? plural(fitting, 'set') : 'the sets') + ' onto the shelves</button>' : '') +
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
@@ -96,11 +96,11 @@
       var rows = sorted.waiting.map(function (x, i) { var r = all.length ? S.reason(all, x, ids) : { why: '', kind: '' }; return { x: x, why: r.why, kind: r.kind, i: i }; });
       var rank = function (r) { return r.kind === '' ? 0 : r.kind === 'room' ? 1 : 2; };
       rows.sort(function (a, b) { return rank(a) - rank(b) || a.i - b.i; });
-      html += '<h2 class="group" aria-label="Not on a shelf yet, ' + plural(sorted.waiting.length, 'set') + '"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
+      html += '<h2 class="group" id="sv-waiting" tabindex="-1" aria-label="Not on a shelf yet, ' + plural(sorted.waiting.length, 'set') + '"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
         '<ul class="list">' + rows.map(function (r) { return setRow(r.x, r.why); }).join('') + '</ul>';
     }
     if (sorted.noSize.length) {
-      html += '<h2 class="group" aria-label="Needs a size, ' + plural(sorted.noSize.length, 'set') + '"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
+      html += '<h2 class="group" id="sv-nosize" tabindex="-1" aria-label="Needs a size, ' + plural(sorted.noSize.length, 'set') + '"><span>Needs a size</span><span>' + sorted.noSize.length + '</span></h2>' +
         '<p class="note">Brickyard needs each built set’s width, depth and height to fit it on a shelf. Measure them, or ask Claude: it knows the sizes LEGO gives for most sets.</p>' +
         '<div class="acts-row"><button class="btn quiet" type="button" data-act="ask-sizes">Copy these for Claude</button><button class="btn quiet" type="button" data-act="open-sizes">Open sizes from Claude</button></div>' +
         '<ul class="list">' + sorted.noSize.map(function (x) {
@@ -128,7 +128,28 @@
     return (key.set && (pick(function (e) { return e.dataset.set === key.set && e.classList.contains('sv-set') === key.drawn; }) || pick(function (e) { return e.dataset.set === key.set; }))) ||
       (key.kase && pick(function (e) { return e.dataset.case === key.kase; })) ||
       (key.act && (pick(function (e) { return e.dataset.act === key.act && e.dataset.k === key.k; }) || pick(function (e) { return e.dataset.act === key.act; }))) ||
-      pick(function (e) { return !!e.dataset.act; }) || document.querySelector('#shelves h1');
+      // A button that has gone (Fit, once everything is placed) hands on to the next real button, Add a bookcase,
+      // not to the words above it that go down the page.
+      pick(function (e) { return !!e.dataset.act && e.dataset.act !== 'jump'; }) || pick(function (e) { return !!e.dataset.act; }) || document.querySelector('#shelves h1');
+  }
+
+  // The ways down to the two lists under the bookcases, as words to tap under the count: "87 not on a shelf yet",
+  // "58 need a size". With 300 sets and three bookcases, Needs a size and its two buttons (Copy these for Claude,
+  // Open sizes from Claude) were a dozen screens down, and nothing at the top said they were there. A list with
+  // nothing in it is left out.
+  function jumps(sorted) {
+    var w = sorted.waiting.length, n = sorted.noSize.length, arrow = '<span aria-hidden="true">↓</span>';
+    if (!w && !n) return '';
+    return '<div class="jump">' + (w ? '<button type="button" data-act="jump" data-k="waiting">' + w.toLocaleString() + ' not on a shelf yet' + arrow + '</button>' : '') +
+      (n ? '<button type="button" data-act="jump" data-k="nosize">' + (n === 1 ? '1 needs a size' : n.toLocaleString() + ' need a size') + arrow + '</button>' : '') + '</div>';
+  }
+  // Brings a list's heading to the top of the screen, under the bar, and gives it the focus, so a screen reader
+  // says where this is and Tab goes on from there.
+  function jump(k) {
+    var h = $(k === 'nosize' ? 'sv-nosize' : 'sv-waiting');
+    if (!h) return;
+    h.scrollIntoView({ block: 'start' });
+    h.focus({ preventScroll: true });
   }
 
   // `where` is for a set that needs a size but is on a shelf already (its size was cleared): it isn't in the drawing.
@@ -329,6 +350,7 @@
     if (a.dataset.case) return caseSheet(caseOf(a.dataset.case));
     var act = a.dataset.act;
     if (act === 'add-case') caseSheet(null);
+    if (act === 'jump') jump(a.dataset.k);
     if (act === 'fill') fillAll();
     if (act === 'apply') applyPlaces();
     if (act === 'take-off') takeOffGone(a.dataset.k);

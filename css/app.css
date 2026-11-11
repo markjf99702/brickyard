@@ -325,6 +325,14 @@ ul.need small { display: block; color: var(--muted); font-size: 13px; }
 ul.need li.short small::after { content: ' · short'; color: var(--red-text); font-weight: 600; }
 
 /* ---------- shelf planner ---------- */
+/* Under the planner's count: the ways down to the two lists below the bookcases, as words to tap, 44 px tall. A
+   list's heading stops a little under the bar when it's gone to (the page keeps room for the bar already). */
+.jump { display: flex; flex-wrap: wrap; gap: 0 16px; margin: -8px 0 2px; }
+.jump button { border: 0; background: none; padding: 0; min-height: 44px; color: var(--blue); font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.jump button span { display: inline-block; margin-left: 4px; } /* the arrow, with no line under it */
+.empty .jump { justify-content: center; margin: 6px 0 0; }
+.group { scroll-margin-top: 8px; }
+.group:focus { outline: none; } /* it takes the focus to be read out; there's nothing to press */
 .case { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 12px 0; }
 .case-hd { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
 .case-hd h2 { margin: 0; font-size: 18px; }
