@@ -102,6 +102,16 @@ eq(told(GATE(FILL, 5)), [], 'put on in the same step as what goes over it, it’
 eq(told(GATE(FILL, 6)), [], 'and so it is before');
 eq(told(SQUEEZED2), [['squeeze', 5, [5, 6]]], 'two in one step are one problem');
 eq(B.check(M(SQUEEZED2), shapes, null).problems[0].text, 'Step 5 has 2 pieces that would have to be squeezed in between pieces already built', 'said as two');
+// Two bricks put on in one step, one on the other, that fill the gap: whichever goes on last is squeezed, so both
+// are named. (They passed, with a note that the upper one goes on from underneath.)
+const STACKED = GATE([['3003', 2, 2, 3, 0, 0, 5], ['3003', 2, 2, 6, 0, 0, 5]], 3);
+eq(told(STACKED), [['squeeze', 5, [4, 5]]], 'a stack put on in one step that fills the gap has no way in either');
+// But a step may stand a post beside the gap, lay a brick across its top, and push a brick up under that one and
+// the overhang together: nothing is under the last brick, so it goes on from underneath.
+const PUSHED = [['3034', 4, 0, 0, 0, 0, 1], ['3003', 1, 0, 1, 0, 0, 2], ['3003', 1, 0, 4, 0, 0, 2], ['3001', 15, 0, 7, 0, 0, 3],
+  ['3003', 2, 6, 1, 0, 0, 4], ['3003', 2, 6, 4, 0, 0, 4], ['3001', 2, 4, 7, 0, 0, 4], ['3001', 14, 2, 4, 0, 0, 4]];
+eq(told(PUSHED), [], 'a brick pushed up under the overhang and under a brick of its own step is fine');
+eq(B.check(M(PUSHED), shapes, null).notes.map(n => [n.step, n.parts]), [[4, [7]]], 'and is noted as going on from underneath');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 3, 0], ['3001', 1, 0, 0, 0]] }).parts.map(q => q[6]), [2, 1], 'no steps: one per height');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 0, 0, 45]] }), null, 'turns are whole quarter turns');
 check(B.cleanModel({ model: { parts: [{ p: '3001.dat', c: '1', x: 0, y: 0, z: 0 }] } }).parts[0][0] === '3001', 'objects and .dat names work');
@@ -272,7 +282,7 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     order: M([plate(0, 0, 1), plate(4, 0, 2), ['3001', 4, 2, 3, 0, 0, 3]]),
     turned: M([['3039', 4, 0, 0, 0, 90, 1], ['3004', 1, 1, 3, 0, 90, 2], ['3004', 1, 0, 3, 0, 0, 2]]),
     under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), 'under, several': M(UNDER),
-    squeezed: M(SQUEEZED), 'squeezed, two in a step': M(SQUEEZED2),
+    squeezed: M(SQUEEZED), 'squeezed, two in a step': M(SQUEEZED2), 'squeezed, a stack in one step': M(STACKED), 'pushed up beside a stack': M(PUSHED),
     'a part called constructor': M([plate(0, 0, 1), ['constructor', 4, 0, 1, 0, 0, 2]]),
     'floating, base first': M(FLOAT_A), 'floating, rows swapped': M(FLOAT_A2), 'a floating pair': M(FLOAT_B), 'a floating pair, backwards': M(FLOAT_B2), 'two towers': M(TOWERS),
   };

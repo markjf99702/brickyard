@@ -179,13 +179,24 @@
     }
     // A part can't be squeezed in between parts already built: one that joins a part from an earlier step under it
     // and another from an earlier step over it has no way in (studs go on straight down or straight up, and there
-    // is no room to do either). One problem for each step that has any, in step order, its parts as they're listed.
-    var onto = {}, below = {};
+    // is no room to do either). The same goes for a stack put on in one step that fills such a gap: whichever of
+    // its parts goes on last is squeezed. So a part is refused when a run of the step's parts, each on the one
+    // before, leads down from it to a part that is on an earlier step's part and up from it to a part that is
+    // under one. One problem for each step that has any, in step order, its parts as they're listed.
+    var onto = {}, below = {}, over = {}, beneath = {};
     edges.forEach(function (e) {
       var lo = byIndex[e[0]], hi = byIndex[e[1]];
       if (lo.s < hi.s) onto[hi.i] = 1;
       if (hi.s < lo.s) below[lo.i] = 1;
+      if (lo.s === hi.s) { (over[lo.i] = over[lo.i] || []).push(hi.i); (beneath[hi.i] = beneath[hi.i] || []).push(lo.i); }
     });
+    var spread = function (from, next) {
+      var seen = {}, todo = Object.keys(from).map(Number);
+      todo.forEach(function (i) { seen[i] = 1; });
+      while (todo.length) (next[todo.pop()] || []).forEach(function (j) { if (!seen[j]) { seen[j] = 1; todo.push(j); } });
+      return seen;
+    };
+    onto = spread(onto, over); below = spread(below, beneath);
     var tight = {};
     ok.forEach(function (q) { if (onto[q.i] && below[q.i]) (tight[q.s] = tight[q.s] || []).push(q.i); });
     Object.keys(tight).map(Number).sort(function (a, b) { return a - b; }).forEach(function (s) {

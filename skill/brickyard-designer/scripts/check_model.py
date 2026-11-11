@@ -271,15 +271,30 @@ def check(model, shapes, pool):
             if lone:
                 problems.append(dict(kind='order', step=s, parts=sorted(lone), text=f'Step {s} has parts with nothing to join to yet'))
     # A part can't be squeezed in between parts already built: one that joins a part from an earlier step under it
-    # and another from an earlier step over it has no way in. One problem for each step that has any, in step
-    # order, its parts as they're listed (the same as js/build-core.js).
-    onto, held = set(), set()
+    # and another from an earlier step over it has no way in. The same goes for a stack put on in one step that
+    # fills such a gap: a part is refused when a run of the step's parts, each on the one before, leads down from
+    # it to a part that is on an earlier step's part and up from it to a part that is under one. One problem for
+    # each step that has any, in step order, its parts as they're listed (the same as js/build-core.js).
+    onto, held, over, beneath = set(), set(), {}, {}
     for a, b in edges:
         lo, hi = by_index[a], by_index[b]
         if lo['s'] < hi['s']:
             onto.add(hi['i'])
         if hi['s'] < lo['s']:
             held.add(lo['i'])
+        if lo['s'] == hi['s']:
+            over.setdefault(lo['i'], []).append(hi['i'])
+            beneath.setdefault(hi['i'], []).append(lo['i'])
+
+    def spread(seen, nxt):
+        todo = list(seen)
+        while todo:
+            for j in nxt.get(todo.pop(), []):
+                if j not in seen:
+                    seen.add(j)
+                    todo.append(j)
+        return seen
+    onto, held = spread(onto, over), spread(held, beneath)
     tight = {}
     for q in ok:
         if q['i'] in onto and q['i'] in held:
