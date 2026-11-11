@@ -5080,7 +5080,7 @@ await page.click('[data-close]');
   await first.p.goto(base + '#build');
   await first.p.waitForSelector('#add-box');
   assert.deepEqual(await says(first.p), ['Brickyard builds from sets that are taken apart and that it has a parts list for. So far that is the Large Creative Brick Box (10698). Have one? Add it.',
-    'Tree House is taken apart, but Brickyard has no parts list for it yet, so its pieces aren’t counted.']);
+    'Tree House is taken apart, but Brickyard has no parts list for it yet, so its pieces aren’t counted.', 'A parts list is a small file in the Brickyard project. Copy this set and paste it into a Claude session opened on the Brickyard project: it adds the list.']);
   await first.c.close();
   const many = await withSets({ sets: { a: other('a', 'Tree House', 'apart'), b: other('b', 'Galaxy Explorer', 'apart'), c: other('c', 'Medieval Castle', 'apart'), d: other('d', 'Typewriter', 'apart'),
     e: { id: 'e', t: 1, name: 'Bonsai Tree', state: 'apart' }, x: box('x', 'built'), y: box('y', 'partial'), z: box('z', 'sealed') },
@@ -5090,7 +5090,8 @@ await page.click('[data-close]');
   await p.waitForSelector('[data-pool]');
   const rows = () => p.evaluate(() => [...document.querySelectorAll('.menu.pool li:not(.lot) small')].map(e => e.textContent));
   assert.deepEqual(await rows(), ['10698 · 790 pieces · built, so off unless you take it apart', '10698 · 790 pieces · partly built, so off', '10698 · 790 pieces · sealed, so off'], 'each set that’s off says why, with My sets’ piece count');
-  assert.deepEqual(await says(p), ['Bonsai Tree, Galaxy Explorer, Medieval Castle and 2 more are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.'], 'up to three are named');
+  assert.deepEqual(await says(p), ['Bonsai Tree, Galaxy Explorer, Medieval Castle and 2 more are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.',
+    'A parts list is a small file in the Brickyard project. Copy these sets and paste them into a Claude session opened on the Brickyard project: it adds each list. 1 of them has no set number, and a parts list goes by the number: add it in My sets.'], 'up to three are named');
   await p.uncheck('[data-pool="tub"]');
   await p.waitForFunction(() => document.querySelector('.pieces .flag'));
   assert.equal(await p.textContent('.pieces .flag'), 'Tick a set or some loose pieces to build from them.');
@@ -5101,7 +5102,8 @@ await page.click('[data-close]');
   const two = await withSets({ sets: { a: other('a', 'Tree House', 'apart'), b: other('b', 'Typewriter', 'apart'), x: box('x', 'built') } });
   await two.p.goto(base + '#build');
   await two.p.waitForSelector('[data-pool]');
-  assert.deepEqual(await says(two.p), ['Tick a set to build from its pieces.', 'Tree House and Typewriter are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.'], 'no word of loose pieces when there are none');
+  assert.deepEqual(await says(two.p), ['Tick a set to build from its pieces.', 'Tree House and Typewriter are taken apart, but Brickyard has no parts list for them yet, so their pieces aren’t counted.',
+    'A parts list is a small file in the Brickyard project. Copy these sets and paste them into a Claude session opened on the Brickyard project: it adds each list.'], 'no word of loose pieces when there are none');
   await two.c.close();
 }
 
@@ -5875,6 +5877,45 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   assert.match(out, /^Cottage: 40 pieces, 7 steps/, 'check_model.py reads what was copied');
   assert.doesNotMatch(out, /PROBLEM|NOT READY/);
   await c.close();
+}
+
+// Copy my taken-apart sets: the taken-apart sets Brickyard has no parts list for, as a request to paste into a Claude
+// session opened on the Brickyard project (a parts list is a file there, which a chat can't add). A set is named
+// once, one with no number is left out, and the button isn't there with nothing to ask for.
+{
+  const sets = { a: { id: 'a', t: 1, num: '21318-1', name: 'Tree House', state: 'apart' }, b: { id: 'b', t: 1, num: '21318-1', name: 'Tree House', state: 'apart' }, d: { id: 'd', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'apart' },
+    e: { id: 'e', t: 1, name: 'Bonsai tree', state: 'apart' }, f: { id: 'f', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' }, g: { id: 'g', t: 1, num: '21327-1', name: 'Typewriter', state: 'built' } };
+  const { c, p } = await withSets({ sets }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  await p.goto(base + '#build');
+  await p.waitForSelector('#copy-apart');
+  assert.equal(await p.textContent('#apart-how'), 'A parts list is a small file in the Brickyard project. Copy these sets and paste them into a Claude session opened on the Brickyard project: it adds each list. 1 of them has no set number, and a parts list goes by the number: add it in My sets.');
+  assert.ok((await p.locator('#copy-apart').boundingBox()).height >= 44, 'the button is a finger tall');
+  await p.click('#copy-apart');
+  await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+  assert.equal(await p.textContent('.toast span'), 'Copied. Paste it into a Claude session opened on the Brickyard project.');
+  assert.equal(await p.evaluate(() => navigator.clipboard.readText()), 'Parts lists for Brickyard, please. These sets of mine are taken apart, and Brickyard has no parts list for them, so Build from your box can’t count their pieces.\n' +
+    'For each one, add parts/sets/NUM-1.json and its count to parts/index.json, the way the project’s CLAUDE.md says a new set joins the pool.\n10497-1 Galaxy Explorer\n21318-1 Tree House\n');
+  // Where the browser won't copy, the text is shown.
+  await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('no')); });
+  await p.click('#copy-apart');
+  await p.waitForSelector('#pool-text');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.textContent('.sheet .note'), (await p.inputValue('#pool-text')).split('\n').length], ['Your taken-apart sets', 'Copy this and paste it into a Claude session opened on the Brickyard project.', 5]);
+  await c.close();
+  const one = await withSets({ sets: { a: sets.a, f: sets.f } });
+  await one.p.goto(base + '#build');
+  await one.p.waitForSelector('#copy-apart');
+  assert.equal(await one.p.textContent('#apart-how'), 'A parts list is a small file in the Brickyard project. Copy this set and paste it into a Claude session opened on the Brickyard project: it adds the list.');
+  await one.c.close();
+  const bare = await withSets({ sets: { e: sets.e, f: sets.f } });
+  await bare.p.goto(base + '#build');
+  await bare.p.waitForSelector('#apart-how');
+  assert.deepEqual([await bare.p.textContent('#apart-how'), await bare.p.locator('#copy-apart').count()], ['It has no set number, and a parts list goes by the number: add it in My sets.', 0]);
+  await bare.c.close();
+  const none = await withSets({ sets: { f: sets.f, g: sets.g } });
+  await none.p.goto(base + '#build');
+  await none.p.waitForSelector('#copy-pool');
+  assert.deepEqual([await none.p.locator('#apart-how').count(), await none.p.locator('#copy-apart').count()], [0, 0], 'with a list for every taken-apart set, nothing to ask for');
+  await none.c.close();
 }
 
 await browser.close();

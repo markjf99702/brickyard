@@ -79,10 +79,19 @@ function mine() { return window.BrickCore.yourPieces(app.doc(), index, read(POOL
 function poolSets() { return mine().sets; }
 // Taken-apart sets Brickyard has no parts list for, by name: their pieces can't be counted yet. Built and sealed
 // sets aren't pieces to build from, so a missing list for one of those is nothing to mention.
+const calledSet = x => x.name || 'Set ' + String(x.num || '').replace(/-1$/, '');
 function missingLists() {
   return Object.values(app.doc().sets).filter(x => !x.del && x.state === 'apart' && !(x.num && index[x.num]))
-    .map(x => x.name || 'Set ' + String(x.num || '').replace(/-1$/, ''))
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    .sort((a, b) => calledSet(a).localeCompare(calledSet(b), undefined, { numeric: true }));
+}
+// Copy my taken-apart sets: those sets, a line each, as a request for their parts lists. A parts list is a small
+// file in the project itself (parts/sets/), which a chat can't add: the text is for a Claude session opened on the
+// Brickyard project, and says what to add. A set is named once however many copies there are; one with no number
+// can't have a list, and is left out.
+function apartText(sets) {
+  const seen = {}, rows = sets.filter(x => x.num && !seen[x.num] && (seen[x.num] = 1)).map(x => x.num + (x.name ? ' ' + x.name : ''));
+  return 'Parts lists for Brickyard, please. These sets of mine are taken apart, and Brickyard has no parts list for them, so Build from your box can’t count their pieces.\n' +
+    'For each one, add parts/sets/NUM-1.json and its count to parts/index.json, the way the project’s CLAUDE.md says a new set joins the pool.\n' + rows.join('\n') + '\n';
 }
 // Why an unticked set is off, when it's the set's state that says so.
 const OFF = { built: 'built, so off unless you take it apart', partial: 'partly built, so off', sealed: 'sealed, so off' };
@@ -243,9 +252,15 @@ const renderList = orSay(async () => {
     if (!any) html += '<p class="flag"><span>' + (!lots.length ? 'Tick a set to build from its pieces.' : sets.length ? 'Tick a set or some loose pieces to build from them.' : 'Tick your loose pieces to build from them.') + '</span></p>';
   }
   if (none.length) {
-    const names = none.slice(0, 3).concat(none.length > 3 ? [(none.length - 3) + ' more'] : []), one = none.length === 1;
+    const called = none.map(calledSet), names = called.slice(0, 3).concat(none.length > 3 ? [(none.length - 3) + ' more'] : []), one = none.length === 1;
     html += '<p class="note">' + esc(names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]) + (one ? ' is' : ' are') + ' taken apart, but Brickyard has no parts list for ' +
       (one ? 'it' : 'them') + ' yet, so ' + (one ? 'its' : 'their') + ' pieces aren’t counted.</p>';
+    // How a list gets added, and the sets to ask for. A set with no number can't have one.
+    const bare = none.filter(x => !x.num).length, can = none.length - bare;
+    html += '<p class="note" id="apart-how">' + (can ? 'A parts list is a small file in the Brickyard project. Copy ' + (can === 1 && !bare ? 'this set' : 'these sets') + ' and paste ' + (can === 1 && !bare ? 'it' : 'them') +
+      ' into a Claude session opened on the Brickyard project: it adds ' + (can === 1 ? 'the list' : 'each list') + '.' : '') +
+      (bare ? (can ? ' ' : '') + (bare === none.length ? (bare === 1 ? 'It has' : 'They have') : bare === 1 ? '1 of them has' : bare + ' of them have') + ' no set number, and a parts list goes by the number: add it in My sets.' : '') + '</p>' +
+      (can ? '<div class="acts-row"><button class="btn quiet" type="button" id="copy-apart">Copy my taken-apart sets</button></div>' : '');
   }
   if (up.length) {
     const n = up.reduce((k, b) => k + Object.values(B.usedBy(b.model, shapes)).reduce((a, v) => a + v, 0), 0);
@@ -285,6 +300,8 @@ const renderList = orSay(async () => {
   $('build-list').querySelectorAll('[data-lot]').forEach(b => b.onclick = () => dropLot(lots.find(l => l.id === b.dataset.lot)));
   $('build-list').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => lotSheet(lots.find(l => l.id === b.dataset.edit)));
   $('copy-pool').onclick = copyPool;
+  if ($('copy-apart')) $('copy-apart').onclick = () => copyText(apartText(none), 'Copied. Paste it into a Claude session opened on the Brickyard project.', 'Your taken-apart sets',
+    'Copy this and paste it into a Claude session opened on the Brickyard project.');
   $('open-model').onclick = openSheet;
 });
 function focusIn(sel) { const el = $('build-list').querySelector(sel); if (el) el.focus({ preventScroll: true }); return !!el; }
@@ -356,10 +373,14 @@ async function copyPool() {
     (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n' +
     // For a Claude without the designer skill: where the rules are. The live site serves the skill's own notes.
     'How a Brickyard model is written and checked, if you don’t have the Brickyard designer skill: https://brickyard.junkdrawer.works/skill/brickyard-designer/SKILL.md\n';
-  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude with what you’d like built.'); }
+  await copyText(text, 'Copied. Paste it to Claude with what you’d like built.', 'Your pieces for Claude', 'Copy this and paste it to Claude.');
+}
+// Copies a text, or shows it, selected, to copy by hand where the browser won't.
+async function copyText(text, done, title, how) {
+  try { await navigator.clipboard.writeText(text); toast(done); }
   catch (e) {
-    app.openSheet('<div class="hd"><h2 id="sheetTitle">Your pieces for Claude</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
-      '<div class="bd"><p class="note">Copy this and paste it to Claude.</p><textarea class="paste" id="pool-text" readonly style="min-height:200px">' + esc(text) + '</textarea></div>');
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">' + title + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+      '<div class="bd"><p class="note">' + how + '</p><textarea class="paste" id="pool-text" readonly style="min-height:200px">' + esc(text) + '</textarea></div>');
     $('pool-text').select();
   }
 }
