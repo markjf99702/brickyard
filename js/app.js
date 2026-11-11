@@ -569,6 +569,8 @@
   // still hears "To check", the chip's words.
   function setItem(x, q, labels) {
     var sub = prefs.group === 'room' ? (x.box ? 'Box ' + C.boxName(x.box) : '') : prefs.group === 'box' ? [x.room, x.spot].filter(Boolean).join(' › ') : C.where(x);
+    // Newest first is by the day each set was added, and each row says its day, before where it is.
+    if (prefs.group === 'new' && x.added) sub = 'Added ' + dayName(x.added) + (sub ? ' · ' + sub : '');
     var why = q ? foundBy(x, q, labels) : {}, note = firstLine(x.notes);
     return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) +
       '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div>' +

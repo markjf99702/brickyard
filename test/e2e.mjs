@@ -3444,7 +3444,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
 // A row says what is missing and what to check, in the words typed (it said only "Missing pieces" and "To check",
 // and each set had to be opened to find out), on a line each of two lines at most; a screen reader still hears
 // "To check". A set a search found only by its tags or notes shows them. Newest first heads each day's sets with
-// the day. On paper each row has the first line of its notes.
+// the day, and each row says the day it was added; the menu that chooses it is Sort and group. On paper each row has the first line of its notes.
 {
   const long = 'the number on the box was half under a price sticker and the last digit could be a 3 or an 8, and the photo of the back was out of focus so the name could not be read either';
   const { c, p } = await withSets({ sets: {
@@ -3475,9 +3475,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.children].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
   assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
+  assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Added ' + day('2026-10-21') + ' · Office'], ['10305', 'Added ' + day('2026-10-20') + ' · Hall', 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long]], 'each row says the day it was added, before where it is; a set with no day says where it is');
+  assert.deepEqual([await p.textContent('.sumline label'), await p.getAttribute('#group', 'aria-label')], ['Sort and group RoomMoving boxThemeStateNewest first', 'Sort and group'], 'the menu is called Sort and group: Newest first is a sort');
   // On paper: the first line of a set's notes, and all of a long reason.
   await p.emulateMedia({ media: 'print' });
-  assert.deepEqual(await lines('d'), ['10294', 'Office', 'Second-hand, from Sam']);
+  assert.deepEqual(await lines('d'), ['10294', 'Added ' + day('2026-10-21') + ' · Office', 'Second-hand, from Sam']);
   assert.equal(await p.$eval('.item[data-id="e"] .warn', e => e.scrollHeight > e.clientHeight + 1), false, 'the whole reason is printed');
   await c.close();
 }
