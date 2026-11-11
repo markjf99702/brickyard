@@ -4294,6 +4294,22 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// The home screen's Shelf planner card says how many built sets are on shelves of how many, as the planner's own
+// count does (the rest are waiting, or need a size first); just how many when they all are.
+{
+  const set = (id, name, more) => ({ id, t: 1, name, state: 'built', size: { w: 20, d: 20, h: 20 }, ...more });
+  const { c, p } = await withSets({ sets: { a: set('a', 'On a shelf'), b: set('b', 'Waiting'), n: { id: 'n', t: 1, name: 'No size', state: 'partial' }, s: set('s', 'Sealed', { state: 'sealed' }) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }] } } });
+  assert.equal(await p.textContent('#home-shelf-stat'), '1 bookcase · 1 of 3 sets on shelves', 'the card says how many sets are still waiting for a shelf');
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.equal(await p.textContent('#shelves-body .sumline'), '1 of 3 sets on shelves', 'as the planner counts them');
+  await p.evaluate(() => { const d = window.brickyard.doc(); for (const id of ['b', 'n']) window.brickyard.putSet(Object.assign({}, d.sets[id], { state: 'apart' })); window.brickyard.refresh(); });
+  await p.goto(base);
+  assert.equal(await p.textContent('#home-shelf-stat'), '1 bookcase · 1 set on shelves', 'and says no more once none is');
+  await c.close();
+}
+
 // A set can be put on a full shelf by hand. In Where it stands, a shelf that is only short of room can be chosen
 // and says by how much it would be over (every full shelf was greyed out, so after Fit nothing could be moved); one
 // too short for the set stays greyed out. Chosen, the set stands there and the shelf is flagged overfull.

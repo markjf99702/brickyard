@@ -390,7 +390,10 @@
     var held = C.shelves(DOC), cases = Object.keys(held).map(function (k) { return held[k]; }).filter(function (c) { return !c.del; });
     // As the planner counts them: only the sets it can draw (a set on a shelf with no size isn't).
     var S = window.ShelfCore, sorted = S.sort(C.live(DOC), cases), on = sorted.placed.filter(S.hasSize).length;
-    $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + plural(on, 'set') + ' on shelves' : 'Start with your bookcases';
+    // And of how many, as the planner's own count has it ("3 of 5 sets on shelves"): the rest are waiting for a
+    // shelf, or need a size first. The card said only what was done.
+    var total = on + sorted.waiting.length + sorted.noSize.length;
+    $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + (on < total ? on.toLocaleString() + ' of ' + plural(total, 'set') : plural(on, 'set')) + ' on shelves' : 'Start with your bookcases';
   }
 
   var FILTERS = [
