@@ -252,6 +252,12 @@ a.item { color: inherit; text-decoration: none; }
 .badge.sealed { background: color-mix(in srgb, var(--red) 14%, transparent); color: color-mix(in srgb, var(--ink) 25%, var(--red)); }
 /* What's missing and what to check, in the words typed: two lines of it at most. */
 .item .m.warn { color: var(--red-text); font-weight: 600; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* A set's tags on its row: small outlined labels, unlike the state's filled badge, two lines of them at most. */
+.item .m.tags { display: flex; flex-wrap: wrap; gap: 3px 4px; white-space: normal; max-height: 42px; margin-top: 4px; }
+.tag { border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; font-size: 12.5px; line-height: 17px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Under a set's Tags box: the tags on your sets, a tap each. */
+.tagpick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tagpick .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .print-only { display: none; }
 .note.lots { margin: 8px 2px 0; }
 .note.lots a { color: inherit; text-underline-offset: 2px; }

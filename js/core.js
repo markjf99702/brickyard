@@ -911,7 +911,7 @@
 
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
-    STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
+    STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, names: names, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanPlace: cleanPlace, shelves: shelves, putShelf: putShelf, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, missingList: missingList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,

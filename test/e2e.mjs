@@ -3817,7 +3817,8 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
 
 // A row says what is missing and what to check, in the words typed (it said only "Missing pieces" and "To check",
 // and each set had to be opened to find out), on a line each of two lines at most; a screen reader still hears
-// "To check". A set a search found only by its tags or notes shows them. Newest first heads each day's sets with
+// "To check". A set's tags are on its row whenever it has any; a set a search found only by its notes shows the
+// line it was found by. Newest first heads each day's sets with
 // the day, and each row says the day it was added; the menu that chooses it is Sort and group. On paper each row has the first line of its notes.
 {
   const long = 'the number on the box was half under a price sticker and the last digit could be a 3 or an 8, and the photo of the back was out of focus so the name could not be read either';
@@ -3828,11 +3829,17 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
     e: { id: 'e', t: 4, num: '10497-1', name: 'Galaxy Explorer', state: 'built', room: 'Office', tags: ['display', 'space'], check: long },
     f: { id: 'f', t: 5, num: '21327-1', name: 'Typewriter', state: 'built', room: 'Office', notes: 'A display piece' } } });
   await p.goto(base + '#catalog');
-  const lines = id => p.$$eval(`.item[data-id="${id}"] .m`, els => els.filter(e => getComputedStyle(e).display !== 'none').map(e => [...e.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('')));
+  const lines = id => p.$$eval(`.item[data-id="${id}"] .m`, els => els.filter(e => getComputedStyle(e).display !== 'none').map(e => e.classList.contains('tags') ? 'Tags: ' + [...e.querySelectorAll('.tag')].map(t => t.textContent).join(', ')
+    : [...e.childNodes].filter(n => !(n.classList && n.classList.contains('vh'))).map(n => n.textContent).join('')));
   assert.deepEqual(await lines('a'), ['10305', 'Missing: two shields, one grey 1x2 plate']);
   assert.deepEqual(await lines('b'), ['10334', 'Missing: the dial', 'Check: number read from a blurry corner']);
   assert.equal(await p.getByRole('button', { name: /Retro Radio.*Missing: the dial.*To check: number read from a blurry corner/ }).count(), 1, 'a screen reader hears To check, the chip’s words');
-  assert.deepEqual(await lines('d'), ['10294'], 'notes and tags stay off a row');
+  // Tags are on the row of every set that has them (they showed only when a search found the set by them); notes
+  // stay off it. A screen reader hears them as "Tags: display, space".
+  assert.deepEqual([await lines('a'), await lines('d'), await lines('e'), await lines('f')].map(l => l.filter(t => /^Tags|^Notes/.test(t))), [[], ['Tags: display'], ['Tags: display, space'], []], 'tags on each row that has them, notes on none');
+  assert.equal(await p.getByRole('button', { name: /Galaxy Explorer.*Tags: display, space/ }).count(), 1, 'a screen reader hears the tags as a list');
+  const tagLine = await p.$eval('.item[data-id="e"] .tags', e => ({ right: e.getBoundingClientRect().right, h: e.getBoundingClientRect().height, colour: getComputedStyle(e).color }));
+  assert.ok(tagLine.right <= 390 && tagLine.h < 30, 'the tags are one short line: ' + JSON.stringify(tagLine));
   // A long reason is two lines, cut with an ellipsis; the row is no wider than the list.
   const box = await p.$eval('.item[data-id="e"] .warn', e => ({ h: e.getBoundingClientRect().height, line: parseFloat(getComputedStyle(e).lineHeight), cut: e.scrollHeight > e.clientHeight + 1, right: e.getBoundingClientRect().right }));
   assert.ok(box.cut && Math.abs(box.h - 2 * box.line) < 2 && box.right <= 390, 'a long reason takes two lines: ' + JSON.stringify(box));
@@ -3840,22 +3847,54 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.fill('#q', 'display');
   assert.deepEqual([await lines('d'), await lines('e'), await lines('f')], [['10294', 'Tags: display'], ['10497', 'Check: ' + long, 'Tags: display, space'], ['21327', 'Notes: A display piece']]);
   await p.fill('#q', 'bags');
-  assert.deepEqual(await lines('d'), ['10294', 'Notes: Bags 1-12 in box 7, 13-25 in box 8'], 'the line of the notes that was found');
+  assert.deepEqual(await lines('d'), ['10294', 'Tags: display', 'Notes: Bags 1-12 in box 7, 13-25 in box 8'], 'the line of the notes that was found');
   await p.fill('#q', 'titanic');
-  assert.deepEqual(await lines('d'), ['10294'], 'found by its name, a row is as it was');
+  assert.deepEqual(await lines('d'), ['10294', 'Tags: display'], 'found by its name, a row is as it was');
   await p.fill('#q', '');
   // Newest first: a heading for each day, newest at the top; sets with no date come last.
   await p.selectOption('#group', 'new');
   const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.querySelectorAll('span')].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
   assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
-  assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Office · Added ' + day('2026-10-21')], ['10305', 'Hall · Added ' + day('2026-10-20'), 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long]], 'each row says where it is, then the day it was added (the part a phone cuts is the part the heading says); a set with no day says where it is');
+  assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Office · Added ' + day('2026-10-21'), 'Tags: display'], ['10305', 'Hall · Added ' + day('2026-10-20'), 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long, 'Tags: display, space']], 'each row says where it is, then the day it was added (the part a phone cuts is the part the heading says); a set with no day says where it is');
   assert.deepEqual([await p.textContent('.sumline label'), await p.getAttribute('#group', 'aria-label')], ['Sort and group RoomMoving boxThemeStateNewest first', 'Sort and group'], 'the menu is called Sort and group: Newest first is a sort');
   // On paper: the first line of a set's notes, and all of a long reason.
   await p.emulateMedia({ media: 'print' });
-  assert.deepEqual(await lines('d'), ['10294', 'Office · Added ' + day('2026-10-21'), 'Second-hand, from Sam']);
+  assert.deepEqual(await lines('d'), ['10294', 'Office · Added ' + day('2026-10-21'), 'Tags: display', 'Second-hand, from Sam']);
   assert.equal(await p.$eval('.item[data-id="e"] .warn', e => e.scrollHeight > e.clientHeight + 1), false, 'the whole reason is printed');
   await c.close();
+}
+
+// Under a set's Tags box, the tags on your sets, most used first, each a tap to add it to the box or take it off,
+// pressed when the box has it (a tag typed again by hand came out "display" on one set and "On display" on the next).
+// None until a set has a tag. Save keeps them, cleaned as the catalog keeps them, and the row shows them.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', state: 'built', tags: ['On display', 'castle'] },
+    b: { id: 'b', t: 2, num: '10334-1', name: 'Retro Radio', state: 'built', tags: ['On display'] },
+    d: { id: 'd', t: 3, num: '10294-1', name: 'Titanic', state: 'apart' } } });
+  await p.goto(base + '#catalog');
+  const picks = () => p.$$eval('#e-tagpick button', bs => bs.map(b => b.textContent + (b.getAttribute('aria-pressed') === 'true' ? ' (on)' : '')));
+  await p.click('.item[data-id="d"]');
+  assert.deepEqual([await picks(), await p.getAttribute('#e-tags', 'placeholder'), await p.textContent('#e-tags-n')], [['On display', 'castle'], 'e.g. On display, Christmas', 'A comma between tags. They show on the set’s row, and search finds them.'], 'the tags in use, most used first, under the box');
+  assert.equal(await p.getByRole('textbox', { name: 'Tags' }).getAttribute('aria-describedby'), 'e-tags-n', 'the line under the box is its description');
+  await p.getByRole('group', { name: 'Tags on your sets' }).getByRole('button', { name: 'castle' }).click();
+  assert.deepEqual([await p.inputValue('#e-tags'), await picks()], ['castle', ['On display', 'castle (on)']], 'a tap puts the tag in the box');
+  await p.fill('#e-tags', 'castle, Gift for Sam; on display');
+  assert.deepEqual(await picks(), ['On display (on)', 'castle (on)'], 'typing lights the ones the box has, whatever their case');
+  await p.click('#e-tagpick button >> text=castle');
+  assert.equal(await p.inputValue('#e-tags'), 'Gift for Sam, on display', 'a second tap takes it off again');
+  await p.click('#e-save');
+  assert.deepEqual([(await p.evaluate(() => window.brickyard.doc().sets.d.tags)), await p.$$eval('.item[data-id="d"] .tag', ts => ts.map(t => t.textContent))], [['Gift for Sam', 'on display'], ['Gift for Sam', 'on display']], 'Save keeps them, and the row shows them');
+  // With no tags anywhere, nothing under the box but its line.
+  await p.click('.item[data-id="d"]');
+  assert.deepEqual(await picks(), ['On display (on)', 'castle', 'Gift for Sam (on)'], 'a tag on two sets in two cases is one, under the first set’s spelling, and this set’s own are pressed');
+  await c.close();
+  const empty = await withSets({ sets: { d: { id: 'd', t: 3, num: '10294-1', name: 'Titanic', state: 'apart' } } });
+  await empty.p.goto(base + '#catalog');
+  await empty.p.click('.item[data-id="d"]');
+  assert.deepEqual([await empty.p.locator('#e-tagpick').count(), await empty.p.isVisible('#e-tags-n')], [0, true], 'no tags yet: just the box and its line');
+  await empty.c.close();
 }
 
 // After a batch is added the screen shows it: the message says how many are to check, the chip row is moved along

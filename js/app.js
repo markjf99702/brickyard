@@ -634,7 +634,9 @@
       (sub ? '<div class="m">' + esc(sub) + '</div>' : '') +
       (x.missing ? '<div class="m warn">Missing: ' + esc(oneLine(x.missing)) + '</div>' : '') +
       (x.check ? '<div class="m warn"><span aria-hidden="true">Check: </span><span class="vh">To check: </span>' + esc(x.check) + '</div>' : '') +
-      (why.tags ? '<div class="m">Tags: ' + esc(x.tags.join(', ')) + '</div>' : '') +
+      // A set's tags, on every row that has any, as a line of small muted labels (they showed only when a search
+      // found the set by them, so a tag given in the sheet was seen nowhere else).
+      (x.tags && x.tags.length ? '<div class="m tags"><span class="vh">Tags: ' + esc(x.tags.join(', ')) + '</span>' + x.tags.map(function (t) { return '<span class="tag" aria-hidden="true">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
       // The notes a search found the set by; on paper, the first line of every set's notes.
       (why.notes ? '<div class="m">Notes: ' + esc(why.notes) + '</div>' : note ? '<div class="m print-only">' + esc(note) + '</div>' : '') + '</div>' +
       (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
@@ -642,14 +644,13 @@
   function firstLine(t) { return String(t || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean)[0] || ''; }
   // Several lines (Missing pieces is a box of them) as one: "the dial, one foot".
   function oneLine(t) { return String(t || '').split('\n').map(function (l) { return l.trim().replace(/[,;]$/, ''); }).filter(Boolean).join(', '); }
-  // A set a search found only through its tags or its notes says so on its row: "display" brought up two sets
-  // with nothing on them saying why. { tags: true } when the search needed the tags, { notes: the line of the
-  // notes it found } when it needed the notes.
+  // A set a search found only through its notes says so on its row: "display" brought up two sets with nothing on
+  // them saying why. { notes: the line of the notes it found } when the search needed the notes. (Tags are on
+  // every row that has them.)
   function foundBy(x, q, labels) {
     var without = function (keys) { var y = Object.assign({}, x); keys.forEach(function (k) { delete y[k]; }); return C.matches(y, q, labels); };
-    if ((!x.tags && !x.notes) || without(['tags', 'notes'])) return {};
+    if (!x.notes || without(['tags', 'notes'])) return {};
     var box = C.boxSearch(q, labels), out = {}, words = C.fold(box && box.label ? box.rest : q).split(/\s+/).filter(Boolean);
-    if (x.tags && (!without(['tags']) || without(['notes']))) out.tags = true;
     if (x.notes && !without(['notes'])) {
       var lines = x.notes.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
       out.notes = lines.filter(function (l) { var f = C.fold(l); return words.some(function (w) { return f.indexOf(w) >= 0; }); })[0] || lines[0];
@@ -955,7 +956,8 @@
       // Each box has its own label: a placeholder is gone once the box holds a number, leaving a bare "50 8 16".
       '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
       field('Width, cm', box('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', box('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', box('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
-      field('Tags', box('e-tags', (x.tags || []).join(', '), ' placeholder="Comma between tags"')) +
+      field('Tags', box('e-tags', (x.tags || []).join(', '), ' placeholder="e.g. On display, Christmas" aria-describedby="e-tags-n"')) +
+      '<p class="note hint" id="e-tags-n">A comma between tags. They show on the set’s row, and search finds them.</p>' + tagPick(x) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
       '</form>' +
       '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="submit" form="e-form" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
@@ -965,6 +967,19 @@
     var lent = {}; // boxes filled from a first copy of the same set: { box id: what was put in it }
     if (panel.querySelector('.head-pic')) panel.querySelector('.head-pic').dataset.num = numWas;
 
+    // The tags other sets have, a tap each to add one here or take it off (tagPick).
+    if ($('e-tagpick')) {
+      var picked = function () { var on = {}; C.names($('e-tags').value, 99).forEach(function (t) { on[t.toLowerCase()] = 1; }); return on; };
+      var lit = function () { var on = picked(); $('e-tagpick').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', !!on[b.dataset.tag.toLowerCase()]); }); };
+      $('e-tagpick').onclick = function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        var t = b.dataset.tag, list = C.names($('e-tags').value, 99), at = list.map(function (y) { return y.toLowerCase(); }).indexOf(t.toLowerCase());
+        if (at >= 0) list.splice(at, 1); else list.push(t);
+        $('e-tags').value = list.join(', ');
+        lit();
+      };
+      $('e-tags').addEventListener('input', lit);
+    }
     $('e-state').onclick = function (e) {
       var b = e.target.closest('button'); if (!b) return;
       st = st === b.dataset.v ? '' : b.dataset.v;
@@ -1106,6 +1121,20 @@
       toast((gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (more ? '. ' + more : ''));
     };
   }
+  // Under a set's Tags box, the tags used on your sets, most used first, each a button that adds it to the box or
+  // takes it off: a tag typed again by hand comes out "display" on one set and "On display" on the next. Nothing
+  // when no set has a tag yet.
+  function tagPick(x) {
+    var n = {}, name = {}, mine = {};
+    (x.tags || []).forEach(function (t) { mine[t.toLowerCase()] = 1; });
+    C.live(DOC).forEach(function (y) { (y.tags || []).forEach(function (t) { var k = t.toLowerCase(); n[k] = (n[k] || 0) + 1; if (!name[k]) name[k] = t; }); });
+    var keys = Object.keys(n).sort(function (a, b) { return n[b] - n[a] || C.natural(name[a], name[b]); }).slice(0, 24);
+    if (!keys.length) return '';
+    return '<div class="tagpick" id="e-tagpick" role="group" aria-label="Tags on your sets">' + keys.map(function (k) {
+      return '<button type="button" class="chip" data-tag="' + esc(name[k]) + '" aria-pressed="' + !!mine[k] + '">' + esc(name[k]) + '</button>';
+    }).join('') + '</div>';
+  }
+
   // A set added by hand is shown, and named: the message was the bare word "Added", and with 300 sets grouped by
   // room the new row was 25,000 px down, under No room yet, with the page left at its top. Its row is brought into
   // view and tinted for a moment (showNew). When the filter or the search in force hides it they're left as they
