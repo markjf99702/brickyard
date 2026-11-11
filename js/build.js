@@ -100,7 +100,8 @@ async function currentPool() {
 // Models are kept in this browser, keyed by their parts, so opening the same link twice keeps one copy. The same
 // parts are the same model whatever order they're listed in (sameParts), and the one that comes in is the one kept:
 // a model sent again under a better name, or with a new description, shows those (it used to keep the old ones, and
-// the same parts listed in another order made a second row). It keeps its place in the list (added).
+// the same parts listed in another order made a second row). It keeps its place in the list (added), and a name
+// you gave it yourself (named).
 function hashOf(t) { let h = 2166136261 >>> 0; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
 function saved() { return read(MODELS, {}); }
 function sameParts(parts) { return parts.map(q => q.join(',')).sort().join(';'); }
@@ -109,7 +110,10 @@ function saveModel(m) {
   // An entry saved before ids were made this way (from the parts in the order they were listed, under the part
   // numbers they came with) keeps the id it has, so its #model- address still opens it.
   const id = Object.keys(all).find(k => { const old = all[k] && all[k].model && B.cleanModel(all[k].model); return old && sameParts(old.parts) === key; }) || 'm' + hashOf(key);
-  if (!all[id] || JSON.stringify(all[id].model) !== JSON.stringify(m)) { all[id] = { model: m, added: (all[id] && all[id].added) || Date.now() }; write(MODELS, all); }
+  // A name given here (Rename, in the model's menu) is kept: Claude's link opened again brings its own name.
+  const was = all[id];
+  if (was && was.named && was.model && typeof was.model.name === 'string') m = Object.assign({}, m, { name: was.model.name });
+  if (!was || JSON.stringify(was.model) !== JSON.stringify(m)) { all[id] = Object.assign({}, was, { model: m, added: (was && was.added) || Date.now() }); write(MODELS, all); }
   return id;
 }
 // When a model was added, for the list: two with the same name can be told apart.
@@ -545,10 +549,12 @@ $('model-menu').onclick = () => {
     '<li><button type="button" id="mm-parts"><span>All the pieces<small>Everything this model needs, and what you have</small></span></button></li>' +
     // The example is the same on every device, and isn't yours to send.
     (ex ? '' : '<li><button type="button" id="mm-link"><span>Copy a link to this model<small>Open it on your other device, or send it to someone</small></span></button></li>') +
+    (ex ? '' : '<li><button type="button" id="mm-name"><span>Rename<small>Tell two versions of a model apart</small></span></button></li>') +
     (ex ? '' : '<li><button type="button" id="mm-del"><span>Remove from my models<small>Tap twice. Claude’s link still opens it again.</small></span></button></li>') +
     '</ul></div>');
   $('mm-parts').onclick = partsSheet;
   if ($('mm-link')) $('mm-link').onclick = copyLink;
+  if ($('mm-name')) $('mm-name').onclick = renameSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {
     if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
     const id = current.id, name = current.model.name, all = saved(), kept = all[id];
@@ -562,6 +568,38 @@ $('model-menu').onclick = () => {
     });
   };
 };
+
+// Rename a model: two versions Claude both called "Lighthouse" could only be told apart by the day each was added.
+// The name is kept with the model in this browser (and marked as yours, so the same model from Claude's link
+// again doesn't put Claude's name back), and goes with it in a backup and in Copy a link to this model.
+function renameSheet() {
+  const id = current.id, was = current.model.name;
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">Rename this model</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+    '<form class="bd" id="mn-form" novalidate><label class="field"><span>Call it</span><input id="mn-name" value="' + esc(was) + '" maxlength="80" autocomplete="off" enterkeyhint="done"></label></form>' +
+    '<div class="ft"><span></span><button class="btn" type="submit" form="mn-form" id="mn-save">Save</button></div>',
+    () => $('mn-name').value.trim() !== was);
+  $('mn-form').onsubmit = e => {
+    e.preventDefault();
+    const name = $('mn-name').value.replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!name) { app.wrong($('mn-name'), 'Give it a name.'); return; }
+    const all = saved();
+    // Removed while the sheet was open (in another tab): it stays removed.
+    if (!all[id] || !all[id].model) { app.closeSheet(); toast(was + ' was removed while this was open. Nothing was saved.'); return; }
+    if (name !== was) {
+      all[id] = Object.assign({}, all[id], { model: Object.assign({}, all[id].model, { name }), named: true });
+      write(MODELS, all);
+      // The page shows the new name where it showed the old one; the step and the picture stay as they are.
+      if (current && current.id === id) {
+        current.model.name = name;
+        $('build-title').textContent = name;
+        document.title = name + ' · Brickyard';
+        if (current.cover) showCover(); else if (current.at === current.steps.length) showStep(current.at, false);
+      }
+    }
+    app.closeSheet();
+    toast(name === was ? 'Saved' : 'Renamed to ' + name);
+  };
+}
 
 // A model as a link, the kind check_model.py makes (#d2z…): models stay on each device, so one opened on the laptop
 // could only reach the phone by finding Claude's message again. Copied, or shown to copy where the browser won't.

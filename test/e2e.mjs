@@ -3277,7 +3277,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
     await p.goto(link(wall(n)));
     await p.waitForFunction(n => document.getElementById('build-title').textContent === 'Wall of ' + n, n);
     await p.click('#model-menu');
-    assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'Copy a link to this model', 'Remove from my models'], 'a model’s menu');
+    assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'Copy a link to this model', 'Rename', 'Remove from my models'], 'a model’s menu');
     await p.click('#mm-link');
     await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
     const copied = await p.evaluate(() => navigator.clipboard.readText());
@@ -3309,6 +3309,44 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
   await p.click('#model-menu');
   assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.id)), ['mm-parts'], 'the example has only All the pieces');
+  await c.close();
+}
+
+// Rename, in a model's menu: two versions Claude both called "Lighthouse" could only be told apart by date. The
+// new name shows on the model, in the list and in its link, stays when Claude's link to the same model is opened
+// again (which still brings a new description), and an empty name is refused under the box.
+{
+  const { c, p } = await withSets({ sets: {} }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  const model = about => ({ name: 'Lighthouse', about, parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 15, 0, 3, 0, 0, 2]] });
+  const link = m => base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: m })).toString('base64url');
+  const kept = () => p.evaluate(() => Object.values(JSON.parse(localStorage.getItem('brickyard.models'))).map(v => [v.model.name, v.model.about, v.named === true, typeof v.added]));
+  await p.goto(link(model('First try.')));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Lighthouse');
+  await p.click('#model-menu'); await p.click('#mm-name');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.inputValue('#mn-name')], ['Rename this model', 'Lighthouse']);
+  await p.fill('#mn-name', '   ');
+  await p.click('#mn-save');
+  assert.deepEqual([await p.textContent('#mn-name-err'), await p.getAttribute('#mn-name', 'aria-invalid'), (await kept())[0][0]], ['Give it a name.', 'true', 'Lighthouse'], 'an empty name is refused, under the box');
+  await p.fill('#mn-name', '  Lighthouse,   striped ');
+  await p.press('#mn-name', 'Enter');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual([await p.textContent('.toast'), await p.textContent('#build-title'), await p.title(), await p.textContent('#step-parts'), await kept()],
+    ['Renamed to Lighthouse, striped', 'Lighthouse, striped', 'Lighthouse, striped · Brickyard', 'Lighthouse, striped: 2 pieces in 2 steps. This is how it looks when it’s built. Drag it around to look it over.', [['Lighthouse, striped', 'First try.', true, 'number']]],
+    'the new name shows on the model and is saved with it');
+  await p.click('#model-menu'); await p.click('#mm-link');
+  await p.waitForFunction(() => /Copied/.test(document.querySelector('.toast').textContent));
+  const copied = await p.evaluate(() => navigator.clipboard.readText());
+  // Claude's link again, with a new description: the description comes in, the name you gave stays, and it's one model.
+  await p.goto(link(model('Second try.')));
+  await p.waitForFunction(() => document.getElementById('model-about').textContent === 'Second try.');
+  assert.deepEqual([await p.textContent('#build-title'), await kept()], ['Lighthouse, striped', [['Lighthouse, striped', 'Second try.', true, 'number']]], 'the same model from Claude again keeps the name you gave it');
+  await p.goto(base + '#build');
+  await p.waitForSelector('#build-list .list .item');
+  assert.match(await p.textContent('#build-list .list .item'), /^Lighthouse, striped2 pieces · 2 steps/);
+  const other = await withSets({ sets: {} });
+  await other.p.goto(base + copied.slice(copied.indexOf('#')));
+  await other.p.waitForFunction(() => document.getElementById('build-title').textContent === 'Lighthouse, striped');
+  await other.c.close();
   await c.close();
 }
 
