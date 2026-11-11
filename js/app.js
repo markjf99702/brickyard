@@ -2067,6 +2067,8 @@
     fillLists: function () { fillLists(C.live(DOC)); },
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
+    // A setting kept on this device with the others (prefs), for the other screens: the planner's "Keep themes together".
+    pref: function (k, v) { if (arguments.length > 1) { prefs[k] = v; savePrefs(); } return prefs[k]; },
     newId: newId, takeDoc: takeDoc, showSet: showSet, nudge: nudge, folded: folded, foldedText: foldedText,
     // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
     // gives this the new copy of the thing that opened it.

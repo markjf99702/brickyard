@@ -82,6 +82,9 @@
       if (total) html += '<p class="sumline"><span>' + (placed < total ? placed + ' of ' + plural(total, 'set') + ' on shelves' + stuck : total === 1 ? 'Your set is on a shelf' : 'All ' + total + ' sets are on shelves') + '</span></p>' + jumps(sorted);
       html += '<div class="acts-row">' + (fitting ? '<button class="btn" type="button" data-act="fill">Fit ' + (fitting === sorted.waiting.length ? plural(fitting, 'set') : 'the sets') + ' onto the shelves</button>' : '') +
         '<button class="btn quiet" type="button" data-act="add-case">Add a bookcase</button></div>';
+      // A choice for Fit, off unless it's ticked: a set goes beside one of its own theme before anywhere else, which
+      // can spread the sets over more shelves. Kept on this device with the other settings.
+      if (fitting) html += '<label class="check" id="fit-themes-row"><input type="checkbox" id="fit-themes"' + (app.pref('fitThemes') ? ' checked' : '') + '> Keep themes together</label>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
       all.forEach(function (c, i) { html += caseHtml(c, ids, i); });
       if (sorted.placed.length) {
@@ -362,6 +365,9 @@
     if (act === 'ask-sizes') askSizes();
     if (act === 'open-sizes') openSizes();
   });
+  $('shelves-body').addEventListener('change', function (e) {
+    if (e.target.id === 'fit-themes') app.pref('fitThemes', !!e.target.checked);
+  });
   $('shelves-body').addEventListener('keydown', function (e) {
     var g = e.target.closest && e.target.closest('.sv-set');
     if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSheet(g.dataset.set); }
@@ -369,7 +375,7 @@
 
   // Fit, with Undo: the bookcases it changed go back as they were.
   function fillAll() {
-    var before = cases(), r = S.fill(before, sets()), moved = 0, kept = [];
+    var before = cases(), r = S.fill(before, sets(), { themes: !!app.pref('fitThemes') }), moved = 0, kept = [];
     r.cases.forEach(function (c, i) { if (JSON.stringify(c.levels) !== JSON.stringify(before[i].levels)) { kept.push(copy(before[i])); put(c); } });
     moved = S.sort(sets(), r.cases).placed.length - S.sort(sets(), before).placed.length;
     render();

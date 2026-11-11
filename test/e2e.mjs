@@ -4284,6 +4284,30 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// "Keep themes together" under Fit: off to begin with, and Fit then puts each set on the closest fit. Ticked, a set
+// goes beside one of its own theme first, and the tick is still there after a reload (kept with the device's other
+// settings, not in the catalog). It's only there while there is something for Fit to place.
+{
+  const set = (id, name, theme, w, h) => ({ id, t: 1, name, theme, state: 'built', size: { w, d: 20, h } });
+  const sets = { f: set('f', 'Falcon', 'Star Wars', 40, 20), x: set('x', 'X-wing', 'Star Wars', 20, 20), b: set('b', 'Bonsai', 'Botanical', 50, 20) };
+  const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'f' }] }, { h: 30, sets: [{ id: 'b' }] }] } } });
+  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.deepEqual([await p.isChecked('#fit-themes'), await p.textContent('#fit-themes-row')], [false, ' Keep themes together'], 'the choice is under Fit, not ticked');
+  await p.click('[data-act="fill"]');
+  assert.deepEqual([await on(), await p.locator('#fit-themes').count()], ['f / b+x', 0], 'without it the closest fit; and with nothing left to place the choice goes with the button');
+  await p.click('.toast button');
+  await p.tap('#fit-themes-row');
+  assert.deepEqual([await p.isChecked('#fit-themes'), await p.evaluate(() => [JSON.parse(localStorage.getItem('brickyard.prefs')).fitThemes, JSON.stringify(window.brickyard.doc()).includes('fitThemes')])], [true, [true, false]], 'ticking it is kept with the settings, not in the catalog');
+  await p.reload();
+  await p.waitForSelector('.case');
+  assert.equal(await p.isChecked('#fit-themes'), true, 'and is still ticked after a reload');
+  await p.click('[data-act="fill"]');
+  assert.equal(await on(), 'f+x / b', 'ticked, the X-wing goes beside the Falcon');
+  await c.close();
+}
+
 // Fit has Undo, and a bookcase can be started again: "Take every set off" in its sheet, on a second tap, with Undo
 // too. (Fit leaves placed sets where they are, so a fresh arrangement meant opening every set's sheet.) When nothing
 // waiting fits, the count says so, and one line under Not on a shelf yet adds up why: how many need more shelf and

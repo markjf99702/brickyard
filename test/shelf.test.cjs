@@ -124,6 +124,19 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq(S.fill([wideK], four).cases[0].levels[0].sets.map(p => p.id), ['b', 'a'], 'tallest and widest first when nothing places more');
 }
 
+// Keep themes together, when asked: a set goes on a shelf that already holds one of its theme, then an empty shelf,
+// then any other. Without it the closest fit wins, as ever.
+{
+  const themed = (x, theme) => Object.assign(x, { theme });
+  const all = [themed(set('falcon', 40, 20, 20), 'Star Wars'), themed(set('xwing', 20, 20, 20), 'star wars'), themed(set('tree', 50, 20, 20), 'Botanical'), set('plain', 15, 20, 10), themed(set('tie', 10, 20, 12), 'Star Wars')];
+  const k = { id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'falcon' }] }, { h: 30, sets: [{ id: 'tree' }] }, { h: 30, sets: [] }, { h: 14, sets: [] }] };
+  const where = r => r.cases[0].levels.map(l => l.sets.map(p => p.id).join('+'));
+  eq(where(S.fill([k], all)), ['falcon', 'tree+xwing', '', 'tie+plain'], 'without the choice, the closest fit');
+  eq(where(S.fill([k], all, { themes: true })), ['falcon+xwing+tie', 'tree', '', 'plain'], 'with it, beside its own theme first, even on a taller shelf');
+  const full = { id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'falcon' }, { id: 'tree' }] }, { h: 30, sets: [] }] };
+  eq(where(S.fill([full], [all[0], all[2], themed(set('orchid', 30, 20, 20), 'Botanical'), themed(set('car', 30, 20, 20), 'Technic')], { themes: true })), ['falcon+tree', 'car+orchid'], 'no room beside its theme: an empty shelf, then any other');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
