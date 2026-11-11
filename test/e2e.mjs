@@ -3105,7 +3105,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForFunction(() => window.BrickyardBuild.inView());
   assert.deepEqual(await view(), [40, 0, 0, false], 'the finished picture a model opens on is at full colour');
   const home = await box();
-  for (let i = 0; i < 5; i++) await p.click('#step-next');
+  const settled = () => p.waitForFunction(() => !window.BrickyardBuild.inView().glide);
+  await p.click('#step-next');
+  await settled();
+  const one = await box(); // step 1, framed on its one plate
+  for (let i = 0; i < 4; i++) await p.click('#step-next');
   assert.deepEqual([await p.textContent('.stepnum'), await view()], ['Step 5 of 7', [27, 4, 23, false]], 'step 5: its four slopes stand out, the 23 pieces under them are faded');
   await slide(0);
   assert.deepEqual([await p.textContent('#step-parts'), await view()], ['That’s the Cottage: 40 pieces in 7 steps.', [40, 0, 0, false]], 'the slider to the end: full colour, and no turn');
@@ -3122,7 +3126,8 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   assert.equal((await view())[3], true);
   await p.waitForFunction(was => window.BrickyardBuild.inView().box.map(n => n.toFixed(3)).join() !== was, home);
   await p.click('#step-next'); // From the start
-  assert.deepEqual([await p.textContent('.stepnum'), (await view())[3], await box()], ['Step 1 of 7', false, home], 'a change of step stops the turn and puts the picture back');
+  await settled();
+  assert.deepEqual([await p.textContent('.stepnum'), (await view())[3], await box()], ['Step 1 of 7', false, one], 'a change of step stops the turn and puts the picture back');
   // A name that brings its own first word keeps it.
   await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: { name: 'My first wall', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2]] } })).toString('base64url'));
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'My first wall');
@@ -3136,6 +3141,65 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await calm.p.click('#step-next');
   assert.deepEqual([await calm.p.textContent('.stepnum'), await calm.p.evaluate(() => window.BrickyardBuild.inView().spin)], ['Done · 40 pieces', false], 'with less motion asked for, the finished model stays still');
   await calm.c.close();
+}
+
+// The picture is framed on what's built so far: on a tall model the first steps were a small patch at the bottom
+// of a picture framed for the finished model. It moves out as the model grows, never nearer than a third of the
+// way in from where the whole model fits, and stops following once the picture has been turned or zoomed, until
+// Reset view. The picture a model opens on and Done show the whole model.
+{
+  const tall = { name: 'Lighthouse', parts: [['3028', 2, 0, 0, 0, 0, 1], ['3001', 4, 2, 1, 2, 0, 2], ['3001', 4, 6, 1, 2, 0, 2]].concat(Array.from({ length: 26 }, (_, i) => ['3003', i % 2 ? 4 : 15, 5, 4 + i * 3, 2, 0, 3 + Math.floor(i / 2)])) };
+  const link = m => base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: m })).toString('base64url');
+  const { c, p } = await withSets({ sets: {} }, { reducedMotion: 'reduce' }); // no gliding, so where the camera goes can be read at once
+  const view = () => p.evaluate(() => window.BrickyardBuild.inView());
+  const inside = b => b.every(n => n >= -0.001 && n <= 1.001), widest = b => Math.max(b[2] - b[0], b[3] - b[1]), near = (a, b) => Math.abs(a - b) < 0.005;
+  await p.goto(link(tall));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Lighthouse' && window.BrickyardBuild.inView());
+  let v = await view();
+  assert.ok(near(v.far, 1) && inside(v.box) && widest(v.box) > 0.8, 'the finished picture shows the whole model: ' + JSON.stringify(v));
+  await p.click('#step-next'); await p.click('#step-next');
+  v = await view();
+  assert.equal(await p.textContent('.stepnum'), 'Step 2 of 15');
+  assert.ok(inside(v.built) && widest(v.built) > 0.8 && v.far < 0.5 && v.box[1] < 0, 'step 2 of a tall model fills the picture, framed on what’s built: ' + JSON.stringify(v));
+  for (let i = 3, last = v.far; i <= 15; i++, last = v.far) {
+    await p.click('#step-next');
+    v = await view();
+    assert.ok(inside(v.built) && widest(v.built) > 0.8 && v.far >= last - 0.001 && v.far <= 1.001, 'step ' + i + ' is framed on what’s built, no nearer than the step before: ' + JSON.stringify(v));
+  }
+  await p.click('#step-next');
+  v = await view();
+  assert.ok((await p.textContent('.stepnum')).startsWith('Done') && near(v.far, 1) && inside(v.box), 'Done shows the whole model');
+  // One 2x2 brick of a tower of thirty doesn't fill the stage: the camera stops a third of the way in.
+  await p.goto(link({ name: 'Tower', parts: Array.from({ length: 30 }, (_, i) => ['3003', i % 2 ? 4 : 15, 0, i * 3, 0, 0, i + 1]) }));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Tower');
+  await p.click('#step-next');
+  v = await view();
+  assert.ok(near(v.far, 1 / 3) && inside(v.built), 'no nearer than a third of the way in: ' + v.far);
+  // Zoomed by hand, the picture is left where it was put at the next step; Reset view frames the step again.
+  await p.focus('#stage'); await p.keyboard.press('-');
+  const mine = (await view()).far;
+  await p.click('#step-next'); await p.click('#step-next');
+  v = await view();
+  assert.deepEqual([await p.textContent('.stepnum'), v.moved, near(v.far, mine)], ['Step 3 of 30', true, true], 'once it has been zoomed, the picture stays where it was put');
+  await p.click('#stage-reset');
+  v = await view();
+  assert.ok(!v.moved && near(v.far, 1 / 3) && inside(v.built), 'Reset view frames the step again: ' + v.far);
+  await p.evaluate(() => { const r = document.getElementById('step-range'); r.value = '20'; r.dispatchEvent(new Event('input')); });
+  v = await view();
+  assert.ok(v.far > 0.6 && inside(v.built), 'and it follows the steps again: ' + v.far);
+  await c.close();
+  // With motion, the camera glides to the same place.
+  const m = await withSets({ sets: {} });
+  await m.p.goto(link(tall));
+  await m.p.waitForFunction(() => document.getElementById('build-title').textContent === 'Lighthouse' && window.BrickyardBuild.inView());
+  await m.p.click('#step-next'); await m.p.click('#step-next');
+  await m.p.waitForFunction(() => !window.BrickyardBuild.inView().glide);
+  const still = await m.p.evaluate(() => window.BrickyardBuild.inView());
+  const moving = await m.p.evaluate(() => { document.getElementById('step-next').click(); return window.BrickyardBuild.inView(); });
+  await m.p.waitForFunction(() => !window.BrickyardBuild.inView().glide);
+  v = await m.p.evaluate(() => window.BrickyardBuild.inView());
+  assert.ok(moving.glide && near(moving.far, still.far) && v.far > still.far + 0.005 && inside(v.built), 'with motion, the camera glides out to the new step: ' + [still.far, moving.far, v.far]);
+  await m.c.close();
 }
 
 // The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
@@ -3522,6 +3586,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   // Keys on the picture.
   assert.deepEqual(await p.$eval('#stage', e => [e.tabIndex, e.getAttribute('role'), /arrow keys turn it, plus and minus zoom/.test(e.getAttribute('aria-label'))]), [0, 'img', true]);
   await p.click('#step-next'); await p.click('#step-next');
+  await p.waitForFunction(() => !window.BrickyardBuild.inView().glide); // the camera has come to rest on the step
   const first = await view();
   await p.focus('#stage');
   await p.keyboard.press('ArrowRight');

@@ -452,6 +452,7 @@ function showCover() {
   $('step-parts').innerHTML = '<p class="note" style="margin:0"><b>' + esc(model.name) + '</b>: ' + plural(res.pieces, 'piece') + ' in ' + plural(steps.length, 'step') +
     '. This is how it looks when it’s built. Drag it around to look it over.</p>';
   showUpTo(Infinity, false);
+  follow(false);
 }
 
 // Step k of the list (0-based); one past the last step shows the finished model.
@@ -489,6 +490,7 @@ function showStep(k, animate = true) {
         esc(partName(p)) + '<small>' + esc(col.name) + (under[k2] && note.parts.length < here.length ? ' · ' + (under[k2] < groups[k2] ? under[k2] + ' ' : '') + 'from underneath' : '') + '</small></span></li>';
     }).join('') + '</ul>' + (note ? '<p class="note under">' + (here.length === 1 ? 'This one goes on from underneath.' : note.parts.length === here.length ? 'These go on from underneath.' : note.parts.length + ' of these ' + (note.parts.length === 1 ? 'goes' : 'go') + ' on from underneath.') + '</p>' : '');
   showUpTo(step, animate && !done);
+  follow(animate);
   // Finishing (Next from the last step, not the slider) turns the model round once.
   if (animate && done && was === n - 1) startSpin();
 }
@@ -582,13 +584,16 @@ function startSpin() {
   spin = { t0: performance.now(), off: camera.position.clone().sub(controls.target) };
   wake();
 }
+// Where the turn starts from: where the picture is framed, which may still be gliding out to the finished model,
+// or, once the person has moved the picture, where they left it.
+function spinFrom() { return view.moved || !pose ? spin.off.clone() : LOOK.clone().multiplyScalar(pose.dist); }
 function stopSpin(back) {
   if (!spin) return;
-  if (back) { camera.position.copy(controls.target).add(spin.off); controls.update(); }
+  if (back) { camera.position.copy(controls.target).add(spinFrom()); controls.update(); }
   spin = null;
   redraw();
 }
-let view = null; // { box, centre, radius: the model's bounds, moved: the person has turned or zoomed the picture }
+let view = null; // { box: the model's bounds, upTo: what's built by each step, moved: the person has turned or zoomed the picture }
 // Seen from the front right and a little above, like a set's instructions.
 const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize(), UP = new THREE.Vector3(0, 1, 0);
 // Frames with no glass in them: the fence (bars) and the door frame (an empty opening). The rest are windows.
@@ -618,7 +623,7 @@ function startStage() {
       controls.enableDamping = false; controls.update(); controls.enableDamping = true;
       spin = null;
       view.moved = false; $('stage-reset').hidden = true;
-      frame();
+      frame(false);
     };
     new ResizeObserver(resize).observe(canvas);
     // A phone can take the picture away (the tab left in the background, memory running short). The browser brings
@@ -652,7 +657,7 @@ function hideHint(now) {
 // The person has turned or zoomed the picture: the hint has done its job, and Reset view shows.
 function movedIt() {
   hideHint(true);
-  spin = null;
+  spin = glide = null;
   if (view) { view.moved = true; $('stage-reset').hidden = false; }
 }
 // With the picture focused, the arrow keys turn it and + and - zoom, so a keyboard can look round a model too.
@@ -673,7 +678,7 @@ function turnKeys(e) {
   redraw();
 }
 function stopStage() {
-  running = false; anims = []; spin = null;
+  running = false; anims = []; spin = glide = null;
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
 }
@@ -683,7 +688,7 @@ function resize() {
   if (!w || !h) return;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
-  if (view && !view.moved) frame(); // a turned phone or a resized window fits the model again, until it's been moved
+  if (view && !view.moved) frame(false); // a turned phone or a resized window fits the model again, until it's been moved
   redraw(); // a new size clears the picture
 }
 function loop(t) {
@@ -697,15 +702,20 @@ function loop(t) {
   });
   // While a turn or a zoom is still easing out, this moves the camera and says so ('change'), which asks for the
   // next frame; once it has settled nothing does, and the loop sleeps until something changes.
-  const turning = !!spin;
+  const turning = !!spin || !!glide;
+  if (glide) {
+    const k = Math.max(0, Math.min(1, (t - glide.t0) / GLIDE)), e = 1 - (1 - k) * (1 - k) * (1 - k), { from, to } = glide;
+    put({ target: from.target.clone().lerp(to.target, e), dist: from.dist + (to.dist - from.dist) * e });
+    if (k === 1) glide = null;
+  }
   if (spin) {
     const k = Math.max(0, Math.min(1, (t - spin.t0) / SPIN));
-    camera.position.copy(controls.target).add(spin.off.clone().applyAxisAngle(UP, Math.PI * 2 * k * k * (3 - 2 * k))); // eased at both ends
+    camera.position.copy(controls.target).add(spinFrom().applyAxisAngle(UP, Math.PI * 2 * k * k * (3 - 2 * k))); // eased at both ends
     if (k === 1) spin = null;
   }
   controls.update();
   if (dirty || moving || turning) { dirty = false; renderer.render(scene, camera); }
-  if (anims.length || spin) wake();
+  if (anims.length || spin || glide) wake();
 }
 
 function material(c) {
@@ -838,42 +848,76 @@ function buildScene(model) {
   meshes = model.parts.map(q => shapes[q[0]] ? { q, obj: partObject(q) } : null).filter(Boolean);
   meshes.forEach(m => { m.obj.visible = false; m.y = m.obj.position.y; scene.add(m.obj); });
   const box = new THREE.Box3();
-  meshes.forEach(m => { m.obj.visible = true; box.expandByObject(m.obj); });
+  meshes.forEach(m => { m.obj.visible = true; m.box = new THREE.Box3().expandByObject(m.obj); box.union(m.box); });
   if (box.isEmpty()) box.set(new THREE.Vector3(-4, 0, -4), new THREE.Vector3(4, 4, 4)); // nothing to draw
-  view = { box, centre: box.getCenter(new THREE.Vector3()), radius: box.getSize(new THREE.Vector3()).length() / 2, moved: false };
+  // upTo: the bounds of what is built by the end of each step, for framing a step on it (framing).
+  const upTo = current.steps.map(s => meshes.reduce((b, m) => (m.q[6] <= s ? b.union(m.box) : b), new THREE.Box3()));
+  view = { box, upTo, moved: false };
   $('stage-reset').hidden = true;
-  frame();
+  pose = glide = null;
+  frame(false);
   redraw();
 }
 
-// The eight corners of the model's bounds.
-function corners() {
-  const { min, max } = view.box, out = [];
+// The eight corners of a box (the model's bounds, unless another is given).
+function corners(box) {
+  const { min, max } = box || view.box, out = [];
   for (let i = 0; i < 8; i++) out.push(new THREE.Vector3(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z));
   return out;
 }
-// Puts the camera where the whole model shows, as large as the stage allows: the nearest place along LOOK from
-// which every corner of its bounds is inside the picture, across as well as up and down. (It was fitted to the
-// picture's height alone, so on a phone, where the stage is narrower than it is tall, a wide model ran off both
-// sides.) FILL is the share of the picture the model may take, which leaves a margin round it.
+// Where the camera goes to show a box as large as the stage allows: the nearest place along LOOK from which every
+// corner of it is inside the picture, across as well as up and down. (It was fitted to the picture's height alone,
+// so on a phone, where the stage is narrower than it is tall, a wide model ran off both sides.) FILL is the share
+// of the picture the box may take, which leaves a margin round it.
 const FILL = 0.9;
-function frame() {
-  const right = new THREE.Vector3(0, 1, 0).cross(LOOK).normalize(), up = LOOK.clone().cross(right);
-  const tv = Math.tan(camera.fov * Math.PI / 360) * FILL, th = tv * camera.aspect;
+function fit(box) {
+  const right = UP.clone().cross(LOOK).normalize(), up = LOOK.clone().cross(right);
+  const tv = Math.tan(camera.fov * Math.PI / 360) * FILL, th = tv * camera.aspect, centre = box.getCenter(new THREE.Vector3());
   let dist = 0;
-  corners().forEach(p => {
-    const v = p.sub(view.centre), along = v.dot(LOOK);
+  corners(box).forEach(p => {
+    const v = p.sub(centre), along = v.dot(LOOK);
     dist = Math.max(dist, along + Math.abs(v.dot(right)) / th, along + Math.abs(v.dot(up)) / tv);
   });
-  controls.target.copy(view.centre);
-  camera.position.copy(view.centre).addScaledVector(LOOK, dist);
-  // No nearer than just outside the model, and no further than three times where it starts.
-  controls.minDistance = Math.min(view.radius * 1.2, dist * 0.6); controls.maxDistance = dist * 3;
-  camera.near = dist / 100; camera.far = dist * 10; camera.updateProjectionMatrix();
+  return { target: centre, dist };
+}
+// What the picture is framed on: the finished model on the picture a model opens on and at Done, and at a step
+// what is built so far, so the first pieces of a tall model aren't a small patch at the bottom of an empty picture.
+// Never nearer than NEAR of the way in from where the whole model fits: one plate doesn't fill the stage.
+const NEAR = 1 / 3;
+function built() {
+  const k = current && !current.cover && current.at < current.steps.length ? current.at : -1;
+  return k >= 0 && view.upTo[k] ? view.upTo[k] : view.box;
+}
+function framing() {
+  const whole = fit(view.box), box = built();
+  if (box === view.box) return whole;
+  const to = fit(box);
+  to.dist = Math.max(to.dist, whole.dist * NEAR);
+  return to;
+}
+// Puts the camera there: at once, or (ease) gliding from where it is, out as the model grows. It follows the steps
+// until the person turns or zooms the picture themselves (view.moved), and again after Reset view.
+const GLIDE = 450; // ms
+let pose = null, glide = null; // where the camera is framed { target, dist }, and the move to a new place { t0, from, to }
+function put(p) {
+  pose = p;
+  controls.target.copy(p.target);
+  camera.position.copy(p.target).addScaledVector(LOOK, p.dist);
+}
+function frame(ease) {
+  const whole = fit(view.box).dist, to = framing();
+  // No nearer than a step's own framing lets in close, and no further than three times where the whole model fits.
+  controls.minDistance = whole * NEAR * 0.6; controls.maxDistance = whole * 3;
+  camera.near = whole / 300; camera.far = whole * 10; camera.updateProjectionMatrix();
+  if (ease && pose && !still() && running) { glide = { t0: performance.now(), from: pose, to }; wake(); return; }
+  glide = null;
+  put(to);
   controls.update();
 }
+function follow(ease) { if (renderer && view && !view.moved) frame(ease); }
 // Where the model's bounds fall on the picture, as [left, top, right, bottom] in shares of its width and height
-// (0 to 1 is inside), and how far round from straight above the camera is, in half turns.
+// (0 to 1 is inside), the same for what is built so far (`built`), how far the camera is as a share of where the
+// whole model fits (`far`), and how far round from straight above the camera is, in half turns.
 function inView() {
   if (!renderer || !view) return null;
   camera.updateMatrixWorld();
@@ -883,9 +927,15 @@ function inView() {
     const x = (p.x + 1) / 2, y = (1 - p.y) / 2;
     r[0] = Math.min(r[0], x); r[1] = Math.min(r[1], y); r[2] = Math.max(r[2], x); r[3] = Math.max(r[3], y);
   });
+  const part = [Infinity, Infinity, -Infinity, -Infinity];
+  corners(built()).forEach(p => {
+    p.project(camera);
+    const x = (p.x + 1) / 2, y = (1 - p.y) / 2;
+    part[0] = Math.min(part[0], x); part[1] = Math.min(part[1], y); part[2] = Math.max(part[2], x); part[3] = Math.max(part[3], y);
+  });
   let panes = 0;
   scene.traverse(o => { if (o.material === glassMat) panes++; });
-  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes, shown: meshes.filter(m => m.obj.visible).length,
+  return { box: r, built: part, far: camera.position.distanceTo(controls.target) / fit(view.box).dist, glide: !!glide, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes, shown: meshes.filter(m => m.obj.visible).length,
     now: meshes.filter(m => m.obj.visible && m.look === 'now').length, faded: meshes.filter(m => m.obj.visible && /^old/.test(m.look)).length, spin: !!spin };
 }
 
