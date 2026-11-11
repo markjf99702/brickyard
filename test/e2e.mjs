@@ -3025,6 +3025,17 @@ assert.equal(await page.isChecked('[data-pool]'), true, 'the box counts once add
 assert.match(await page.textContent('a[href="#model-x-cottage"]'), /Can build/);
 await page.click('a[href="#model-x-cottage"]');
 await page.waitForSelector('#model-view:not([hidden])');
+// A model that hasn't been started opens on the finished model: its name, pieces and steps, every piece in the
+// picture, and Start building where Next will be, with nothing to go back or slide to yet. (It opened on step 1,
+// one plate in an empty picture, and the finished model was first seen seven taps later.)
+const shown = () => page.evaluate(() => window.BrickyardBuild.inView().shown);
+assert.deepEqual([await page.textContent('.stepnum'), await page.textContent('#step-next'), await page.textContent('#step-parts'), await page.isVisible('#step-prev'), await page.isVisible('#step-range'), await shown()],
+  ['Finished model', 'Start building', 'Cottage: 40 pieces in 7 steps. This is how it looks when it’s built. Drag it around to look it over.', false, false, 40], 'a model opens on its finished picture');
+const under = () => page.evaluate(() => Math.round(document.getElementById('step-parts').getBoundingClientRect().top));
+const top = await under();
+await page.click('#step-next');
+assert.deepEqual([await page.textContent('.stepnum'), await page.textContent('#step-next'), await page.isVisible('#step-prev'), await page.isVisible('#step-range'), await shown(), await under()],
+  ['Step 1 of 7', 'Next', true, true, 1, top], 'Start building goes to step 1, and nothing under the picture moves');
 assert.equal(await page.textContent('#step-n'), 'Step 1');
 // Arrow keys move one step, on the step slider or with nothing focused.
 await page.focus('#step-range');
@@ -3059,6 +3070,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const step = () => p.textContent('#step-n');
   await p.goto(base + '#model-x-cottage');
   await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await step(), 'Finished model');
+  await p.click('#step-next');
+  await p.reload();
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await step(), 'Step 1', 'once started, a reload opens it on step 1, not on the finished picture again');
   await p.click('#step-next'); await p.click('#step-next');
   assert.equal(await step(), 'Step 3');
   await p.reload();
@@ -3068,7 +3084,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(wall)).toString('base64url'));
   await p.waitForFunction(() => location.hash.startsWith('#model-m'));
   await p.waitForSelector('#model-view:not([hidden])');
-  assert.equal(await step(), 'Step 1', 'another model starts at its first step');
+  assert.equal(await step(), 'Finished model', 'another model, not started, opens on its finished picture');
   await p.goto(base + '#build');
   await p.click('#build-list a[href="#model-x-cottage"]');
   await p.waitForSelector('#model-view:not([hidden])');
@@ -3085,6 +3101,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForSelector('#model-view:not([hidden])');
   const step = () => p.textContent('.stepnum'), box = sel => p.locator(sel).boundingBox();
   const said = () => p.$eval('#step-range', e => [e.value, e.getAttribute('aria-valuetext')]);
+  await p.tap('#step-next'); // Start building
   assert.deepEqual([await step(), await said()], ['Step 1 of 7', ['0', 'Step 1 of 7']], 'the slider says the step it is on');
   assert.deepEqual(await p.$eval('.stepnum', e => [e.getAttribute('aria-live'), e.getAttribute('aria-atomic')]), ['polite', 'true'], 'a step change is read out');
   // Previous at the first step is off without being disabled, so it keeps the focus it has.
@@ -3146,6 +3163,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const { c, p } = await withSets({ sets: {} }, { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, hasTouch: false });
   await p.goto(base + '#model-x-cottage');
   await p.waitForSelector('#model-view:not([hidden])');
+  await p.click('#step-next'); // Start building
   const range = await p.locator('#step-range').boundingBox();
   await p.mouse.click(range.x + range.width - 3, range.y + range.height / 2);
   assert.equal(await p.textContent('.stepnum'), 'Done · 40 pieces', 'a mouse click at the end of the track goes to the end');
@@ -3204,6 +3222,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const model = { brickyard: 1, model: { name: 'Bare stack', parts: [['3023', 15, 0, 0, 0, 0, 1], ['3023', 15, 0, 1, 0, 0, 2], ['4073', 14, 0, 2, 0, 0, 3]] } };
   await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(model)).toString('base64url'));
   await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  await p.click('#step-next'); // Start building
   assert.deepEqual([await p.locator('#model-check .flag.bad').count(), await p.textContent('#model-check .note.ok'), await p.textContent('#step-parts li')],
     [0, '✓ You have every piece for this, from loose pieces (Blue tub).', '1× Plate 1x2White'], 'a model written with everyday numbers opens and can be built');
   await c.close();
@@ -3371,11 +3390,12 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   // Steps numbered 1, 2, 5, 9: the step with nothing to join to is the page's step 3, not the model's 5.
   const gaps = { name: 'Gaps', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 15, -2, 3, 0, 0, 2], ['3001', 1, 4, 0, 0, 0, 5], ['3001', 14, 2, 3, 0, 0, 9]] };
   assert.equal((await open(gaps))[0], 'This model can’t be built as it is. Step 3 adds pieces with nothing to join to yet. Ask Claude to fix it.', 'a step is named as the page counts them');
-  await p.tap('#step-next'); await p.tap('#step-next');
+  await p.tap('#step-next'); await p.tap('#step-next'); await p.tap('#step-next');
   assert.equal(await p.textContent('.stepnum'), 'Step 3 of 4');
   // A piece that goes on from underneath says so on its step.
   const under = { name: 'Under', parts: [['3001', 4, 0, 3, 0, 0, 1], ['3003', 15, 0, 0, 0, 0, 2], ['3003', 15, 0, 6, 0, 0, 3], ['3003', 15, 2, 0, 0, 0, 3]] };
   await open(under);
+  await p.tap('#step-next'); // Start building
   assert.equal(await p.locator('#step-parts .under').count(), 0, 'nothing about underneath on a step that builds upwards');
   await p.tap('#step-next');
   assert.equal(await p.textContent('#step-parts .under'), 'This one goes on from underneath.');
@@ -3431,7 +3451,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.goto(base + '#build');
   await p.goto(base + '#model-mold123');
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Old one');
-  assert.equal(await p.textContent('.stepnum'), 'Step 1 of 3', 'a model saved under an old id still opens at its address');
+  assert.deepEqual([await p.textContent('.stepnum'), await p.textContent('#step-parts')], ['Finished model', 'Old one: 4 pieces in 3 steps. This is how it looks when it’s built. Drag it around to look it over.'], 'a model saved under an old id still opens at its address');
   assert.deepEqual([await open({ name: 'Old one, again', parts }), Object.keys(await kept())], ['#model-mold123', ['mold123']], 'and its link opens that one, not a second copy');
   assert.match((await rows())[0], /^Old one, again4 pieces · 3 stepsAdded \d+ [A-Z][a-z]{2}( \d{4})?$/);
   await c.close();
@@ -3455,7 +3475,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.click('[data-close]');
   // Keys on the picture.
   assert.deepEqual(await p.$eval('#stage', e => [e.tabIndex, e.getAttribute('role'), /arrow keys turn it, plus and minus zoom/.test(e.getAttribute('aria-label'))]), [0, 'img', true]);
-  await p.click('#step-next');
+  await p.click('#step-next'); await p.click('#step-next');
   const first = await view();
   await p.focus('#stage');
   await p.keyboard.press('ArrowRight');
@@ -4692,7 +4712,7 @@ await page.click('[data-close]');
   assert.equal(await p.evaluate(() => Math.round(window.scrollY)), 400, 'a save in another tab leaves this one where it was');
   await p.goto(base + '#model-x-cottage');
   await p.waitForSelector('#model-view:not([hidden])');
-  await p.click('#step-next'); await p.click('#step-next');
+  await p.click('#step-next'); await p.click('#step-next'); await p.click('#step-next');
   assert.equal(await p.textContent('#step-n'), 'Step 3');
   await saveThere('two'); await seen('two');
   await p.waitForTimeout(1000);
@@ -5298,6 +5318,8 @@ await page.click('[data-close]');
 {
   const { c, p } = await withSets({ sets: {} }, { viewport: { width: 390, height: 664 } });
   await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  await p.click('#step-next'); // Start building
   await p.waitForSelector('#step-parts .need li');
   const seen = () => p.evaluate(() => {
     const kinds = [...document.querySelectorAll('#step-parts .need li')];

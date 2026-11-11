@@ -17,6 +17,8 @@ function write(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch
 // reopens a model where you were. The address stays #model-ID.
 const STEP = 'brickyard.step.';
 function stepOf(id) { try { return Math.max(0, parseInt(sessionStorage.getItem(STEP + id), 10) || 0); } catch (e) { return 0; } }
+// Whether a step has been kept for it: a model nobody has started on opens on its finished picture (showCover).
+function started(id) { try { return sessionStorage.getItem(STEP + id) !== null; } catch (e) { return false; } }
 function keepStep(id, at) { try { sessionStorage.setItem(STEP + id, String(at)); } catch (e) { /* it starts at step 1 instead */ } }
 
 // ---------- data ----------
@@ -139,7 +141,7 @@ function addModels(map) {
   return n;
 }
 // For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
-// inView is for test/e2e.mjs: where the model's bounds fall on the picture.
+// inView is for test/e2e.mjs: where the model's bounds fall on the picture, and what of it is showing.
 window.BrickyardBuild = { saveModel, addModels, countModels, inView: () => inView() };
 async function modelById(id) {
   if (id.startsWith('x-')) {
@@ -363,7 +365,7 @@ const openModel = orSay(async id => {
   if (!res.pieces) { stopStage(); return; }
   startStage();
   buildScene(model);
-  showStep(stepOf(id), false);
+  if (started(id)) showStep(stepOf(id), false); else showCover();
 });
 
 // What the check found, in words about the pieces: which piece, by its colour and name, and in which step as the
@@ -432,9 +434,30 @@ function renderCheck() {
   $('model-check').innerHTML = html;
 }
 
+// A model that hasn't been started opens on the finished model: what it is, how many pieces and steps, and Start
+// building where Next will be. (It opened on step 1, one plate low in an empty picture, and the finished model was
+// first seen after the last tap of Next.) Start building goes to step 1; a model that has been started opens on
+// the step it was left on, which is kept for this tab (keepStep).
+function showCover() {
+  const { model, res, steps } = current;
+  current.cover = true; current.at = -1;
+  $('model-view').classList.add('cover');
+  $('step-n').textContent = 'Finished model';
+  $('step-of').textContent = '';
+  $('step-prev').setAttribute('aria-disabled', 'true');
+  $('step-next').textContent = 'Start building';
+  $('step-next').classList.remove('quiet');
+  $('step-range').value = '0';
+  $('step-parts').innerHTML = '<p class="note" style="margin:0"><b>' + esc(model.name) + '</b>: ' + plural(res.pieces, 'piece') + ' in ' + plural(steps.length, 'step') +
+    '. This is how it looks when it’s built. Drag it around to look it over.</p>';
+  showUpTo(Infinity, false);
+}
+
 // Step k of the list (0-based); one past the last step shows the finished model.
 function showStep(k, animate = true) {
   const n = current.steps.length;
+  current.cover = false;
+  $('model-view').classList.remove('cover');
   current.at = Math.max(0, Math.min(n, k));
   keepStep(current.id, current.at);
   const done = current.at === n, step = done ? Infinity : current.steps[current.at];
@@ -467,6 +490,7 @@ function showStep(k, animate = true) {
 }
 
 $('step-prev').onclick = () => { if (current.at > 0) showStep(current.at - 1); };
+// (On the finished picture a model opens on, `at` is -1: Start building, in Next's place, goes to step 1.)
 $('step-next').onclick = () => showStep(current.at === current.steps.length ? 0 : current.at + 1);
 // The slider. A finger moves it only by its knob: a tap or a swipe that starts anywhere else on it leaves the step
 // alone (the strip under the buttons is where a thumb lands low, and where it starts a scroll), and so does a drag
@@ -499,7 +523,7 @@ document.addEventListener('keydown', e => {
   if (e.target === $('stage')) return; // on the picture, the arrows turn it (turnKeys)
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return; // the step slider moves itself
   if (e.key === 'ArrowRight') showStep(current.at + 1);
-  if (e.key === 'ArrowLeft') showStep(current.at - 1);
+  if (e.key === 'ArrowLeft' && !current.cover) showStep(current.at - 1);
 });
 $('model-menu').onclick = () => {
   const ex = current.id.startsWith('x-');
@@ -812,7 +836,7 @@ function inView() {
   });
   let panes = 0;
   scene.traverse(o => { if (o.material === glassMat) panes++; });
-  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes };
+  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes, shown: meshes.filter(m => m.obj.visible).length };
 }
 
 function showUpTo(step, animate) {

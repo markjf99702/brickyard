@@ -72,6 +72,6 @@ Write the model's JSON and the outputs to a scratch or outputs folder, never int
 
 ## 4. Hand it over
 
-Send the link, the file if your surface can attach files, and two or three lines: what it is, how many pieces and steps, and anything you swapped ("the roof is grey because you only have six yellow slopes"). Opening the link saves the model in Brickyard under **Models**, checks it against their pieces, and shows step 1. If the script printed a NOTE that the link is long, lead with the file: some apps cut long links off, and they can open the file with **Open a file** under **Open a model** (or paste its text there).
+Send the link, the file if your surface can attach files, and two or three lines: what it is, how many pieces and steps, and anything you swapped ("the roof is grey because you only have six yellow slopes"). Opening the link saves the model in Brickyard under **Models**, checks it against their pieces, and shows the finished model with **Start building**. If the script printed a NOTE that the link is long, lead with the file: some apps cut long links off, and they can open the file with **Open a file** under **Open a model** (or paste its text there).
 
 If they come back with "I'm short of X" (they lost pieces, or have other sets ticked), redesign within the new list rather than telling them to buy parts.
