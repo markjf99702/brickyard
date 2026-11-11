@@ -494,7 +494,7 @@ await page.click('.chip[data-f="all"]');
   assert.ok((await p.locator('.box-head').first().boundingBox()).height >= 44, 'tall enough for a finger');
   await p.click('.box-head[data-box="3"]');
   assert.deepEqual([await title(), await p.textContent('.sheet .lede'), await p.locator('#bx-sets .item .t').allTextContents(), await p.textContent('.sheet .note.lots'), await p.locator('#bx-acts button').evaluateAll(bs => bs.map(b => b.firstChild.firstChild.textContent))],
-    ['Box 3', '2 sets · 1,514 pieces · 42 loose pieces', ['Orchid', 'Retro Radio'], 'Also in this box: Blue tub, 42 loose pieces', ['Add sets to this box', 'Copy this list', 'Rename this box']], 'the box’s sheet');
+    ['Box 3', '2 sets · 1,514 pieces · 42 loose pieces', ['Orchid', 'Retro Radio'], 'Also in this box: Blue tub, 42 loose pieces', ['Unpack this box', 'Add sets to this box', 'Copy this list', 'Rename this box']], 'the box’s sheet');
   // A set in it opens its own sheet.
   await p.click('#bx-sets .item[data-id="b"]');
   assert.deepEqual([await title(), await p.inputValue('#e-box')], ['Orchid', '3']);
@@ -557,7 +557,7 @@ await page.click('.chip[data-f="all"]');
   // A search for a box, grouped any other way, has a button that opens the box's sheet.
   await p.selectOption('#group', 'room');
   await p.fill('#q', 'box 3');
-  assert.equal(await p.textContent('.boxline button'), 'Box 3: add sets, copy its list, rename');
+  assert.equal(await p.textContent('.boxline button'), 'Box 3: unpack, add sets, copy its list');
   await p.click('.boxline button');
   assert.deepEqual([await title(), await p.locator('#bx-sets .item').count()], ['Box 3', 3]);
   await p.click('[data-close]');
@@ -571,6 +571,78 @@ await page.click('.chip[data-f="all"]');
   await p.selectOption('#group', 'box');
   await p.fill('#q', 'box 3');
   assert.deepEqual([await p.locator('.boxline').count(), await p.locator('.box-head').count()], [0, 1], 'grouped by box, the heading is the button');
+  await c.close();
+}
+
+// Unpack this box, in a box's sheet: its sets and loose pieces as a ticked list, with a Room and a Shelf that go on
+// every ticked set and are left as they are when blank. (Unpacking was open the set, clear the box, type the room
+// and shelf, Save, once for every set.) The message says how the box stands, and Undo puts everything back.
+{
+  const { c, p } = await withSets({
+    sets: { a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', box: '3', room: 'Hall', spot: 'Top shelf' }, b: { id: 'b', t: 1, num: '10311-1', name: 'Orchid', state: 'built', box: '3', room: 'Flat', notes: 'a gift' },
+      d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart', box: '12' }, e: { id: 'e', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: 'Box 3', parts: [['3001', 4, 40], ['3020', 15, 2]] }, bag: { id: 'bag', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] } } });
+  const says = () => p.textContent('.toast > span'), gone = () => p.waitForFunction(() => !document.querySelector('.sheet'));
+  const kept = id => p.evaluate(i => { const d = window.brickyard.doc(), x = d.sets[i] || d.loose[i]; return [x.room || '', x.spot || '', x.box || ''].join('|'); }, id);
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.textContent));
+  const open = async box => { await p.click(`.box-head[data-box="${box}"]`); await p.click('#bx-unpack'); };
+  await p.goto(base + '#catalog');
+  await p.selectOption('#group', 'box');
+  await open('3');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.$$eval('#up li', ls => ls.map(l => l.querySelector('.t').textContent + ': ' + l.querySelector('.m').textContent + (l.querySelector('input').checked ? ' ✓' : ''))), await p.textContent('#up-go'), await p.textContent('#up-n')],
+    ['Unpack Box 3', ['Orchid: 10311 · Built · Flat ✓', 'Retro Radio: 10334 · Built · Hall › Top shelf ✓', 'Blue tub: 42 loose pieces ✓'], 'Unpack 2 sets and the loose pieces', '3 of 3 ticked'], 'everything in the box, ticked');
+  // One set unticked, and no room typed: the others leave the box and keep their places.
+  await p.click('#up li:has-text("Retro Radio")');
+  assert.equal(await p.textContent('#up-go'), 'Unpack 1 set and the loose pieces');
+  await p.click('#up-go');
+  await gone();
+  assert.deepEqual([await says(), await kept('b'), await kept('a'), await kept('tub'), await heads()], ['Unpacked 1 set and the loose pieces. 1 set still in Box 3.', 'Flat||', 'Hall|Top shelf|3', '||', ['Box 31', 'Box 121', 'Box 20', 'Not packed2']]);
+  assert.equal(await p.evaluate(() => window.brickyard.doc().sets.b.notes), 'a gift', 'nothing else about a set is touched');
+  await p.click('.toast button');
+  assert.deepEqual([await says(), await kept('b'), await kept('tub')], ['Back in Box 3', 'Flat||3', '||Box 3'], 'Undo puts them back, each under the label it had');
+  // A room and a shelf typed go on every ticked set. The box comes empty, and one box is still packed (the one of
+  // only loose pieces doesn't hold a set, but it's a box).
+  await open('3');
+  await p.fill('#up-room', 'Office');
+  await p.fill('#up-spot', 'Billy 2');
+  await p.click('[data-close]');
+  assert.equal(await p.textContent('[data-close]'), 'Discard changes?', 'a room typed is something to lose');
+  await p.click('#up-go');
+  await gone();
+  assert.deepEqual([await says(), await kept('a'), await kept('b'), await kept('tub'), await kept('e'), await heads()], ['Box 3 is empty. 2 boxes still packed.', 'Office|Billy 2|', 'Office|Billy 2|', '||', 'Hall||', ['Box 121', 'Box 20', 'Not packed3']]);
+  assert.equal(await p.evaluate(() => document.activeElement.tagName), 'H1', 'the keyboard is on the screen’s heading: the box’s own has gone');
+  await p.click('.toast button');
+  assert.deepEqual([await kept('a'), await kept('b'), await kept('tub')], ['Hall|Top shelf|3', 'Flat||3', '||Box 3'], 'Undo gives back the room and shelf each had');
+  // Only a shelf typed: the room stays.
+  await open('3');
+  await p.fill('#up-spot', 'Floor');
+  await p.click('#up li:has-text("Blue tub")');
+  await p.click('#up-go');
+  await gone();
+  assert.deepEqual([await says(), await kept('a'), await kept('b'), await kept('tub')], ['Unpacked 2 sets. Only loose pieces are left in Box 3.', 'Hall|Floor|', 'Flat|Floor|', '||Box 3']);
+  // A box of only loose pieces has no Room or Shelf to ask for.
+  await open('Box 3');
+  assert.deepEqual([await p.locator('#up-room').count(), await p.textContent('#up-go')], [0, 'Unpack the loose pieces']);
+  await p.click('#up-go');
+  await gone();
+  assert.equal(await says(), 'Box 3 is empty. 2 boxes still packed.');
+  await open('12');
+  await p.click('#up-go');
+  await gone();
+  assert.equal(await says(), 'Box 12 is empty. 1 box still packed.');
+  // The last box, reached from a search for it.
+  await p.selectOption('#group', 'room');
+  await p.fill('#q', 'box 20');
+  await p.click('.boxline button');
+  await p.click('#bx-unpack');
+  await p.click('#up li input');
+  assert.deepEqual([await p.textContent('#up-go'), await p.isDisabled('#up-go')], ['Unpack', true], 'nothing ticked is nothing to unpack');
+  await p.click('#up li input');
+  await p.click('#up-go');
+  await gone();
+  assert.deepEqual([await says(), await p.evaluate(() => window.brickyard.doc().loose.bag.box), await p.inputValue('#q'), await p.locator('#list-wrap .item').count()], ['Every box is unpacked.', undefined, '', 4], 'and the search for the box that has gone is cleared');
+  await p.goto(base);
+  assert.equal(await p.evaluate(() => document.getElementById('home-pack').hidden), true, 'and the home card has no packed line');
   await c.close();
 }
 

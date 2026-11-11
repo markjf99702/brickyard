@@ -428,7 +428,7 @@
     // A search for a box gets a button that opens the box's sheet (boxSheet). Grouped by moving box, the heading
     // over what was found is that button already.
     var searched = bs && bs.label && !bs.rest.trim() ? shown.filter(inBox)[0] || hunt[0] : null, held = searched && C.boxHolds(DOC, searched.box);
-    var boxLine = held && !(prefs.group === 'box' && shown.length) ? '<p class="boxline"><button class="btn sm quiet" type="button" data-box="' + esc((held.sets[0] || held.lots[0]).box) + '">' + esc(held.name) + ': add sets, copy its list, rename</button></p>' : '';
+    var boxLine = held && !(prefs.group === 'box' && shown.length) ? '<p class="boxline"><button class="btn sm quiet" type="button" data-box="' + esc((held.sets[0] || held.lots[0]).box) + '">' + esc(held.name) + ': unpack, add sets, copy its list</button></p>' : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
     // The line at the top of a printed list (it shows only on paper): what's listed, the day, and how many.
@@ -1070,13 +1070,74 @@
       }).join('') + '</ul>' : '') +
       (h.lots.length ? '<p class="note lots">' + (sets.length ? 'Also in this box: ' : 'In this box: ') + h.lots.map(function (l) { return esc(l.name) + ', ' + plural(C.lotTotals(l).pieces, 'loose piece'); }).join('; ') + '</p>' : '') +
       '<ul class="menu" id="bx-acts">' +
+      act('bx-unpack', 'Unpack this box', 'Take out what’s been unpacked, and say where it went') +
       act('bx-add', 'Add sets to this box', 'Tick the sets you’re packing into it') +
       act('bx-copy', 'Copy this list', 'The box and what’s in it as text, for a label or a message') +
       act('bx-rename', 'Rename this box', 'Changes the box on everything in it') + '</ul></div>');
     if ($('bx-sets')) $('bx-sets').onclick = function (e) { var b = e.target.closest('[data-id]'); if (b) editSheet(DOC.sets[b.dataset.id]); };
+    $('bx-unpack').onclick = function () { unpackSheet(box); };
     $('bx-add').onclick = function () { packSheet(box); };
     $('bx-copy').onclick = function () { copyBox(box); };
     $('bx-rename').onclick = function () { renameSheet(box); };
+  }
+  // Unpack this box: packing was one step (Put them all in, when sets arrive) and unpacking was open the set, clear
+  // the box, type the room and shelf, Save, once for every set. Here the box's sets and loose pieces are a list,
+  // all ticked, with a Room and a Shelf that go on every ticked set; left blank, each set keeps the ones it has.
+  // The message says how the box stands, and when it was the last one.
+  function unpackSheet(box) {
+    var h = C.boxHolds(DOC, box), name = h.name;
+    var rows = h.sets.map(function (x) { return { x: x, on: true }; }).concat(h.lots.map(function (l) { return { lot: l, on: true }; }));
+    openSheet('<div class="hd"><h2 id="sheetTitle">Unpack ' + esc(name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      (h.sets.length ? '<div class="bulk" role="group" aria-labelledby="up-all"><span class="lbl" id="up-all">Where they’re going</span><div class="two">' +
+        field('Room', input('up-room', '', ' list="dl-room"')) + field('Shelf or spot', input('up-spot', '', ' list="dl-spot"')) + '</div>' +
+        '<span class="note" style="margin:0">Leave these blank and each set keeps the room and shelf it has.</span></div>' : '') +
+      '<ul class="rv" id="up">' + rows.map(function (r, i) {
+        var x = r.x, l = r.lot, title = x ? x.name || 'Set ' + C.shortNum(x.num) : l.name;
+        var meta = x ? [metaLine(x), C.STATE_NAMES[x.state], [x.room, x.spot].filter(Boolean).join(' › ')].filter(Boolean).join(' · ') : plural(C.lotTotals(l).pieces, 'loose piece');
+        return '<li data-i="' + i + '"><input type="checkbox" aria-label="Unpack ' + esc(title) + '" aria-describedby="up-d' + i + '" checked>' + (x ? picHtml(x) : '<div class="pic none">' + BRICK + '</div>') +
+          '<div><div class="t">' + esc(title) + '</div><div class="m" id="up-d' + i + '">' + esc(meta) + '</div></div></li>';
+      }).join('') + '</ul></div>' +
+      '<div class="ft"><span class="note" id="up-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="up-go">Unpack</button></div>',
+      function () { return now() !== was; });
+    function now() { return fieldsOf(['up-room', 'up-spot'], rows.map(function (r) { return r.on; })); }
+    var was = now();
+    // "2 sets", "2 sets and the loose pieces", "the loose pieces": what's ticked, for the button and the message.
+    function what() {
+      var n = rows.filter(function (r) { return r.on && r.x; }).length, loose = rows.some(function (r) { return r.on && r.lot; });
+      return [n ? plural(n, 'set') : '', loose ? 'the loose pieces' : ''].filter(Boolean).join(' and ');
+    }
+    function count() {
+      var w = what();
+      $('up-n').textContent = rows.filter(function (r) { return r.on; }).length + ' of ' + rows.length + ' ticked';
+      $('up-go').textContent = w ? 'Unpack ' + w : 'Unpack';
+      $('up-go').disabled = !w;
+    }
+    $('up').onchange = function (e) {
+      var li = e.target.closest('li'); if (!li) return;
+      rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
+    };
+    $('up').onclick = tickRow;
+    $('up-go').onclick = function () {
+      var room = $('up-room') ? $('up-room').value.trim() : '', spot = $('up-spot') ? $('up-spot').value.trim() : '', parts = { box: '' }, w = what();
+      if (room) parts.room = room;
+      if (spot) parts.spot = spot;
+      var sets = [], lots = [];
+      rows.forEach(function (r) {
+        if (!r.on) return;
+        var held = r.x ? alter(r.x.id, parts) : alterLot(r.lot.id, { box: '' });
+        if (held) (r.x ? sets : lots).push(held);
+      });
+      if (!sets.length && !lots.length) { closeSheet(); return; }
+      var left = C.boxHolds(DOC, box), packed = C.packing(DOC).all, looked = C.boxSearch($('q').value.trim(), [box]);
+      // A search for the box that's now empty would be left showing "Nothing matches": it's cleared.
+      if (!left.sets.length && !left.lots.length && looked && looked.label && !looked.rest.trim()) $('q').value = '';
+      save(); closeSheet(); renderCatalog();
+      toast(left.sets.length ? 'Unpacked ' + w + '. ' + plural(left.sets.length, 'set') + ' still in ' + name + '.'
+        : left.lots.length ? 'Unpacked ' + w + '. Only loose pieces are left in ' + name + '.'
+        : packed ? name + ' is empty. ' + boxes(packed) + ' still packed.' : 'Every box is unpacked.',
+      false, { label: 'Undo', run: function () { asWas(sets, lots); toast('Back in ' + name); } });
+    };
+    count();
   }
   // Add sets to this box: the sets that aren't packed, to tick, with a search over them.
   function packSheet(box) {
