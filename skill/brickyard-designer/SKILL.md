@@ -8,7 +8,7 @@ description: Design a new LEGO model from only the pieces someone owns, check it
 Brickyard (https://brickyard.junkdrawer.works/) shows a model in 3D, step by step, and checks it against the pieces the person has. Your job is to design the model they ask for **from their pieces only**, make sure the checker passes, and send them the link.
 
 What matters, in order:
-1. **It can be built.** Every part they need is in their pieces, in that colour, in that number. Nothing floats, nothing overlaps, and each step joins onto what's already built. The script checks all of this; never hand over a model it rejects.
+1. **It can be built.** Every part they need is in their pieces, in that colour, in that number. Nothing floats, nothing overlaps, each step joins onto what's already built, and no piece has to be squeezed in between pieces already built. The script checks all of this; never hand over a model it rejects.
 2. **It looks like the thing.** A recognisable lighthouse beats a big one. Pick a scale the pieces can carry and spend the bright colours on what makes it read.
 3. **It's pleasant to build.** Steps of 3 to 8 pieces, bottom up, finishing a course before starting the next.
 
@@ -30,6 +30,7 @@ Part shapes are in `data/shapes.json` (name, `w` × `d` studs, `h` in plates, ki
 - Slopes, curves and inverted slopes have their **high side at the back** (z = 0 of their own footprint) at r 0. Turned 90 the high side is on the right, 180 at the front, 270 on the left. The script's layer key says which way each one went (`high side right`; for an inverted slope, `full side right (overhangs to the left)`).
 - Nothing can go under an arch or through a door or window frame: the checker treats them as solid.
 - Parts join where one part's top studs meet the cells of the part sitting right on it. Tiles and the slope faces have no studs, so nothing joins on them.
+- A piece can't be squeezed in between pieces already built. If a step adds a piece that joins an earlier step's piece under it **and** an earlier step's piece over it (a brick for the gap under a lintel that's already on, a plate slid between two built courses), the checker refuses the model: `Step 4 has a piece that would have to be squeezed in between pieces already built`. Put the piece in the step before whatever goes over it, or in the same step.
 - Steps (`s`) start at 1. A step may only add parts that join something already built; pushing a part on from underneath is allowed but noted. That goes for the first step too: make it one part or one joined group (a base plate, say). Bricks side by side on the table join nothing until the course above ties them, so put that course in the same step.
 
 Write the model as JSON:

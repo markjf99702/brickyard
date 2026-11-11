@@ -270,6 +270,24 @@ def check(model, shapes, pool):
                     lone += grp
             if lone:
                 problems.append(dict(kind='order', step=s, parts=sorted(lone), text=f'Step {s} has parts with nothing to join to yet'))
+    # A part can't be squeezed in between parts already built: one that joins a part from an earlier step under it
+    # and another from an earlier step over it has no way in. One problem for each step that has any, in step
+    # order, its parts as they're listed (the same as js/build-core.js).
+    onto, held = set(), set()
+    for a, b in edges:
+        lo, hi = by_index[a], by_index[b]
+        if lo['s'] < hi['s']:
+            onto.add(hi['i'])
+        if hi['s'] < lo['s']:
+            held.add(lo['i'])
+    tight = {}
+    for q in ok:
+        if q['i'] in onto and q['i'] in held:
+            tight.setdefault(q['s'], []).append(q['i'])
+    for s in sorted(tight):
+        n = len(tight[s])
+        problems.append(dict(kind='squeeze', step=s, parts=tight[s],
+                             text=f'Step {s} has ' + ('a piece' if n == 1 else f'{n} pieces') + ' that would have to be squeezed in between pieces already built'))
     # Worth knowing: a part pushed on from below, under something already built. One note for each step that has
     # any, in step order, with every such part of the step in the order they're listed.
     under = {}

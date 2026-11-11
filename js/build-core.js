@@ -177,6 +177,20 @@
         if (lone.length) problems.push({ kind: 'order', step: s, parts: lone, text: 'Step ' + s + ' has parts with nothing to join to yet' });
       });
     }
+    // A part can't be squeezed in between parts already built: one that joins a part from an earlier step under it
+    // and another from an earlier step over it has no way in (studs go on straight down or straight up, and there
+    // is no room to do either). One problem for each step that has any, in step order, its parts as they're listed.
+    var onto = {}, below = {};
+    edges.forEach(function (e) {
+      var lo = byIndex[e[0]], hi = byIndex[e[1]];
+      if (lo.s < hi.s) onto[hi.i] = 1;
+      if (hi.s < lo.s) below[lo.i] = 1;
+    });
+    var tight = {};
+    ok.forEach(function (q) { if (onto[q.i] && below[q.i]) (tight[q.s] = tight[q.s] || []).push(q.i); });
+    Object.keys(tight).map(Number).sort(function (a, b) { return a - b; }).forEach(function (s) {
+      problems.push({ kind: 'squeeze', step: s, parts: tight[s], text: 'Step ' + s + ' has ' + (tight[s].length === 1 ? 'a piece' : tight[s].length + ' pieces') + ' that would have to be squeezed in between pieces already built' });
+    });
     // Worth knowing: a part pushed on from below, under something already built. One note for each step that has
     // any, in step order, with every such part of the step in the order they're listed.
     var under = {};

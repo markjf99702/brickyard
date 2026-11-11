@@ -73,8 +73,9 @@ const TOWERS = [['3001', 4, 0, 0, 0, 0, 1], ['3001', 1, 20, 0, 0, 0, 1], ['3001'
 const told = parts => B.check(M(parts), shapes, null).problems.map(p => [p.kind, p.step || 0, p.parts]);
 eq(told(FLOAT_A), [['order', 2, [1]]], 'a step-2 part beside the step-1 part joins nothing');
 eq(told(FLOAT_A2), [['order', 2, [2]]], 'and the same with the two rows swapped');
-eq(told(FLOAT_B), [['order', 2, [1, 2]]], 'two stacked bricks beside the model join nothing, though there are more of them');
-eq(told(FLOAT_B2), [['order', 2, [1, 2]]], 'and the same listed backwards');
+// (The brick that ties them at step 3 would go on the first brick and under the two in the air: squeezed in.)
+eq(told(FLOAT_B), [['order', 2, [1, 2]], ['squeeze', 3, [3]]], 'two stacked bricks beside the model join nothing, though there are more of them');
+eq(told(FLOAT_B2), [['order', 2, [1, 2]], ['squeeze', 3, [0]]], 'and the same listed backwards');
 eq(told(TOWERS), [['loose', 0, [1, 2]]], 'of two towers the same size, the one listed first is the model');
 eq(told([['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 1], ['3001', 1, 4, 0, 0, 0, 1], ['3001', 1, 4, 3, 0, 0, 2], ['3001', 14, 8, 0, 0, 0, 2], ['3001', 14, 8, 3, 0, 0, 2], ['3001', 15, 2, 6, 0, 0, 3], ['3001', 15, 6, 6, 0, 0, 3]]),
   [['order', 1, [2]], ['order', 2, [4, 5]]], 'a first step in two lumps keeps the bigger; later steps may add to either, but not start a third');
@@ -87,6 +88,20 @@ eq(B.check(M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), shapes, null).notes.
 // Every part a step pushes on from below is named, one note a step, in step order.
 const UNDER = [['3001', 4, 0, 6, 0, 0, 1], ['3003', 1, 2, 3, 0, 0, 3], ['3003', 14, 0, 3, 0, 0, 3], ['3003', 15, 0, 9, 0, 0, 3], ['3003', 2, 0, 0, 0, 0, 2 + 2], ['3003', 2, 2, 0, 0, 0, 2]];
 eq(B.check(M(UNDER), shapes, null).notes.map(n => [n.step, n.parts]), [[3, [1, 2]], [4, [4]]], 'each step’s parts that go on from underneath');
+// A piece can't be squeezed in between pieces already built. A 2x4 base, a post two bricks high on its left half,
+// and a 2x4 across the top of the post that hangs over the right half: the gap under it is two bricks high. One
+// brick goes in. The second would sit on that one and under the overhang at once, and has no way in. (With the
+// overhang put on in the same step as that brick, or after it, it's fine: one of them goes on first.)
+const GATE = (last, lintel) => [['3001', 4, 0, 0, 0, 0, 1], ['3003', 1, 0, 3, 0, 0, 2], ['3003', 1, 0, 6, 0, 0, 2], ['3001', 15, 0, 9, 0, 0, lintel]].concat(last);
+const FILL = [['3003', 2, 2, 3, 0, 0, 4], ['3003', 2, 2, 6, 0, 0, 5]], FILL2 = [FILL[0], ['3004', 2, 2, 6, 0, 0, 5], ['3004', 2, 2, 6, 1, 0, 5]];
+const SQUEEZED = GATE(FILL, 3), SQUEEZED2 = GATE(FILL2, 3);
+eq(told(GATE([FILL[0]], 3)), [], 'one brick goes into a gap two bricks high');
+eq(told(SQUEEZED), [['squeeze', 5, [5]]], 'the second, on that one and under the overhang, has no way in');
+eq(B.check(M(SQUEEZED), shapes, null).problems[0].text, 'Step 5 has a piece that would have to be squeezed in between pieces already built', 'and the check says so');
+eq(told(GATE(FILL, 5)), [], 'put on in the same step as what goes over it, it’s fine');
+eq(told(GATE(FILL, 6)), [], 'and so it is before');
+eq(told(SQUEEZED2), [['squeeze', 5, [5, 6]]], 'two in one step are one problem');
+eq(B.check(M(SQUEEZED2), shapes, null).problems[0].text, 'Step 5 has 2 pieces that would have to be squeezed in between pieces already built', 'said as two');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 3, 0], ['3001', 1, 0, 0, 0]] }).parts.map(q => q[6]), [2, 1], 'no steps: one per height');
 eq(B.cleanModel({ parts: [['3001', 1, 0, 0, 0, 45]] }), null, 'turns are whole quarter turns');
 check(B.cleanModel({ model: { parts: [{ p: '3001.dat', c: '1', x: 0, y: 0, z: 0 }] } }).parts[0][0] === '3001', 'objects and .dat names work');
@@ -126,6 +141,8 @@ function legalModel(g, size) {
     const m = g.pick(mine);
     const q = [pc[0], pc[1], at[0] - m[0], below ? base[3] - sh.h : base[3] + shapes[base[0]].h, at[1] - m[1], r, g.chance(0.4) ? ++step : step];
     if (q[3] < 0 || q[3] > 590 || Math.abs(q[2]) > 190 || Math.abs(q[4]) > 190 || filled(q).some(k => k in space)) continue;
+    // Not into a gap between parts already built: that can't be built (the check says 'squeeze').
+    if (B.check(B.cleanModel({ parts: parts.concat([q]) }), shapes, null).problems.some(p => p.kind === 'squeeze')) continue;
     put(q);
   }
   return { name: 'Seeded', sets: ['10698-1'], parts };
@@ -230,6 +247,7 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
     order: M([plate(0, 0, 1), plate(4, 0, 2), ['3001', 4, 2, 3, 0, 0, 3]]),
     turned: M([['3039', 4, 0, 0, 0, 90, 1], ['3004', 1, 1, 3, 0, 90, 2], ['3004', 1, 0, 3, 0, 0, 2]]),
     under: M([['3001', 4, 0, 3, 0, 0, 1], plate(0, 0, 2)]), 'under, several': M(UNDER),
+    squeezed: M(SQUEEZED), 'squeezed, two in a step': M(SQUEEZED2),
     'a part called constructor': M([plate(0, 0, 1), ['constructor', 4, 0, 1, 0, 0, 2]]),
     'floating, base first': M(FLOAT_A), 'floating, rows swapped': M(FLOAT_A2), 'a floating pair': M(FLOAT_B), 'a floating pair, backwards': M(FLOAT_B2), 'two towers': M(TOWERS),
   };

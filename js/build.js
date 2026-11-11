@@ -394,6 +394,12 @@ function whatsWrong(fails) {
   else if (loose.length) out.push(loose.length + ' pieces aren’t joined to the rest of the model: ' + listed(loose.slice(0, 2).map(i => aPiece(q(i)) + ' ' + inStep(i)).concat(loose.length > 2 ? [(loose.length - 2) + ' more'] : [])));
   const order = of('order').map(p => steps.indexOf(p.step) + 1);
   if (order.length) out.push((order.length === 1 ? 'Step ' + order[0] + ' adds' : 'Steps ' + listed(order.slice(0, 4).concat(order.length > 4 ? [(order.length - 4) + ' more'] : [])) + ' add') + ' pieces with nothing to join to yet');
+  // A piece that joins pieces already built both under it and over it has no way in.
+  const tight = of('squeeze'), stepsOf = l => listed(l.slice(0, 4).concat(l.length > 4 ? [(l.length - 4) + ' more'] : []));
+  if (tight.length) {
+    const at = tight.map(p => steps.indexOf(p.step) + 1), many = tight.length > 1 || tight[0].parts.length > 1;
+    out.push((at.length === 1 ? 'Step ' + at[0] + ' has ' : 'Steps ' + stepsOf(at) + ' have ') + (many ? 'pieces' : 'a piece') + ' that would have to be squeezed in between pieces already built');
+  }
   return out;
 }
 

@@ -3364,6 +3364,10 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   // A piece under an arch: the check treats an arch as solid, and the message says which piece is inside which.
   const arch = { name: 'Arch', parts: [['3020', 2, 0, 0, 0, 0, 1], ['3659', 4, 0, 1, 0, 0, 2], ['3023b', 1, 1, 1, 0, 0, 2]] };
   assert.equal((await open(arch))[0], 'This model can’t be built as it is. A blue 1x2 plate is inside a red 1x4 arch, in step 2. Ask Claude to fix it.', 'a piece under an arch');
+  // A piece that would sit on a piece already built and under another: it has no way in. Its step (the model's 9)
+  // is named as the page counts them.
+  const tight = { name: 'Tight', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3003', 15, 0, 3, 0, 0, 2], ['3003', 15, 0, 6, 0, 0, 2], ['3001', 4, 0, 9, 0, 0, 3], ['3003', 15, 2, 3, 0, 0, 7], ['3003', 15, 2, 6, 0, 0, 9]] };
+  assert.equal((await open(tight))[0], 'This model can’t be built as it is. Step 5 has a piece that would have to be squeezed in between pieces already built. Ask Claude to fix it.', 'a piece squeezed in between built pieces');
   // Steps numbered 1, 2, 5, 9: the step with nothing to join to is the page's step 3, not the model's 5.
   const gaps = { name: 'Gaps', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 15, -2, 3, 0, 0, 2], ['3001', 1, 4, 0, 0, 0, 5], ['3001', 14, 2, 3, 0, 0, 9]] };
   assert.equal((await open(gaps))[0], 'This model can’t be built as it is. Step 3 adds pieces with nothing to join to yet. Ask Claude to fix it.', 'a step is named as the page counts them');
