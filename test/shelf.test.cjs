@@ -69,6 +69,9 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq([r1.cases[0].levels[0].sets.map(p => p.id), r1.left.map(x => [x.set.id, x.why])], [['low'], [['snug', '32 cm tall: needs 33 cm of space'], ['half', '31.5 cm tall: needs 32.5 cm of space']]], 'a set that misses by that centimetre says so');
   eq([S.fits(one, 0, snug, ids(all)), S.whyNot([one], snug, ids(all)), S.reason([one], snug, ids(all), S.CLEAR).kind, S.fits(one, 0, snug, ids(all), false, S.CLEAR).near], [{ turn: false }, '', 'clear', true], 'by hand it still stands on a shelf exactly its height');
   eq(S.reason([one], set('big', 20, 20, 50), ids(all), S.CLEAR), { kind: 'tall', why: '50 cm tall; your shelf is 32 cm tall' }, 'a set taller than every shelf says that, as before');
+  // With another bookcase that can't take it for some other reason, it still says what it needs.
+  const bow = set('bow', 40, 16, 29.5), billy = { id: 'b', name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }] }, cube = { id: 'c', name: 'Kallax', w: 33, d: 39, levels: [{ h: 33, sets: [] }] };
+  eq(S.reason([billy, cube], bow, ids([bow]), S.CLEAR), { kind: 'clear', why: '29.5 cm tall: needs 30.5 cm of space' }, 'only the space above is in the way, whatever is wrong with the other bookcase');
   const held = { id: 'k', name: 'One', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'snug' }] }] };
   eq(S.fill([held], all).cases[0].levels[0].sets.map(p => p.id), ['snug', 'low'], 'a set already on a shelf its own height stays there');
 }
