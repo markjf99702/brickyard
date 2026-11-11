@@ -3281,7 +3281,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
     await p.goto(link(wall(n)));
     await p.waitForFunction(n => document.getElementById('build-title').textContent === 'Wall of ' + n, n);
     await p.click('#model-menu');
-    assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'Copy a link to this model', 'Rename', 'Remove from my models'], 'a model’s menu');
+    assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'I’ve built this', 'Copy a link to this model', 'Rename', 'Remove from my models'], 'a model’s menu');
     await p.click('#mm-link');
     await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
     const copied = await p.evaluate(() => navigator.clipboard.readText());
@@ -3312,7 +3312,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.goto(base + '#model-x-cottage');
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
   await p.click('#model-menu');
-  assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.id)), ['mm-parts'], 'the example has only All the pieces');
+  assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.id)), ['mm-parts', 'mm-built'], 'the example has only All the pieces and I’ve built this');
   await c.close();
 }
 
@@ -5723,6 +5723,81 @@ release = false;
 assert.deepEqual(problems, [], 'problems while using it');
 assert.ok(pictures.length > 1, 'set pictures were asked for along the way');
 assert.deepEqual(told, [], 'and no request for one said which site was asking');
+// "I've built this", in a model's menu. The example cottage and a second model both need the brick box's one green
+// 6x12 plate, and both said "Can build". With the cottage marked built, its pieces are out of Your pieces for the
+// other model (1 short: the plate), and out of what's copied for
+// Claude, whose first line says so. The cottage's row says Built. Taking it apart gives the pieces back.
+{
+  const { c, p } = await withSets({ sets: { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box', pieces: 790, state: 'apart' } } }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  const says = async () => { await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden); return p.textContent('.toast span'); };
+  const row = sel => p.$eval(sel, a => a.querySelector('.badge') ? a.querySelector('.badge').textContent : '');
+  const field = { brickyard: 1, model: { name: 'Field', parts: [['3028', 10, 0, 0, 0, 0, 1], ['3001', 4, 0, 1, 0, 0, 2]] } };
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(field)).toString('base64url'));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
+  const id = await p.evaluate(() => location.hash.slice(7));
+  assert.equal(await p.textContent('#model-check .note.ok'), '✓ You have every piece for this, from Large Creative Brick Box.');
+  await p.goto(base + '#build');
+  await p.waitForSelector('a[href="#model-x-cottage"]');
+  assert.deepEqual([await row('a[href="#model-' + id + '"]'), await row('a[href="#model-x-cottage"]'), await p.locator('#built-note').count()], ['Can build', 'Can build', 0], 'with nothing built, both can be');
+  await p.click('a[href="#model-x-cottage"]');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
+  await p.click('#model-menu');
+  assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'I’ve built this'], 'the example’s menu has it too');
+  assert.equal(await p.textContent('#mm-built small'), 'Its pieces stop counting for your other models and for Claude');
+  await p.click('#mm-built');
+  assert.equal(await says(), 'Cottage is built. Its pieces are left out for your other models and for Claude.');
+  assert.equal(await p.locator('.sheet').count(), 0, 'and the menu closes');
+  assert.equal(await p.textContent('#model-check .note.ok'), '✓ You’ve built this. Its pieces are left out for your other models and for Claude.', 'the built model says so');
+  assert.deepEqual(await p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.models'))['x-cottage']), { built: true }, 'kept in this browser');
+  await p.goto(base + '#build');
+  await p.waitForSelector('#built-note');
+  assert.equal(await p.textContent('#built-note'), 'Cottage is built, so its 40 pieces are left out for your other models and for Claude.');
+  assert.deepEqual([await row('a[href="#model-' + id + '"]'), await row('a[href="#model-x-cottage"]')], ['1 short', 'Built'], 'the other model is short of the plate the cottage stands on');
+  assert.equal(await p.textContent('.pieces h2'), 'Your pieces790', 'Your pieces still counts what you own');
+  assert.equal(await p.textContent('h2.group[aria-label^="Models"]'), 'Models2', 'the example’s entry isn’t a model of its own');
+  await p.click('#copy-pool');
+  await says();
+  const copied = await p.evaluate(() => navigator.clipboard.readText());
+  assert.match(copied, /^My Brickyard pieces, from 10698-1 Large Creative Brick Box, less the pieces in Cottage, which is built\.\nPieces the builder knows, as LDraw part\/colour ×count:\n/, 'what’s copied for Claude says the cottage is built');
+  assert.doesNotMatch(copied, /\b3028\/10 ×/, 'and leaves its pieces out: the one green 6x12 plate');
+  assert.match(copied, /\b3010\/226 ×1,/, 'and all but one of the box’s bright light yellow 1x4 bricks');
+  await p.click('a[href="#model-' + id + '"]');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
+  assert.equal(await p.textContent('#model-check .flag'), 'You’re short: 1 × Bright Green plate 6x12. Cottage is built, so its pieces aren’t counted. Swap colours where it doesn’t matter, or ask Claude for another version.');
+  // Both built: each keeps its own pieces, the first line names both, and a reload keeps it.
+  await p.click('#model-menu'); await p.click('#mm-built');
+  assert.equal(await says(), 'Field is built. Its pieces are left out for your other models and for Claude.');
+  await p.reload();
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
+  assert.equal(await p.textContent('#model-check .note.ok'), '✓ You’ve built this. Its pieces are left out for your other models and for Claude.');
+  await p.goto(base + '#build');
+  await p.waitForSelector('#built-note');
+  assert.equal(await p.textContent('#built-note'), 'Cottage and Field are built, so their 42 pieces are left out for your other models and for Claude.');
+  await p.click('#copy-pool');
+  await says();
+  assert.match(await p.evaluate(() => navigator.clipboard.readText()), /^My Brickyard pieces, from 10698-1 Large Creative Brick Box, less the pieces in Cottage and Field, which are built\.\n/);
+  // The same model from Claude's link again is still built.
+  await p.goto('about:blank');
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify(field)).toString('base64url'));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
+  assert.equal(await p.evaluate(i => JSON.parse(localStorage.getItem('brickyard.models'))[i].built, id), true, 'the model sent again stays built');
+  // Taken apart again.
+  await p.click('#model-menu');
+  assert.deepEqual([await p.$eval('#mm-built span', s => s.firstChild.textContent), await p.textContent('#mm-built small')], ['I’ve taken this apart', 'It’s marked as built. Its pieces count for your other models again']);
+  await p.click('#mm-built');
+  assert.equal(await says(), 'Field is taken apart. Its pieces count for your other models again.');
+  assert.equal(await p.textContent('#model-check .flag'), 'You’re short: 1 × Bright Green plate 6x12. Cottage is built, so its pieces aren’t counted. Swap colours where it doesn’t matter, or ask Claude for another version.');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
+  await p.click('#model-menu'); await p.click('#mm-built');
+  assert.equal(await says(), 'Cottage is taken apart. Its pieces count for your other models again.');
+  assert.equal(await p.evaluate(() => 'x-cottage' in JSON.parse(localStorage.getItem('brickyard.models'))), false, 'and nothing is left of the example’s entry');
+  await p.goto(base + '#build');
+  await p.waitForSelector('a[href="#model-x-cottage"]');
+  assert.deepEqual([await row('a[href="#model-' + id + '"]'), await row('a[href="#model-x-cottage"]'), await p.locator('#built-note').count()], ['Can build', 'Can build', 0], 'both can be built again');
+  await c.close();
+}
+
 await browser.close();
 server.close();
 

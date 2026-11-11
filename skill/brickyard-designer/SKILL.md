@@ -14,7 +14,7 @@ What matters, in order:
 
 ## 1. Their pieces
 
-Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `data/sets/` and `data/index.json` says which sets have one. A set without a list can't be used yet; say so.
+Brickyard's **Copy my pieces for Claude** gives a line like `My Brickyard pieces, from 10698-1 Large Creative Brick Box + loose pieces (Blue tub)` and then `part/colour ×count` for every piece the builder knows. That list is the budget. When the first line ends `less the pieces in Cottage, which is built`, the pieces standing in that model are already out of the list: design from what's listed, and don't plan on taking the built model apart. It adds up their taken-apart sets and their **loose pieces** (lots counted by their Stud Finder scanner, or listed by hand). If they didn't paste one, use the sets they name (`--sets 10698-1`); the parts lists live in `data/sets/` and `data/index.json` says which sets have one. A set without a list can't be used yet; say so.
 
 Paths here are from this skill's folder: `scripts/check_model.py`, and `data/` for everything the checker knows. (In the Brickyard repo the skill is `skill/brickyard-designer/`, and `data/` is a copy of the repo's `parts/`, which the script reads there.)
 

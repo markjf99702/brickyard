@@ -92,6 +92,29 @@
     return pool;
   }
 
+  // A model's pieces as the check counts them, {"part/colour": count}: the ones the builder knows.
+  function usedBy(model, shapes) {
+    var used = {};
+    model.parts.forEach(function (q) { if (shapes[q[0]]) { var k = q[0] + '/' + q[1]; used[k] = (used[k] || 0) + 1; } });
+    return used;
+  }
+  // The pieces left once the models that are built ("I've built this") have theirs: each built model's pieces come
+  // out of the pool, for every other model's check and for what's copied for Claude. A count never goes below
+  // nothing (a model built from pieces that aren't ticked any more), and a piece with none left isn't listed.
+  function lessBuilt(pool, models, shapes) {
+    var out = {};
+    Object.keys(pool).forEach(function (k) { out[k] = pool[k]; });
+    models.forEach(function (m) {
+      var used = usedBy(m, shapes);
+      Object.keys(used).forEach(function (k) {
+        if (!Object.prototype.hasOwnProperty.call(out, k)) return;
+        out[k] -= used[k];
+        if (!(out[k] > 0)) delete out[k];
+      });
+    });
+    return out;
+  }
+
   // Everything that would stop the model being built from these pieces, and some things worth knowing.
   function check(model, shapes, pool) {
     var problems = [], notes = [], used = {};
@@ -347,7 +370,7 @@
     });
   }
 
-  var api = { useAliases: useAliases, canon: canon, turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, check: check, sizeCm: sizeCm, pieceWords: pieceWords, whereTexts: whereTexts,
+  var api = { useAliases: useAliases, canon: canon, turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, usedBy: usedBy, lessBuilt: lessBuilt, check: check, sizeCm: sizeCm, pieceWords: pieceWords, whereTexts: whereTexts,
     modelText: modelText, isModelLink: isModelLink, parseModel: parseModel };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BuildCore = api;
 })(this);

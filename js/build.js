@@ -90,11 +90,14 @@ const OFF = { built: 'built, so off unless you take it apart', partial: 'partly 
 function poolLots() {
   return mine().lots.map(l => Object.assign(l, { usable: l.parts.reduce((n, r) => n + (shapes[B.canon(r[0])] ? r[2] : 0), 0) }));
 }
-async function currentPool() {
+// `all` is every ticked piece. `pool` is what's left of them for the model `id` (or, with no id, for a new one from
+// Claude): the pieces standing in the other models that are built have come out (`built`, by name).
+async function currentPool(id) {
   const on = poolSets().filter(s => s.on), lots = poolLots().filter(l => l.on);
   const invs = await Promise.all(on.map(s => get('parts/sets/' + s.num + '.json')));
   on.forEach((s, i) => { s.parts = invs[i].parts || []; }); // so a model can say which sets its pieces come from
-  return { sets: on, lots, any: on.length + lots.length > 0, pool: B.poolOf(invs.concat(lots)), pieces: mine().pieces };
+  const all = B.poolOf(invs.concat(lots)), up = await builtOnes(), built = up.filter(b => b.id !== id);
+  return { sets: on, lots, any: on.length + lots.length > 0, all, up, built, pool: B.lessBuilt(all, built.map(b => b.model), shapes), pieces: mine().pieces };
 }
 
 // Models are kept in this browser, keyed by their parts, so opening the same link twice keeps one copy. The same
@@ -143,6 +146,23 @@ function addModels(map) {
   });
   if (n) write(MODELS, all);
   return n;
+}
+// "I've built this", in a model's menu: while it's on, the model's pieces are out of Your pieces for every other
+// model's check and for Copy my pieces for Claude. (Two models that each need the brick box's one green 6x12 plate
+// both said "Can build", and Claude was handed the whole box again for the next design.) Kept with the model in
+// this browser, as `built`; for an example, which has no entry of its own, in an entry that holds nothing else.
+function isBuilt(id) { const rec = saved()[id]; return !!(rec && rec.built); }
+function setBuilt(id, on) {
+  const all = saved(), rec = Object.assign({}, all[id]);
+  if (on) rec.built = true; else delete rec.built;
+  if (Object.keys(rec).length) all[id] = rec; else delete all[id];
+  write(MODELS, all);
+}
+// The models that are built, by name: [{ id, model }].
+async function builtOnes() {
+  const all = saved(), ids = Object.keys(all).filter(id => all[id] && all[id].built), out = [];
+  for (const id of ids) { const model = await modelById(id); if (model) out.push({ id, model }); }
+  return out.sort((a, b) => a.model.name.localeCompare(b.model.name, undefined, { numeric: true }) || (a.id < b.id ? -1 : 1));
 }
 // For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
 // inView is for test/e2e.mjs: where the model's bounds fall on the picture, and what of it is showing.
@@ -204,7 +224,7 @@ const renderList = orSay(async () => {
   $('model-view').hidden = true;
   $('build-list').hidden = false;
   const sets = poolSets(), on = sets.filter(s => s.on), none = missingLists(), lots = poolLots();
-  const { pool, pieces, any } = await currentPool();
+  const { all, up, pieces, any } = await currentPool();
 
   // The headings are read out as "Your pieces, 816 pieces" and "Models, 2" (they were a bare "Your pieces 816").
   let html = '<section class="pieces"><h2 class="group" tabindex="-1"' + (pieces ? ' aria-label="Your pieces, ' + plural(pieces, 'piece') + '"' : '') + '><span>Your pieces</span><span>' + (pieces ? pieces.toLocaleString() : '') + '</span></h2>';
@@ -227,6 +247,11 @@ const renderList = orSay(async () => {
     html += '<p class="note">' + esc(names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]) + (one ? ' is' : ' are') + ' taken apart, but Brickyard has no parts list for ' +
       (one ? 'it' : 'them') + ' yet, so ' + (one ? 'its' : 'their') + ' pieces aren’t counted.</p>';
   }
+  if (up.length) {
+    const n = up.reduce((k, b) => k + Object.values(B.usedBy(b.model, shapes)).reduce((a, v) => a + v, 0), 0);
+    html += '<p class="note" id="built-note">' + esc(listed(up.map(b => b.model.name))) + (up.length === 1 ? ' is built, so its ' : ' are built, so their ') + plural(n, 'piece') +
+      (n === 1 ? ' is' : ' are') + ' left out for your other models and for Claude.</p>';
+  }
   html += '<div class="acts-row"><button class="btn quiet" type="button" id="copy-pool"' + (any ? '' : ' disabled') + '>Copy my pieces for Claude</button><button class="btn quiet" type="button" id="open-model">Open a model</button></div></section>';
 
   // A saved entry with no model in it (a damaged save) is skipped rather than stopping the whole list.
@@ -235,11 +260,13 @@ const renderList = orSay(async () => {
   const examples = await Promise.all(EXAMPLES.map(async n => ({ id: 'x-' + n, model: await modelById('x-' + n), example: true })));
   const rows = mine.concat(examples);
   html += '<h2 class="group" aria-label="Models, ' + rows.length + '"><span>Models</span><span>' + rows.length + '</span></h2><ul class="list">' + rows.map(r => {
+    // Each model is checked against what the other built models leave (a built one, against all but its own).
+    const built = up.some(b => b.id === r.id), pool = B.lessBuilt(all, up.filter(b => b.id !== r.id).map(b => b.model), shapes);
     const res = B.check(r.model, shapes, any ? pool : null);
     const shortBy = res.short.reduce((n, x) => n + (x.need - x.have), 0);
     const other = res.problems.filter(p => p.kind !== 'count').length;
     // With no pieces chosen there's nothing to count against, so only a broken model gets a badge.
-    const state = other ? '<span class="badge sealed">Needs fixing' + (any && shortBy ? ' · ' + shortBy + ' short' : '') + '</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
+    const state = built ? '<span class="badge built">Built</span>' : other ? '<span class="badge sealed">Needs fixing' + (any && shortBy ? ' · ' + shortBy + ' short' : '') + '</span>' : !any ? '' : shortBy ? '<span class="badge partial">' + shortBy + ' short</span>' : '<span class="badge built">Can build</span>';
     return '<li><a class="item" href="#model-' + esc(r.id) + '">' + swatchStack(r.model) +
       '<div class="main"><div class="t">' + esc(r.model.name) + (r.example ? ' <span class="m" style="display:inline">· example</span>' : '') + '</div>' +
       '<div class="m"><span>' + plural(r.model.parts.length, 'piece') + '</span>' + (res.steps.length ? ' · <span>' + plural(res.steps.length, 'step') + '</span>' : '') + '</div>' +
@@ -318,10 +345,12 @@ function swatchStack(m) {
 }
 
 async function copyPool() {
-  const { sets, lots, pool } = await currentPool();
+  const { sets, lots, pool, built } = await currentPool();
   const rows = Object.keys(pool).filter(k => shapes[k.split('/')[0]]).sort();
   const other = Object.keys(pool).length - rows.length;
-  const text = 'My Brickyard pieces, from ' + sets.map(s => s.num + ' ' + s.name).concat(lots.map(l => 'loose pieces (' + l.name + ')')).join(' + ') + '.\n' +
+  const text = 'My Brickyard pieces, from ' + sets.map(s => s.num + ' ' + s.name).concat(lots.map(l => 'loose pieces (' + l.name + ')')).join(' + ') +
+    // The pieces standing in built models are already out of the list, and the first line says so.
+    (built.length ? ', less the pieces in ' + listed(built.map(b => b.model.name)) + ', which ' + (built.length === 1 ? 'is' : 'are') + ' built' : '') + '.\n' +
     'Pieces the builder knows, as LDraw part/colour ×count:\n' + rows.map(k => k + ' ×' + pool[k]).join(', ') +
     (other ? '\n(' + other + ' more kinds, such as wheels and hinges, that the builder doesn’t use yet.)' : '') + '\n';
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it to Claude with what you’d like built.'); }
@@ -351,9 +380,9 @@ const openModel = orSay(async id => {
   // that was removed, with no tap since, and Chrome's Back then skips every place a page adds: the next Back would
   // leave Brickyard.
   if (!model) { toast('That model isn’t saved on this device. Open Claude’s link to it here.', 'long'); location.replace('#build'); return; }
-  const { pool, sets, lots, any } = await currentPool();
+  const { pool, sets, lots, any, built } = await currentPool(id);
   const res = B.check(model, shapes, any ? pool : null);
-  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots, where: B.whereTexts(model, shapes, c => colorOf(c).name) };
+  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots, built: isBuilt(id), others: built, where: B.whereTexts(model, shapes, c => colorOf(c).name) };
   $('build-title').textContent = model.name;
   document.title = model.name + ' · Brickyard';
   app.heading();
@@ -411,7 +440,7 @@ function whatsWrong(fails) {
 }
 
 function renderCheck() {
-  const { res, pool, sets, lots, model } = current;
+  const { res, pool, sets, lots, model, built, others } = current;
   let html = '';
   const fails = res.problems.filter(p => p.kind !== 'count'), left = model.parts.length - res.pieces;
   if (!res.pieces) {
@@ -421,12 +450,14 @@ function renderCheck() {
     return;
   }
   if (fails.length) html += '<div class="flag bad"><span><b>This model can’t be built as it is.</b> ' + esc(whatsWrong(fails).join('. ')) + '. Ask Claude to fix it.</span></div>';
-  if (!pool) html += '<div class="flag"><span>Brickyard doesn’t know which pieces you have yet, so it can’t check you have enough. Choose them under Your pieces on the list of models.</span></div>';
+  // Built ("I've built this" in the menu): it has its pieces, whatever is ticked now.
+  if (built) html += '<p class="note ok">✓ You’ve built this. Its pieces are left out for your other models and for Claude.</p>';
+  else if (!pool) html += '<div class="flag"><span>Brickyard doesn’t know which pieces you have yet, so it can’t check you have enough. Choose them under Your pieces on the list of models.</span></div>';
   else if (res.short.length) {
     html += '<div class="flag"><span><b>You’re short:</b> ' + res.short.map(x => {
       const [p, c] = x.key.split('/');
       return (x.need - x.have) + ' × ' + esc(colorOf(c).name) + ' ' + esc(partName(p).toLowerCase());
-    }).join(', ') + '. Swap colours where it doesn’t matter, or ask Claude for another version.</span></div>';
+    }).join(', ') + '. ' + takenBy(res.short, others) + 'Swap colours where it doesn’t matter, or ask Claude for another version.</span></div>';
   } else if (!fails.length) {
     // Named the way Copy my pieces for Claude names them: the sets, then each lot as "loose pieces (Red tub)". Only
     // the ones that hold a piece this model uses (a lot of wheels isn't where a cottage's bricks came from).
@@ -437,6 +468,12 @@ function renderCheck() {
   const cm = B.sizeCm(res.size);
   html += '<p class="note">' + plural(model.parts.length, 'piece') + (left ? ', ' + left + ' the builder can’t draw' : '') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + cm.w.toFixed(1).replace(/\.0$/, '') + ' × ' + cm.d.toFixed(1).replace(/\.0$/, '') + ' cm, ' + cm.h.toFixed(1).replace(/\.0$/, '') + ' cm tall</p>';
   $('model-check').innerHTML = html;
+}
+
+// When a built model holds some of what this one is short of: "Cottage is built, so its pieces aren't counted. "
+function takenBy(short, others) {
+  const names = others.filter(o => { const used = B.usedBy(o.model, shapes); return short.some(x => used[x.key]); }).map(o => o.model.name);
+  return names.length ? esc(listed(names)) + (names.length === 1 ? ' is built, so its pieces aren’t' : ' are built, so their pieces aren’t') + ' counted. ' : '';
 }
 
 // A model that hasn't been started opens on the finished model: what it is, how many pieces and steps, and Start
@@ -548,12 +585,23 @@ $('model-menu').onclick = () => {
   const ex = current.id.startsWith('x-');
   app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(current.model.name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
     '<li><button type="button" id="mm-parts"><span>All the pieces<small>Everything this model needs, and what you have</small></span></button></li>' +
+    // On an example too: built is built. The button says what a tap does.
+    '<li><button type="button" id="mm-built"><span>' + (current.built ? 'I’ve taken this apart<small>It’s marked as built. Its pieces count for your other models again</small>'
+      : 'I’ve built this<small>Its pieces stop counting for your other models and for Claude</small>') + '</span></button></li>' +
     // The example is the same on every device, and isn't yours to send.
     (ex ? '' : '<li><button type="button" id="mm-link"><span>Copy a link to this model<small>Open it on your other device, or send it to someone</small></span></button></li>') +
     (ex ? '' : '<li><button type="button" id="mm-name"><span>Rename<small>Tell two versions of a model apart</small></span></button></li>') +
     (ex ? '' : '<li><button type="button" id="mm-del"><span>Remove from my models<small>Tap twice. Claude’s link still opens it again.</small></span></button></li>') +
     '</ul></div>');
   $('mm-parts').onclick = partsSheet;
+  $('mm-built').onclick = () => {
+    const on = !current.built, name = current.model.name;
+    setBuilt(current.id, on);
+    current.built = on;
+    renderCheck();
+    app.closeSheet();
+    toast(on ? name + ' is built. Its pieces are left out for your other models and for Claude.' : name + ' is taken apart. Its pieces count for your other models again.');
+  };
   if ($('mm-link')) $('mm-link').onclick = copyLink;
   if ($('mm-name')) $('mm-name').onclick = renameSheet;
   if ($('mm-del')) $('mm-del').onclick = function () {

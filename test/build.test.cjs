@@ -52,6 +52,22 @@ for (const p of ['3001', '3039', '3004']) for (const r of [0, 90, 180, 270]) {
 // A 2x2 slope's studs are at its high back edge; turned 180 they're at the front.
 eq(B.placed(shapes['3039'], { x: 0, z: 0, r: 180 }).top.map(String).sort(), ['0,1', '1,1'], 'slope turned 180 has studs at the front');
 
+// "I've built this": a built model's pieces come out of the pool for the others. Only what the pool has comes out,
+// a piece with none left isn't listed, the pool handed in is left as it was, and a part the builder doesn't know
+// isn't counted.
+{
+  const built = B.cleanModel({ name: 'b', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2], ['3003', 1, 0, 6, 0, 0, 3], ['nosuch', 4, 0, 9, 0, 0, 4]] });
+  eq(B.usedBy(built, shapes), { '3001/4': 2, '3003/1': 1 }, 'a model’s pieces, as the check counts them');
+  const have = { '3001/4': 5, '3003/1': 1, '3020/15': 7 };
+  eq(B.lessBuilt(have, [built], shapes), { '3001/4': 3, '3020/15': 7 }, 'a built model’s pieces come out of the pool');
+  eq(have, { '3001/4': 5, '3003/1': 1, '3020/15': 7 }, 'and the pool handed in is as it was');
+  eq(B.lessBuilt(have, [built, built, built], shapes), { '3020/15': 7 }, 'never below nothing');
+  eq(B.lessBuilt(have, [], shapes), have, 'with nothing built, all of it');
+  const one = B.cleanModel({ name: 'o', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2], ['3001', 4, 0, 6, 0, 0, 3], ['3001', 4, 0, 9, 0, 0, 4]] });
+  eq(B.check(one, shapes, have).short, [], 'four red 2x4s from five');
+  eq(B.check(one, shapes, B.lessBuilt(have, [built], shapes)).short, [{ key: '3001/4', need: 4, have: 3 }], 'are one short once a built model has two of them');
+}
+
 // Models.
 const plate = (x, z, s) => ['3001', 1, x, 0, z, 0, s];
 const M = parts => B.cleanModel({ name: 't', parts });
