@@ -369,7 +369,8 @@ const openModel = orSay(async id => {
   if (!res.pieces) { stopStage(); return; }
   startStage();
   buildScene(model);
-  if (started(id)) showStep(stepOf(id), false); else showCover();
+  // (Where the browser can't show 3D there is no finished picture to open on: it opens on step 1, as it did.)
+  if (started(id) || !renderer) showStep(stepOf(id), false); else showCover();
 });
 
 // What the check found, in words about the pieces: which piece, by its colour and name, and in which step as the

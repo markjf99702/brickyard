@@ -3263,7 +3263,9 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await no.p.reload(); // the page starts again, without WebGL this time
   await no.p.waitForSelector('#model-view:not([hidden])');
   assert.match(await no.p.textContent('#stage-hint'), /can’t show 3D here/);
-  await no.p.click('#step-next');
+  // With no picture there is no finished picture to open on either: it opens on step 1 (it said "This is how it
+  // looks when it's built. Drag it around to look it over." over an empty box).
+  assert.deepEqual([await no.p.textContent('.stepnum'), await no.p.textContent('#step-next')], ['Step 1 of 7', 'Next'], 'with no picture, a model opens on step 1');
   assert.deepEqual([await no.p.$eval('details.where', d => d.open), await no.p.isHidden('#stage-keys')], [true, true], 'with no picture, Where they go is open, and there are no turn and zoom buttons');
   await no.c.close();
 }
