@@ -780,6 +780,32 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     eq(C.totals(sets).doubles, 4, 'and the totals count them');
   }
 
+  // Going back to a backup: everything as the file has it, timed so that it wins every merge; and the same run the
+  // other way round undoes it.
+  {
+    const shelf = (t, name) => ({ id: 'k', t, name, w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'a' }] }] });
+    const lot = (id, t) => ({ id, t, name: 'Blue tub', parts: [['3001', 4, 40]] });
+    const file = C.cleanDoc({ catalog: { seen: { b1: 3 }, cases: { k: shelf(10, 'Billy') }, loose: { l1: lot('l1', 10) }, sets: {
+      a: { id: 'a', t: 10, name: 'Orchid', room: 'Office' }, b: { id: 'b', t: 10, name: 'Bonsai Tree', box: '3' }, c: { id: 'c', t: 10, name: 'Typewriter' }, d: { id: 'd', t: 10, del: 1 }, g: { id: 'g', t: 10, del: 1 } } } });
+    const here = C.cleanDoc({ catalog: { seen: { b2: 4 }, cases: { k: shelf(50, 'Billy in the hall') }, loose: { l1: { id: 'l1', t: 50, del: 1 }, l2: lot('l2', 50) }, sets: {
+      a: { id: 'a', t: 10, name: 'Orchid', room: 'Office' }, b: { id: 'b', t: 50, name: 'Bonsai Tree', box: '7' }, c: { id: 'c', t: 50, del: 1 }, d: { id: 'd', t: 50, name: 'Tree House' },
+      e: { id: 'e', t: 50, name: 'Galaxy Explorer' }, g: { id: 'g', t: 60, del: 1 } } } });
+    const r = C.restoreDoc(here, file, 1000);
+    eq(r.n, { back: 2, gone: 2, cases: 1, lots: 2 }, 'it counts what changes: sets that go back, sets added since, bookcases and lots');
+    eq(r.went.map(x => x.name).sort(), ['Galaxy Explorer', 'Tree House'], 'and gives the sets that are removed, as they were');
+    eq([r.doc.sets.a, r.doc.sets.b, r.doc.sets.c, r.doc.sets.d, r.doc.sets.e, r.doc.sets.g],
+      [here.sets.a, { name: 'Bonsai Tree', box: '3', id: 'b', t: 1000 }, { name: 'Typewriter', id: 'c', t: 1000 }, { id: 'd', t: 1000, del: 1 }, { id: 'e', t: 1000, del: 1 }, { id: 'g', t: 60, del: 1 }],
+      'a set that is the same is left; one changed or removed here is as the file has it; one the file does not have is removed; a removal in both stays');
+    eq([r.doc.cases.k.name, r.doc.cases.k.t, C.liveLots(r.doc).map(l => l.id), r.doc.loose.l2], ['Billy', 1000, ['l1'], { id: 'l2', t: 1000, del: 1 }], 'bookcases and lots go back the same way');
+    eq(r.doc.seen, { b2: 4, b1: 3 }, 'the batches opened are still remembered');
+    const live = d => JSON.stringify(C.live(d).map(x => Object.assign({}, x, { t: 0 })).sort((x, y) => x.id < y.id ? -1 : 1));
+    eq([live(r.doc), live(C.mergeDocs(r.doc, here)), live(C.mergeDocs(here, r.doc))], [live(file), live(file), live(file)], 'it holds the sets the file holds, and wins a merge with the catalog it replaced');
+    eq(C.restoreDoc(here, file, 5).doc.sets.b.t, 51, 'even when this device’s clock is behind the change it undoes');
+    const undo = C.restoreDoc(r.doc, here, 2000);
+    eq([live(undo.doc), live(C.mergeDocs(undo.doc, r.doc)), undo.doc.cases.k.name, C.liveLots(undo.doc).map(l => l.id)], [live(here), live(here), 'Billy in the hall', ['l2']], 'run the other way round, it undoes itself');
+    eq(C.restoreDoc(file, file, 1000).n, { back: 0, gone: 0, cases: 0, lots: 0 }, 'a file that is the same as what is here changes nothing');
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

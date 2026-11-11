@@ -1682,9 +1682,16 @@
   // removed. Those are counted, and a box offers to bring them back (timed now, so they win the merge everywhere).
   // A backup file carries the models from Claude too (`more.models`); the ones that aren't here already are added
   // (js/build.js keeps them).
+  // A file (not a link, which is for moving between devices) has a second choice: Put everything back the way this
+  // file has it (C.restoreDoc). Merging can't undo a mistake made since the file was saved, because the later
+  // change wins, and with sync on a slip is on every device within a minute. This overwrites newer changes on
+  // purpose, so the sheet counts what will change before anything does, the button takes a second tap, and the
+  // message afterwards has Undo, which is the same thing run back the other way. The sets it removes are in
+  // Recently removed.
   function catalogSheet(doc, from, more) {
     var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
     var builder = window.BrickyardBuild, models = more && more.models && builder ? builder.countModels(more.models) : 0;
+    var old = link ? null : restoreSays(C.restoreDoc(DOC, doc, Date.now()).n);
     var twins = C.foldTwins(DOC, doc, Date.now()).folded;
     var loose = C.liveLots(doc).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     var gone = C.live(doc).filter(function (x) { return DOC.sets[x.id] && DOC.sets[x.id].del && merged.sets[x.id].del; });
@@ -1694,8 +1701,15 @@
       '. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.</p>' +
       (gone.length ? '<label class="check"><input type="checkbox" id="cs-back"><span>Bring back the ' + (gone.length === 1 ? 'set' : gone.length.toLocaleString() + ' sets') + ' removed here since this ' + (link ? 'link was copied' : 'file was saved') +
         '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') +
-      (twins.length ? '<p class="note" id="cs-twins">' + esc(foldedText(twins, link ? 'here and in this link' : 'here and in this file', true)) + '</p>' : '') + '</div>' +
+      (twins.length ? '<p class="note" id="cs-twins">' + esc(foldedText(twins, link ? 'here and in this link' : 'here and in this file', true)) + '</p>' : '') +
+      (link ? '' : '<div class="how" id="cs-old"><b>Or go back to this file</b><p id="cs-old-says">' + (more && more.saved ? 'Saved ' + esc(dayOf(more.saved)) + '. ' : '') +
+        (old.any ? 'Everything is put back the way this file has it, and changes made since are undone: ' + esc(old.says) + '.' : 'Everything here is already the way this file has it.') + '</p>' +
+        (old.any ? '<button class="btn quiet" type="button" id="cs-old-go">Put everything back the way this file has it</button>' : '') + '</div>') + '</div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
+    if ($('cs-old-go')) $('cs-old-go').onclick = function () {
+      if (!secondTap(this)) { this.textContent = 'Tap again to put everything back'; return; }
+      goBackTo(doc, more);
+    };
     $('cs-go').onclick = function () {
       var back = $('cs-back') && $('cs-back').checked ? gone : [];
       var fold = C.foldTwins(DOC, doc, Date.now());
@@ -1706,6 +1720,29 @@
       toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + (built ? plural(built, 'model') + ' added. ' : '') + (fold.folded.length ? foldedText(fold.folded, link ? 'here and in the link' : 'here and in the file') + ' ' : '') +
         'You have ' + plural(C.live(DOC).length, 'set') + '.', fold.folded.length ? 'long' : false);
     };
+  }
+
+  // What going back to a file would change, in words: "12 sets go back to how they were; 3 added since are removed;
+  // 1 bookcase changes". `any` is whether anything would.
+  function restoreSays(n) {
+    var bits = [];
+    if (n.back) bits.push(plural(n.back, 'set') + (n.back === 1 ? ' goes back to how it was' : ' go back to how they were'));
+    if (n.gone) bits.push((n.back ? n.gone.toLocaleString() : plural(n.gone, 'set')) + ' added since ' + (n.gone === 1 ? 'is' : 'are') + ' removed');
+    if (n.cases) bits.push(plural(n.cases, 'bookcase') + (n.cases === 1 ? ' changes' : ' change'));
+    if (n.lots) bits.push(n.lots === 1 ? '1 lot of loose pieces changes' : n.lots.toLocaleString() + ' lots of loose pieces change');
+    return { any: bits.length > 0, says: bits.join('; ') };
+  }
+  function dayOf(t) { return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function goBackTo(doc, more) {
+    var before = JSON.parse(JSON.stringify(DOC)), listWas = read(GONE), r = C.restoreDoc(DOC, doc, Date.now());
+    DOC = r.doc; remember(r.went);
+    if (more && more.models && window.BrickyardBuild) window.BrickyardBuild.addModels(more.models);
+    save(); closeSheet(); refresh();
+    toast('Everything is back the way the file has it: ' + restoreSays(r.n).says + '.', false, { label: 'Undo', run: function () {
+      DOC = C.restoreDoc(DOC, before, Date.now()).doc;
+      write(GONE, Array.isArray(listWas) ? listWas : []);
+      save(); refresh(); toast('Undone. Your catalog is as it was before.');
+    } });
   }
 
   // The same set added on two devices before their catalogs first met is kept once (C.foldTwins): when a backup or

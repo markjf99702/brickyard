@@ -199,6 +199,60 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await none.c.close();
 }
 
+// ---------- Going back to a backup ----------
+// Opening a backup merges, and the later change wins, so yesterday's file couldn't undo today's mistake. A file has a
+// second choice: put everything back the way the file has it. It counts what will change first, takes a second tap,
+// and the message afterwards has Undo.
+{
+  const { c, p } = await withSets({
+    sets: { a: { id: 'a', t: 1, name: 'Orchid', room: 'Office' }, b: { id: 'b', t: 1, name: 'Bonsai Tree', box: '3' }, t: { id: 't', t: 1, name: 'Typewriter' } },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }] } } });
+  const state = () => p.evaluate(() => { const d = window.brickyard.doc(); return [Object.values(d.sets).filter(x => !x.del).map(x => x.name + (x.box ? ' in ' + x.box : '')).sort().join(', '), Object.values(d.cases).filter(x => !x.del).map(x => x.name).join()]; });
+  const listed = async () => { await p.click('#menu-btn'); const has = await p.locator('#m-gone').count(); if (has) await p.click('#m-gone'); const l = await p.evaluate(() => [...document.querySelectorAll('#gone .t')].map(e => e.textContent)); await p.click('[data-close]'); return l; };
+  await p.goto(base + '#catalog');
+  const saved = await p.evaluate(() => JSON.stringify({ brickyard: 1, saved: '2026-11-09T10:00:00.000Z', catalog: window.brickyard.doc() }));
+  const day = await p.evaluate(() => new Date('2026-11-09T10:00:00.000Z').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })); // as this browser writes a day
+  await openFile(p, saved);
+  await p.waitForSelector('#cs-go');
+  assert.deepEqual([await p.textContent('#cs-old b'), await p.textContent('#cs-old-says'), await p.locator('#cs-old-go').count()], ['Or go back to this file', 'Saved ' + day + '. Everything here is already the way this file has it.', 0],
+    'with nothing changed since the file was saved, there is nothing to go back to');
+  await p.click('[data-close]');
+  // Since the file: a set moved to the wrong box, one removed, one added, and the bookcase removed.
+  await p.evaluate(() => { const b = window.brickyard; b.putSet({ ...b.doc().sets.b, box: '7' }); b.addSet({ name: 'Galaxy Explorer' }); b.removeCase('k'); });
+  await p.reload();
+  await p.click('.item:has-text("Typewriter")');
+  await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
+  await p.click('.toast span');
+  const mistake = ['Bonsai Tree in 7, Galaxy Explorer, Orchid', ''];
+  assert.deepEqual(await state(), mistake);
+  await openFile(p, saved);
+  await p.waitForSelector('#cs-old-go');
+  assert.equal(await p.textContent('#cs-old-says'), 'Saved ' + day + '. Everything is put back the way this file has it, and changes made since are undone: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes.',
+    'the sheet counts what will change before anything does');
+  await p.click('#cs-old-go');
+  assert.deepEqual([await p.textContent('#cs-old-go'), await state()], ['Tap again to put everything back', mistake], 'one tap asks, and changes nothing');
+  await p.waitForTimeout(650);
+  await p.click('#cs-old-go');
+  assert.equal(await toast(p), 'Everything is back the way the file has it: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes.');
+  assert.deepEqual(await state(), ['Bonsai Tree in 3, Orchid, Typewriter', 'Billy'], 'the catalog is the way the file has it: the box, the removed set and the bookcase are back, and the set added since is gone');
+  assert.equal(await p.evaluate(() => { const d = window.brickyard.doc(); return Math.min(d.sets.b.t, d.sets.t.t, d.sets[Object.keys(d.sets).find(k => d.sets[k].del && k !== 't')].t, d.cases.k.t) > Date.now() - 60000; }), true, 'timed now, so it wins on every device');
+  await p.click('.toast button');
+  assert.deepEqual([await toast(p), await state()], ['Undone. Your catalog is as it was before.', mistake], 'Undo puts the catalog back as it was before');
+  assert.deepEqual(await listed(), ['Typewriter'], 'and Recently removed is as it was');
+  // Gone back again and left: the set it removed can still be put back by itself.
+  await openFile(p, saved);
+  await p.waitForSelector('#cs-old-go');
+  await p.click('#cs-old-go'); await p.waitForTimeout(650); await p.click('#cs-old-go');
+  await p.click('.toast span');
+  assert.deepEqual(await listed(), ['Galaxy Explorer'], 'the set it removed is in Recently removed');
+  // A catalog that came by link is for moving between devices: it has the merge alone.
+  const link = base + '#b1j' + Buffer.from(saved).toString('base64url');
+  await p.goto(link);
+  await p.waitForSelector('#cs-go');
+  assert.equal(await p.locator('#cs-old').count(), 0, 'a link has no going back');
+  await c.close();
+}
+
 assert.deepEqual(problems, [], 'problems while using it');
 await browser.close();
 server.close();

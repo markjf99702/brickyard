@@ -338,6 +338,36 @@
     return out;
   }
 
+  // Going back to a backup: the catalog as `file` has it, made so that it wins every merge (with this device's copy,
+  // with Drive, with the other devices). Opening a backup merges, and the later change to each set wins, so a file
+  // from yesterday couldn't undo today's mistake. Here everything the file has that differs from `here` comes back
+  // as the file has it, timed `now`; everything here that the file doesn't have (or has as removed) is removed,
+  // timed `now`; what's the same is left as it is. Sets, bookcases and lots alike. Run it the other way round (the
+  // catalog from before, as the file) and it undoes itself.
+  // Returns { doc, n: { back: sets that go back to how the file has them, gone: sets here that the file doesn't
+  // have, cases, lots: bookcases and lots that change or go }, went: the sets removed }.
+  function restoreDoc(here, file, now) {
+    var doc = emptyDoc(), n = { back: 0, gone: 0, cases: 0, lots: 0 }, went = [];
+    ['sets', 'cases', 'loose'].forEach(function (kind) {
+      var ids = {}, tally = function (k) { if (kind === 'sets') n[k]++; else n[kind === 'cases' ? 'cases' : 'lots']++; };
+      Object.keys(here[kind] || {}).concat(Object.keys(file[kind] || {})).forEach(function (id) { ids[id] = 1; });
+      Object.keys(ids).forEach(function (id) {
+        var a = (here[kind] || {})[id], b = (file[kind] || {})[id], was = !!a && !a.del, want = !!b && !b.del;
+        if (!want) {
+          if (!was) { doc[kind][id] = a && b ? (b.t > a.t ? b : a) : a || b; return; } // removed in both: the removal stays
+          doc[kind][id] = { id: id, t: later(a, now), del: 1 };
+          if (kind === 'sets') went.push(a);
+          tally('gone'); return;
+        }
+        if (was && sameThing(a, b)) { doc[kind][id] = a; return; }
+        var y = JSON.parse(JSON.stringify(b)); y.t = later(a, now);
+        doc[kind][id] = y; tally('back');
+      });
+    });
+    [here, file].forEach(function (d) { Object.keys(d.seen || {}).forEach(function (k) { doc.seen[k] = Math.max(doc.seen[k] || 0, d.seen[k]); }); });
+    return { doc: doc, n: n, went: went };
+  }
+
   function nameKey(n) { return String(n || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ''); }
 
   // Whether a new set might be one already there: the same set number, or (with no number) the same name. The
@@ -703,7 +733,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
-    foldTwins: foldTwins, doubles: doubles,
+    foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
