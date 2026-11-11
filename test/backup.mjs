@@ -108,6 +108,49 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await c.close();
 }
 
+// ---------- The backup file holds the models from Claude too ----------
+// A model was in one browser's storage and nowhere else. Download a backup now writes them under their own heading
+// beside the catalog, with the day the file was saved; opening the file adds the ones that aren't there already.
+{
+  const { c, p } = await withSets({ sets: { o: { id: 'o', t: 1, name: 'Orchid' } } });
+  await p.waitForFunction(() => window.BrickyardBuild);
+  const id = await p.evaluate(async () => window.BrickyardBuild.saveModel(window.BuildCore.cleanModel(await (await fetch('models/cottage.json')).json())));
+  await p.evaluate(k => { const all = JSON.parse(localStorage.getItem('brickyard.models')); all[k].added = 1700000000000; localStorage.setItem('brickyard.models', JSON.stringify(all)); }, id);
+  await p.goto(base + '#catalog');
+  await p.click('#menu-btn');
+  assert.equal(await p.textContent('#m-backup small'), 'Your whole catalog and your models as one file. Open it on another device to merge.');
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#m-backup')]);
+  const text = await readFile(await dl.path(), 'utf8'), file = JSON.parse(text);
+  assert.deepEqual([Object.keys(file), Object.keys(file.models), file.models[id].added, Math.abs(Date.parse(file.saved) - Date.now()) < 60000, Object.keys(file.catalog.sets)],
+    [['brickyard', 'saved', 'catalog', 'models'], [id], 1700000000000, true, ['o']], 'the file has the catalog as before, when it was saved, and the models under their own heading');
+  await c.close();
+  const other = await withSets({ sets: { b: { id: 'b', t: 1, name: 'Bonsai Tree' } } });
+  const q = other.p;
+  await q.waitForFunction(() => window.BrickyardBuild);
+  await q.goto(base + '#catalog');
+  await openFile(q, text);
+  await q.waitForSelector('#cs-go');
+  assert.match(await q.textContent('.sheet .lede'), /^This file has 1 set and 1 model from Claude\. /);
+  await q.click('#cs-go');
+  assert.equal(await toast(q), 'Merged. 1 model added. You have 2 sets.');
+  assert.deepEqual(await q.evaluate(k => { const all = JSON.parse(localStorage.getItem('brickyard.models')); return [Object.keys(all), all[k].added, all[k].model.parts.length > 10]; }, id), [[id], 1700000000000, true],
+    'the model is on this device now, under the day it was added');
+  await openFile(q, text);
+  await q.waitForSelector('#cs-go');
+  await q.click('#cs-go');
+  assert.deepEqual([await toast(q), await q.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('brickyard.models'))).length)], ['Merged. You have 2 sets.', 1], 'opened again, a model that is here already is left as it is');
+  await q.goto(base);
+  await q.waitForFunction(() => /1 model from Claude/.test(document.getElementById('home-build-stat').textContent));
+  // A backup from before models were in it opens as it always did.
+  await q.goto(base + '#catalog');
+  await openFile(q, { brickyard: 1, catalog: { sets: { n: { id: 'n', t: 1, name: 'Typewriter' } } } });
+  await q.waitForSelector('#cs-go');
+  assert.match(await q.textContent('.sheet .lede'), /^This file has 1 set\. /);
+  await q.click('#cs-go');
+  assert.deepEqual(await names(q), ['Bonsai Tree', 'Orchid', 'Typewriter']);
+  await other.c.close();
+}
+
 assert.deepEqual(problems, [], 'problems while using it');
 await browser.close();
 server.close();

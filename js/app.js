@@ -79,6 +79,8 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
   function plural(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
+  // "3 sets", "3 sets and 2 models", "3 sets, 86 loose pieces and 2 models".
+  function andList(bits) { bits = bits.filter(Boolean); return bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits[bits.length - 1] : bits[0] || ''; }
   // ---------- messages ----------
   // The message at the bottom of the screen, in a region that's on the page from the start and stays there: a
   // screen reader follows a region it already knows, and tends to miss one that arrives with its first words in it.
@@ -1341,7 +1343,7 @@
       if (r.kind === 'sizes') takeSizes(r.doc);
       else if (r.kind === 'model') takeModel(r.doc);
       else if (r.kind === 'loose') onScreen('#build', function () { looseSheet(r.lot); });
-      else if (r.kind === 'catalog') onScreen('#catalog', function () { catalogSheet(r.doc, from); });
+      else if (r.kind === 'catalog') onScreen('#catalog', function () { catalogSheet(r.doc, from, r); });
       else onScreen('#catalog', function () { reviewSheet(r.batch, link); });
     }).catch(function (e) { unread(e, plain || 'That doesn’t look like sets from Claude or a Brickyard file'); });
   }
@@ -1676,14 +1678,17 @@
   // A whole catalog, from a backup file or from Copy everything as a link on another device. Merging keeps the
   // later change to each set, and removing a set is a change: one removed here after the file was saved would stay
   // removed. Those are counted, and a box offers to bring them back (timed now, so they win the merge everywhere).
-  function catalogSheet(doc, from) {
+  // A backup file carries the models from Claude too (`more.models`); the ones that aren't here already are added
+  // (js/build.js keeps them).
+  function catalogSheet(doc, from, more) {
     var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
+    var builder = window.BrickyardBuild, models = more && more.models && builder ? builder.countModels(more.models) : 0;
     var twins = C.foldTwins(DOC, doc, Date.now()).folded;
     var loose = C.liveLots(doc).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     var gone = C.live(doc).filter(function (x) { return DOC.sets[x.id] && DOC.sets[x.id].del && merged.sets[x.id].del; });
     var names = gone.slice(0, 3).map(function (x) { return x.name || 'Set ' + C.shortNum(x.num); }).join(', ') + (gone.length > 3 ? ' and ' + (gone.length - 3) + ' more' : '');
     openSheet('<div class="hd"><h2 id="sheetTitle">' + (link ? 'Your catalog from a link' : 'Open a Brickyard file') + '</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
-      '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + plural(incoming, 'set') + (loose ? ' and ' + plural(loose, 'loose piece') : '') +
+      '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + andList([plural(incoming, 'set'), loose ? plural(loose, 'loose piece') : '', models ? plural(models, 'model') + ' from Claude' : '']) +
       '. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.</p>' +
       (gone.length ? '<label class="check"><input type="checkbox" id="cs-back"><span>Bring back the ' + (gone.length === 1 ? 'set' : gone.length.toLocaleString() + ' sets') + ' removed here since this ' + (link ? 'link was copied' : 'file was saved') +
         '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') +
@@ -1694,8 +1699,9 @@
       var fold = C.foldTwins(DOC, doc, Date.now());
       DOC = fold.doc; folded(fold.folded);
       back.forEach(function (x) { putBack('sets', JSON.parse(JSON.stringify(x))); });
+      var built = models ? builder.addModels(more.models) : 0;
       save(); closeSheet(); renderCatalog();
-      toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + (fold.folded.length ? foldedText(fold.folded, link ? 'here and in the link' : 'here and in the file') + ' ' : '') +
+      toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + (built ? plural(built, 'model') + ' added. ' : '') + (fold.folded.length ? foldedText(fold.folded, link ? 'here and in the link' : 'here and in the file') + ' ' : '') +
         'You have ' + plural(C.live(DOC).length, 'set') + '.', fold.folded.length ? 'long' : false);
     };
   }
@@ -1744,12 +1750,23 @@
     };
   }
 
+  // Download a backup: the whole catalog as one file, with the day it was saved and, under their own heading, the
+  // models from Claude kept in this browser (only the catalog syncs to Drive, and a model was in no file at all).
+  // An older Brickyard opens the file and takes the catalog.
+  function backup() {
+    var models = read('brickyard.models'), kept = {};
+    Object.keys(models && typeof models === 'object' ? models : {}).forEach(function (k) { if (models[k] && models[k].model) kept[k] = models[k]; });
+    var o = { brickyard: 1, saved: new Date().toISOString(), catalog: DOC };
+    if (Object.keys(kept).length) o.models = kept;
+    download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify(o, null, 1), 'Backup');
+  }
+
   // ---------- menu ----------
   function menuSheet() {
     var gone = recent().length;
     openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
       '<li><button type="button" id="m-claude"><span>Add from photos<small>Send Claude pictures of your sets and open its link</small></span></button></li>' +
-      (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog as one file. Open it on another device to merge.</small></span></button></li>') +
+      (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog and your models as one file. Open it on another device to merge.</small></span></button></li>') +
       (window.BrickyardSync && window.BrickyardSync.here ? '<li><button type="button" id="m-sync"><span>Sync with Google Drive<small>The same catalog on every device</small></span></button></li>' : '') +
       '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets, sizes or a model from Claude</small></span></button></li>' +
@@ -1765,7 +1782,7 @@
     $('m-link').onclick = copyAll;
     if ($('m-gone')) $('m-gone').onclick = recentSheet;
     if ($('m-sync')) $('m-sync').onclick = function () { window.BrickyardSync.sheet(); };
-    if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1), 'Backup'); };
+    if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); backup(); };
     if ($('m-csv')) $('m-csv').onclick = function () {
       closeSheet();
       var sets = C.live(DOC).sort(function (a, b) { return C.natural(a.name || '', b.name || ''); });

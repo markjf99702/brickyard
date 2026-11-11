@@ -118,9 +118,29 @@ function addedOn(t) {
   const days = Math.round((day(now) - day(d)) / 864e5);
   return 'Added ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : d.getDate() + ' ' + MONTHS[d.getMonth()] + (d.getFullYear() === now.getFullYear() ? '' : ' ' + d.getFullYear()));
 }
+// The models in a backup file ({ id: { model, added } }, as they're kept here): each one that isn't here already is
+// added, under the day it was added there. One that is here (the same parts) is left as it is. Returns how many
+// were added; countModels is how many the file holds that can be read.
+function eachModel(map, f) {
+  Object.keys(map || {}).forEach(k => { const rec = map[k], m = rec && B.cleanModel(rec.model); if (m) f(rec, m); });
+}
+function countModels(map) { let n = 0; eachModel(map, () => n++); return n; }
+function addModels(map) {
+  const all = saved(), have = {};
+  let n = 0;
+  eachModel(all, (rec, m) => { have[sameParts(m.parts)] = 1; });
+  eachModel(map, (rec, m) => {
+    const key = sameParts(m.parts);
+    if (have[key]) return;
+    have[key] = 1; n++;
+    all['m' + hashOf(key)] = Object.assign({}, rec, { model: m, added: typeof rec.added === 'number' && isFinite(rec.added) ? rec.added : Date.now() });
+  });
+  if (n) write(MODELS, all);
+  return n;
+}
 // For a model file opened from My sets' menu (js/app.js), which saves it here and opens it.
 // inView is for test/e2e.mjs: where the model's bounds fall on the picture.
-window.BrickyardBuild = { saveModel, inView: () => inView() };
+window.BrickyardBuild = { saveModel, addModels, countModels, inView: () => inView() };
 async function modelById(id) {
   if (id.startsWith('x-')) {
     const name = id.slice(2);

@@ -680,7 +680,12 @@
   // What the JSON holds. A model may come without its {"brickyard": 1, "model": …} wrapper (the file the designer
   // skill checks is the model itself), so anything with a list of parts at the top is a model.
   function sortOut(o) {
-    if (o && o.catalog) return { kind: 'catalog', doc: cleanDoc(o) };
+    // A backup also says when it was saved, and carries the models from Claude that were in that browser, under
+    // their own heading beside the catalog. They're handed on as they are, for Build from your box to read.
+    if (o && o.catalog) {
+      var when = typeof o.saved === 'string' ? Date.parse(o.saved) : NaN;
+      return { kind: 'catalog', doc: cleanDoc(o), models: o.models && typeof o.models === 'object' && !Array.isArray(o.models) ? o.models : null, saved: isFinite(when) ? when : 0 };
+    }
     if (o && o.loose && !o.sets && !o.batch) {
       var lot = cleanLot(o.loose);
       if (!lot || lot.del) throw new Error('empty');
