@@ -140,7 +140,7 @@
     return o;
   }
 
-  function emptyDoc() { return { sets: {}, seen: {}, cases: {}, loose: {} }; }
+  function emptyDoc() { return { sets: {}, seen: {}, cases: {}, loose: {}, places: {} }; }
 
   // A lot of loose pieces: one tub, bag or moving box of bricks that aren't a set, counted by a scanner (Stud
   // Finder) or listed by hand. Rows are [LDraw part, LDraw colour, count], with the part's name as a fourth
@@ -202,9 +202,13 @@
     return { sets: sets, lots: lots, pieces: sets.reduce(count, 0) + lots.reduce(count, 0) };
   }
 
-  // A bookcase for the shelf planner: its inside width and depth in cm, and its shelves from the top down, each
-  // with the height clear above it and the sets standing on it, left to right ({id, turn} where turn means the
-  // set stands side-on, its depth facing out).
+  // A bookcase for the shelf planner, as the planner works with it: its inside width and depth in cm, and its
+  // shelves from the top down, each with the height clear above it and the sets standing on it, left to right
+  // ({id, turn} where turn means the set stands side-on, its depth facing out).
+  //
+  // That isn't how it is kept. The catalog keeps a bookcase without its sets (`cases`: name, room, sizes, shelf
+  // heights) and each set's place on its own (`places`, below), so that two devices' changes merge set by set.
+  // `shelves` puts the two together for the planner and `putShelf` takes them apart again.
   function cleanCase(x, id, t) {
     if (!x || typeof x !== 'object') return null;
     var key = s(x.id || id, 40); if (!key) return null;
@@ -229,8 +233,106 @@
     return o;
   }
 
+  // Where one set stands: { id: the set's, t, c: bookcase id, l: shelf (0 is the top one), n: its place along the
+  // shelf, turn }, or { id, t, del: 1 } for a set taken off the shelves. Sets on a shelf stand in the order of
+  // their `n`, lowest at the left (by id when two are the same); a set put between two others gets a number
+  // between theirs, so moving one set changes that set's record only. One record a set, with the time it was last
+  // put somewhere: catalogs merge them the way they merge sets, the later one winning. (A bookcase used to carry
+  // its sets, and merged whole: two devices that each put a set on the same bookcase before they synced lost one
+  // device's.)
+  function cleanPlace(x, id) {
+    if (!x || typeof x !== 'object') return null;
+    var key = s(x.id || id, 40); if (!key) return null;
+    var t = typeof x.t === 'number' && isFinite(x.t) ? x.t : 0;
+    if (x.del) return { id: key, t: t, del: 1 };
+    var c = s(x.c, 40), l = typeof x.l === 'number' && x.l >= 0 && x.l < 20 ? Math.floor(x.l) : -1;
+    if (!c || l < 0) return null;
+    var o = { id: key, t: t, c: c, l: l, n: typeof x.n === 'number' && isFinite(x.n) ? x.n : 0 };
+    if (x.turn === true) o.turn = true;
+    return o;
+  }
+
+  // The bookcases as the planner works with them, by id: each with the sets that stand on it ({ id: bookcase }; a
+  // removed one is its removal, { id, t, del: 1 }). A place on a bookcase or a shelf that isn't there (the bookcase
+  // was removed, or made shorter, on another device) puts its set on no shelf: it waits.
+  function shelves(doc) {
+    var out = {};
+    Object.keys(doc.cases || {}).forEach(function (id) {
+      var c = doc.cases[id];
+      if (c.del) { out[id] = c; return; }
+      var v = { id: c.id, t: c.t, name: c.name, w: c.w, d: c.d, levels: c.levels.map(function (l) { return { h: l.h, sets: [] }; }) };
+      if (c.room) v.room = c.room;
+      out[id] = v;
+    });
+    Object.keys(doc.places || {}).map(function (k) { return doc.places[k]; }).filter(function (p) {
+      return !p.del && out[p.c] && !out[p.c].del && out[p.c].levels[p.l];
+    }).sort(function (a, b) { return a.n - b.n || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }).forEach(function (p) {
+      var o = { id: p.id }; if (p.turn) o.turn = true;
+      out[p.c].levels[p.l].sets.push(o);
+    });
+    return out;
+  }
+
+  // Keeps a bookcase as the planner has it (`v`, with its sets) in catalog `doc`, timed `now`: the bookcase itself
+  // if its name, room, sizes or shelf heights changed (or it had been removed), and the place of each set that
+  // moved. A set that stood on it and isn't in `v` is taken off the shelves, unless it stands on another bookcase
+  // by now. Whatever didn't change keeps its time, so another device's later change to it still wins a merge.
+  function putShelf(doc, v, now) {
+    var c = cleanCase(v); if (!c || c.del) return null;
+    var frame = { id: c.id, t: 0, name: c.name, w: c.w, d: c.d, levels: c.levels.map(function (l) { return { h: l.h }; }) };
+    if (c.room) frame.room = c.room;
+    var old = doc.cases[c.id], here = {};
+    if (!old || old.del || !sameThing(old, frame)) { frame.t = later(old, now); doc.cases[c.id] = frame; }
+    if (!doc.places) doc.places = {};
+    c.levels.forEach(function (l, li) {
+      var ns = alongShelf(l.sets.map(function (p) { var q = doc.places[p.id]; return q && !q.del && q.c === c.id && q.l === li ? q.n : null; }));
+      l.sets.forEach(function (p, i) {
+        var q = doc.places[p.id], r = { id: p.id, t: 0, c: c.id, l: li, n: ns[i] };
+        if (p.turn) r.turn = true;
+        here[p.id] = 1;
+        if (q && sameThing(q, r)) return;
+        r.t = later(q, now); doc.places[p.id] = r;
+      });
+    });
+    Object.keys(doc.places).forEach(function (id) {
+      var q = doc.places[id];
+      if (!q.del && q.c === c.id && !here[id]) doc.places[id] = { id: id, t: later(q, now), del: 1 };
+    });
+    return doc.cases[c.id];
+  }
+  // A number for each set along a shelf, left to right, changing as few as can be: `ns` is the number each has now
+  // (null for a set new to the shelf). The longest run of sets that are already in order keep theirs; each of the
+  // others gets one between its neighbours' (one more than the last at the right-hand end, one less than the first
+  // at the left).
+  function alongShelf(ns) {
+    var best = [], len = [], prev = [], end = -1, i, j;
+    for (i = 0; i < ns.length; i++) {
+      len[i] = ns[i] === null ? 0 : 1; prev[i] = -1;
+      if (ns[i] === null) continue;
+      for (j = 0; j < i; j++) if (ns[j] !== null && ns[j] < ns[i] && len[j] + 1 > len[i]) { len[i] = len[j] + 1; prev[i] = j; }
+      if (end < 0 || len[i] > len[end]) end = i;
+    }
+    var keep = {}; for (i = end; i >= 0; i = prev[i]) keep[i] = 1;
+    var out = ns.map(function (n, k) { return keep[k] ? n : null; });
+    for (i = 0; i < out.length; i++) {
+      if (out[i] !== null) continue;
+      for (j = i; j < out.length && out[j] === null; j++);
+      var lo = i ? out[i - 1] : null, hi = j < out.length ? out[j] : null, m = j - i;
+      for (var k = 0; k < m; k++) {
+        out[i + k] = lo === null && hi === null ? k + 1 : hi === null ? lo + k + 1 : lo === null ? hi - (m - k) : lo + (hi - lo) * (k + 1) / (m + 1);
+      }
+      i = j;
+    }
+    // Halved too often to tell two apart (some fifty sets put into the same gap): number them afresh.
+    for (i = 1; i < out.length; i++) if (!(out[i] > out[i - 1])) return out.map(function (n, k) { return k + 1; });
+    return out;
+  }
+
   // A library file or backup: {"brickyard": 1, "catalog": {"sets": {id: set}, "seen": {batch id: t}, "cases": {id: case},
-  // "loose": {id: lot}}}.
+  // "loose": {id: lot}, "places": {set id: place}}}. A catalog from before places (a backup, a link, the copy an
+  // older Brickyard kept) has each bookcase carrying its sets: they become places, timed as the bookcase was. Where
+  // such a catalog had a set on two bookcases it stays on the one changed last (the later id when they tie), and
+  // within one bookcase on its first shelf, as the planner showed it then.
   function cleanDoc(o) {
     var c = o && (o.catalog || o), doc = emptyDoc();
     var sets = c && c.sets;
@@ -246,9 +348,24 @@
     if (seen && typeof seen === 'object') Object.keys(seen).forEach(function (k) {
       if (typeof seen[k] === 'number' && isFinite(seen[k])) doc.seen[s(k, 80)] = seen[k];
     });
-    var cases = c && c.cases;
+    var places = c && c.places;
+    if (places && typeof places === 'object') Object.keys(places).forEach(function (id) {
+      var y = cleanPlace(places[id], id); if (y) doc.places[y.id] = y;
+    });
+    var cases = c && c.cases, carried = {};
     if (cases && typeof cases === 'object') Object.keys(cases).forEach(function (id) {
-      var y = cleanCase(cases[id], id); if (y) doc.cases[y.id] = y;
+      var y = cleanCase(cases[id], id); if (!y) return;
+      doc.cases[y.id] = y;
+      if (y.del) return;
+      y.levels.forEach(function (l, li) {
+        l.sets.forEach(function (p, i) {
+          var have = carried[p.id] || doc.places[p.id], r = { id: p.id, t: y.t, c: y.id, l: li, n: i + 1 };
+          if (p.turn) r.turn = true;
+          if (have && (have.t > r.t || (have.t === r.t && (!carried[p.id] || have.c >= r.c)))) return;
+          carried[p.id] = doc.places[p.id] = r;
+        });
+        delete l.sets;
+      });
     });
     var loose = c && c.loose;
     if (loose && typeof loose === 'object') Object.keys(loose).forEach(function (id) {
@@ -257,12 +374,12 @@
     return doc;
   }
 
-  // Set by set (and bookcase by bookcase, and lot by lot), the newer change wins; a removal is a change too. Same
-  // answer in any order.
+  // Set by set (and bookcase by bookcase, lot by lot, and each set's place on a shelf by itself), the newer change
+  // wins; a removal is a change too. Same answer in any order.
   function mergeDocs(a, b) {
     var out = emptyDoc();
     [a, b].forEach(function (d) {
-      ['sets', 'cases', 'loose'].forEach(function (kind) {
+      ['sets', 'cases', 'loose', 'places'].forEach(function (kind) {
         Object.keys(d[kind] || {}).forEach(function (id) {
           var x = d[kind][id], y = out[kind][id];
           if (!y || x.t > y.t || (x.t === y.t && JSON.stringify(x) > JSON.stringify(y))) out[kind][id] = x;
@@ -309,8 +426,9 @@
   }
   function foldTwins(here, there, now) {
     var doc = mergeDocs(here, there), folded = [], placed = {}, theirs = {};
-    Object.keys(doc.cases).forEach(function (id) {
-      (doc.cases[id].levels || []).forEach(function (l) { l.sets.forEach(function (y) { placed[y.id] = 1; }); });
+    var on = shelves(doc);
+    Object.keys(on).forEach(function (id) {
+      (on[id].levels || []).forEach(function (l) { l.sets.forEach(function (y) { placed[y.id] = 1; }); });
     });
     var only = function (a, b) {
       return Object.keys(a.sets).sort().map(function (id) { return a.sets[id]; }).filter(function (x) { return !x.del && x.num && !b.sets[x.id]; });
@@ -360,7 +478,11 @@
     each('sets', function (a, b, was, is) {
       if (!was) out.added.push(b); else if (!is) out.removed.push(a); else if (!sameThing(a, b)) out.changed.push(b);
     });
-    each('cases', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) out.cases++; });
+    // A bookcase has changed if it has itself, or a set was put on it, moved along it or taken off it.
+    var touched = {};
+    each('cases', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) touched[b.id] = 1; });
+    each('places', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) { if (was) touched[a.c] = 1; if (is) touched[b.c] = 1; } });
+    out.cases = Object.keys(touched).filter(function (id) { var a = (before.cases || {})[id], b = (after.cases || {})[id]; return (a && !a.del) || (b && !b.del); }).length;
     each('loose', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) out.lots++; });
     return out;
   }
@@ -385,9 +507,13 @@
   // Returns { doc, n: { back: sets that go back to how the file has them, gone: sets here that the file doesn't
   // have, cases, lots: bookcases and lots that change or go }, went: the sets removed }.
   function restoreDoc(here, file, now) {
-    var doc = emptyDoc(), n = { back: 0, gone: 0, cases: 0, lots: 0 }, went = [];
-    ['sets', 'cases', 'loose'].forEach(function (kind) {
-      var ids = {}, tally = function (k) { if (kind === 'sets') n[k]++; else n[kind === 'cases' ? 'cases' : 'lots']++; };
+    var doc = emptyDoc(), n = { back: 0, gone: 0, cases: 0, lots: 0 }, went = [], touched = {};
+    ['sets', 'cases', 'loose', 'places'].forEach(function (kind) {
+      // A set's place that changes is a change to the bookcase it stands on, there or here.
+      var ids = {}, tally = function (k, a, b) {
+        if (kind === 'sets') n[k]++; else if (kind === 'loose') n.lots++;
+        else [a, b].forEach(function (x) { if (x && !x.del) touched[kind === 'cases' ? x.id : x.c] = 1; });
+      };
       Object.keys(here[kind] || {}).concat(Object.keys(file[kind] || {})).forEach(function (id) { ids[id] = 1; });
       Object.keys(ids).forEach(function (id) {
         var a = (here[kind] || {})[id], b = (file[kind] || {})[id], was = !!a && !a.del, want = !!b && !b.del;
@@ -395,14 +521,15 @@
           if (!was) { doc[kind][id] = a && b ? (b.t > a.t ? b : a) : a || b; return; } // removed in both: the removal stays
           doc[kind][id] = { id: id, t: later(a, now), del: 1 };
           if (kind === 'sets') went.push(a);
-          tally('gone'); return;
+          tally('gone', a, b); return;
         }
         if (was && sameThing(a, b)) { doc[kind][id] = a; return; }
         var y = JSON.parse(JSON.stringify(b)); y.t = later(a, now);
-        doc[kind][id] = y; tally('back');
+        doc[kind][id] = y; tally('back', a, b);
       });
     });
     [here, file].forEach(function (d) { Object.keys(d.seen || {}).forEach(function (k) { doc.seen[k] = Math.max(doc.seen[k] || 0, d.seen[k]); }); });
+    n.cases = Object.keys(touched).filter(function (id) { return [here, file].some(function (d) { var c = (d.cases || {})[id]; return c && !c.del; }); }).length;
     return { doc: doc, n: n, went: went };
   }
 
@@ -780,7 +907,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanPlace: cleanPlace, shelves: shelves, putShelf: putShelf, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, missingList: missingList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };

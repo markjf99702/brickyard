@@ -149,27 +149,6 @@
     return out;
   }
 
-  // A set stands in one place. Two devices can each save a bookcase with the same set on it (one moved it, the
-  // other hadn't heard), and merging keeps both bookcases whole. The set stays on the bookcase changed last (the
-  // later id when they tie) and, within one bookcase, on its first shelf. Bookcases that lose nothing come back
-  // as they are; the others as copies.
-  function dedupe(cases) {
-    var keep = {}, later = function (a, b) { return (a.t || 0) > (b.t || 0) || ((a.t || 0) === (b.t || 0) && String(a.id) > String(b.id)); };
-    cases.forEach(function (c) {
-      c.levels.forEach(function (l) { l.sets.forEach(function (p) { if (!keep[p.id] || later(c, keep[p.id])) keep[p.id] = c; }); });
-    });
-    return cases.map(function (c) {
-      var seen = {}, extra = false;
-      c.levels.forEach(function (l) { l.sets.forEach(function (p) { if (keep[p.id] !== c || seen[p.id]) extra = true; seen[p.id] = 1; }); });
-      if (!extra) return c;
-      var out = JSON.parse(JSON.stringify(c)); seen = {};
-      out.levels.forEach(function (l) {
-        l.sets = l.sets.filter(function (p) { if (keep[p.id] !== c || seen[p.id]) return false; seen[p.id] = 1; return true; });
-      });
-      return out;
-    });
-  }
-
   // Put every waiting set somewhere it fits, keeping sets already on shelves where they are. Returns new bookcases
   // (the old ones aren't changed) and the sets that didn't fit, with why. opts.themes is the page's "Keep themes
   // together".
@@ -363,7 +342,7 @@
     });
   }
 
-  var api = { GAP: GAP, CLEAR: CLEAR, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort, dedupe: dedupe,
+  var api = { GAP: GAP, CLEAR: CLEAR, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort,
     fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizeDoubt: sizeDoubt, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.ShelfCore = api;
 })(this);

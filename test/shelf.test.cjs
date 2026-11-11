@@ -222,25 +222,77 @@ eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10
   eq(f2.cases[0].levels[0].sets.map(p => p.id), ['bare', 'gone'], 'Fit leaves a taken-apart set on its shelf, and the room it takes');
   eq(f2.left.map(x => x.set.id), ['next'], 'so the next set has no room');
 }
-// Two devices: the phone moves X from k1 to k2 (both saved at t 11); the laptop, not yet synced, adds Y to k1
-// (t 12). Merged, X stood on both. It stays on the bookcase changed last, in either order, and a tie goes to the
-// later id.
+// Each set's place on a shelf is kept by itself, with the time it was last put there, and catalogs merge set by
+// set. (A bookcase used to carry its sets and merge whole: of two devices that each changed the same bookcase
+// before they synced, one device's changes to its shelves were dropped.)
 {
-  const mk = (id, t, on) => ({ id, t, name: id, w: 76, d: 26, levels: [{ h: 32, sets: on.map(i => ({ id: i })) }, { h: 32, sets: [] }] });
-  const phone = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 11, []), k2: mk('k2', 11, ['x']) } } });
-  const laptop = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 12, ['x', 'y']), k2: mk('k2', 5, []) } } });
-  const on = list => list.map(c => c.id + ':' + c.levels.map(l => l.sets.map(p => p.id).join('+')).join('/')).join(' ');
-  const merged = Object.values(C.mergeDocs(phone, laptop).cases);
-  eq(on(merged), 'k1:x+y/ k2:x/', 'merged, a set stands on two bookcases');
-  const once = S.dedupe(merged);
-  eq(on(once), 'k1:x+y/ k2:/', 'it stays on the bookcase changed last');
-  eq(on(S.dedupe(merged.slice().reverse()).reverse()), 'k1:x+y/ k2:/', 'whatever order the bookcases come in');
-  eq(on(merged), 'k1:x+y/ k2:x/', 'the bookcases given are not changed');
-  check(once[0] === merged[0] && once[1] !== merged[1], 'a bookcase that loses nothing comes back as it is');
-  eq(on(S.dedupe([mk('k1', 7, ['x']), mk('k2', 7, ['x', 'z'])])), 'k1:/ k2:x+z/', 'a tie goes to the later id');
-  const twice = mk('k3', 1, ['x']); twice.levels[1].sets.push({ id: 'x', turn: true });
-  eq(on(S.dedupe([twice])), 'k3:x/', 'and on one bookcase, to its first shelf');
-  eq(Object.keys(S.placements(once)), ['x', 'y'], 'each set is in one place');
+  const on = doc => Object.values(C.shelves(doc)).map(c => c.del ? c.id + ' removed' : c.name + ':' + c.levels.map(l => l.sets.map(p => p.id + (p.turn ? '*' : '')).join('+')).join('/')).join(' ');
+  const mk = (id, t, sets, more) => ({ id, t, name: id, w: 76, d: 26, levels: [{ h: 32, sets: sets.map(i => ({ id: i })) }, { h: 32, sets: more || [] }] });
+  const copy = d => JSON.parse(JSON.stringify(d)), view = (d, id) => copy(C.shelves(d)[id]);
+  const start = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 1, ['a', 'z']), k2: mk('k2', 1, []) } } });
+  eq([on(start), Object.keys(start.cases.k1.levels[0]), start.places.a], ['k1:a+z/ k2:/', ['h'], { id: 'a', t: 1, c: 'k1', l: 0, n: 1 }], 'a catalog from before (a backup, a link) opens with its sets where they stood');
+  eq(on(C.cleanDoc({ catalog: start })), on(start), 'and so does one kept the new way');
+
+  // The phone stands X on k1; the laptop, not yet synced, stands Y on it and renames it.
+  const phone = copy(start), laptop = copy(start);
+  let v = view(phone, 'k1'); v.levels[0].sets.push({ id: 'x' }); C.putShelf(phone, v, 11);
+  v = view(laptop, 'k1'); v.levels[1].sets.push({ id: 'y', turn: true }); v.name = 'Hall'; C.putShelf(laptop, v, 12);
+  eq([phone.cases.k1.t, phone.places.a.t, phone.places.x.t, laptop.cases.k1.t], [1, 1, 11, 12], 'only what changed is timed afresh: the set that was put there, and the bookcase when its name changes');
+  let both = C.mergeDocs(phone, laptop);
+  eq(on(both), 'Hall:a+z+x/y* k2:/', 'two devices each stand a set on the same bookcase: both are there after a sync, and the new name');
+  check(C.sameDoc(both, C.mergeDocs(laptop, phone)), 'whichever way round they merge');
+
+  // The laptop takes Z off (t 20); the phone, which hasn't heard, still has it. Then the phone moves A to k2 (t 25)
+  // while the laptop moves it along its shelf (t 22).
+  v = view(laptop, 'k1'); v.levels[0].sets = v.levels[0].sets.filter(q => q.id !== 'z'); C.putShelf(laptop, v, 20);
+  eq(laptop.places.z, { id: 'z', t: 20, del: 1 }, 'a set taken off is kept as taken off');
+  both = C.mergeDocs(phone, laptop);
+  eq(on(both), 'Hall:a+x/y* k2:/', 'a set taken off stays off after a sync');
+  eq(on(C.mergeDocs(both, start)), on(both), 'and a copy from before doesn’t put it back');
+  const v2 = view(phone, 'k2'); v2.levels[0].sets.push({ id: 'a' }); C.putShelf(phone, v2, 25);
+  v = view(phone, 'k1'); v.levels[0].sets = v.levels[0].sets.filter(q => q.id !== 'a'); C.putShelf(phone, v, 25);
+  eq([on(phone), phone.places.a.c], ['k1:z+x/ k2:a/', 'k2'], 'a set moved to another bookcase isn’t taken off by saving the one it left');
+  v = view(laptop, 'k1'); v.levels[0].sets.push({ id: 'w' }); v.levels[0].sets.reverse(); C.putShelf(laptop, v, 22);
+  eq(on(C.mergeDocs(phone, laptop)), 'Hall:w+x/y* k2:a/', 'a set stays where it was last put');
+  eq(on(C.mergeDocs(C.mergeDocs(start, laptop), phone)), on(C.mergeDocs(phone, C.mergeDocs(laptop, start))), 'in any order, three ways');
+
+  // Moving one set along a shelf changes that set's record alone.
+  const d = C.cleanDoc({ catalog: { sets: {}, cases: { k: mk('k', 1, ['a', 'b', 'c', 'd']) } } });
+  v = view(d, 'k'); v.levels[0].sets = ['a', 'c', 'b', 'd'].map(id => ({ id })); C.putShelf(d, v, 30);
+  eq([on(d), Object.values(d.places).filter(q => q.t === 30).length, d.cases.k.t], ['k:a+c+b+d/', 1, 1], 'moving a set left changes one record');
+  v = view(d, 'k'); v.levels[0].sets = ['d', 'a', 'c', 'b'].map(id => ({ id })); C.putShelf(d, v, 31);
+  v = view(d, 'k'); v.levels[0].sets.push({ id: 'e' }); C.putShelf(d, v, 32);
+  eq([on(d), d.places.d.t, d.places.e.t, d.places.a.t], ['k:d+a+c+b+e/', 31, 32, 1], 'to the far end, and a new one after the last');
+  for (let i = 0; i < 80; i++) { v = view(d, 'k'); const s0 = v.levels[0].sets; s0.splice(1, 0, s0.pop()); C.putShelf(d, v, 40 + i); }
+  v = view(d, 'k'); eq(v.levels[0].sets.length, 5, 'eighty moves into the same gap leave five sets, in the order asked');
+  const before = copy(d); C.putShelf(d, view(d, 'k'), 999);
+  eq(d, before, 'saving a bookcase as it is changes nothing');
+
+  // A bookcase removed and put back has its sets again; a place on a shelf that has gone waits.
+  d.cases.k = { id: 'k', t: 200, del: 1 };
+  eq(on(d), 'k removed', 'a removed bookcase');
+  C.putShelf(d, before.cases.k && view(before, 'k'), 150);
+  eq([C.shelves(d).k.levels[0].sets.length, d.cases.k.t], [5, 201], 'comes back with its sets, timed after its removal');
+  v = view(d, 'k'); v.levels = [v.levels[1]]; C.putShelf(d, v, 300);
+  eq([on(d), Object.values(d.places).every(q => q.del)], ['k:', true], 'the sets on a shelf that is removed are off the shelves');
+
+  // Catalogs from before, where a set could stand on two bookcases: on the one changed last, the later id on a tie,
+  // and its first shelf.
+  const old = cases => on(C.cleanDoc({ catalog: { sets: {}, cases } }));
+  eq(old({ k1: mk('k1', 12, ['x', 'y']), k2: mk('k2', 11, ['x']) }), 'k1:x+y/ k2:/', 'an older catalog with a set on two bookcases: it stays on the one changed last');
+  eq(old({ k2: mk('k2', 7, ['x', 'z']), k1: mk('k1', 7, ['x']) }), 'k2:x+z/ k1:/', 'a tie goes to the later id');
+  eq(old({ k1: mk('k1', 7, ['x']), k2: mk('k2', 7, ['x', 'z']) }), 'k1:/ k2:x+z/', 'whichever comes first');
+  eq(old({ k3: mk('k3', 1, ['x'], [{ id: 'x', turn: true }]) }), 'k3:x/', 'and on one bookcase, to its first shelf');
+  const mixed = C.cleanDoc({ catalog: { sets: {}, cases: { k1: mk('k1', 9, ['x']), k2: mk('k2', 9, []) }, places: { x: { id: 'x', t: 9, c: 'k2', l: 1, n: 1 } } } });
+  eq(on(mixed), 'k1:/ k2:/x', 'a place kept on its own wins over one a bookcase carries from the same moment');
+
+  // What a sync says, and what going back to a backup counts: a set's place is a change to its bookcase.
+  const here = copy(start), there = copy(start);
+  v = view(there, 'k1'); v.levels[0].sets.reverse(); C.putShelf(there, v, 50);
+  v = view(there, 'k2'); v.levels[0].sets.push({ id: 'q' }); C.putShelf(there, v, 50);
+  eq(C.arrivedText(C.arrived(here, C.mergeDocs(here, there))), 'From your other devices: 2 bookcases changed', 'sets moved on two bookcases on another device');
+  const r = C.restoreDoc(there, here, 1000);
+  eq([r.n.cases, on(r.doc), on(C.mergeDocs(r.doc, there))], [2, on(here), on(here)], 'going back to a backup puts each set where the file has it, and that wins a merge');
 }
 
 // Sizes from Claude, and the cataloger script makes the same.

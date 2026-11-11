@@ -43,6 +43,8 @@
   // removal. When catalogs merge the later change wins, so the removal doesn't take it away again, here or on
   // another device.
   function putBack(kind, x) {
+    // A bookcase goes back with the sets it had (C.putShelf), less any that stand somewhere else by now.
+    if (kind === 'cases') { C.putShelf(DOC, x, Date.now()); return; }
     var gone = DOC[kind][x.id]; x.t = Math.max(Date.now(), gone ? gone.t + 1 : 0); DOC[kind][x.id] = x;
     if (kind === 'sets') forget(x.id);
   }
@@ -385,9 +387,9 @@
         });
       });
     }
-    var cases = Object.keys(DOC.cases).map(function (k) { return DOC.cases[k]; }).filter(function (c) { return !c.del; });
-    // As the planner counts them: each set once, and only those it can draw (a set on a shelf with no size isn't).
-    var S = window.ShelfCore, on = S.sort(C.live(DOC), S.dedupe(cases)).placed.filter(S.hasSize).length;
+    var held = C.shelves(DOC), cases = Object.keys(held).map(function (k) { return held[k]; }).filter(function (c) { return !c.del; });
+    // As the planner counts them: only the sets it can draw (a set on a shelf with no size isn't).
+    var S = window.ShelfCore, sorted = S.sort(C.live(DOC), cases), on = sorted.placed.filter(S.hasSize).length;
     $('home-shelf-stat').textContent = cases.length ? plural(cases.length, 'bookcase') + ' · ' + plural(on, 'set') + ' on shelves' : 'Start with your bookcases';
   }
 
@@ -1919,7 +1921,7 @@
   function syncOn() { var d = read('brickyard.drive'); return !!(d && d.on); }
   function backupDue() {
     var last = lastBackup(), n = 0, first = Infinity;
-    ['sets', 'cases', 'loose'].forEach(function (kind) {
+    ['sets', 'cases', 'loose', 'places'].forEach(function (kind) {
       Object.keys(DOC[kind]).forEach(function (id) {
         var x = DOC[kind][id];
         if (x.t > last && (last || !x.del)) { n++; first = Math.min(first, x.t); }
@@ -2059,7 +2061,8 @@
     doc: function () { return DOC; },
     // For the shelf planner (js/shelves.js) and Build from your box (js/build.js), which adds the brick box.
     putSet: function (x) { putSet(x); save(); },
-    putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
+    // A bookcase as the planner has it, sets and all: kept as the bookcase and each set's place (C.putShelf).
+    putCase: function (c) { C.putShelf(DOC, c, Date.now()); save(); },
     removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     // A lot's name or moving box changed (js/build.js, lotSheet): kept in the catalog, so sync carries it.

@@ -744,7 +744,7 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     const file = { brickyard: 1, saved: '2026-11-09T10:00:00.000Z', catalog: { sets: { a: { id: 'a', t: 1, name: 'Orchid' } } }, models: { m1: { model: { name: 'Boat', parts: [['3001', 4, 0, 0, 0, 0, 1]] }, added: 5 } } };
     const r = await C.parseIncoming(JSON.stringify(file));
     eq([r.kind, C.live(r.doc).map(x => x.name), r.models, r.saved], ['catalog', ['Orchid'], file.models, Date.parse(file.saved)], 'a backup with models is a catalog, with its models and the time it was saved');
-    eq(Object.keys(C.cleanDoc(file)), ['sets', 'seen', 'cases', 'loose'], 'and the catalog read from it has no models in it');
+    eq(Object.keys(C.cleanDoc(file)), ['sets', 'seen', 'cases', 'loose', 'places'], 'and the catalog read from it has no models in it');
     const old = await C.parseIncoming(JSON.stringify({ brickyard: 1, catalog: file.catalog }));
     eq([old.kind, old.models, old.saved], ['catalog', null, 0], 'a backup from before has neither');
     eq((await C.parseIncoming(JSON.stringify({ brickyard: 1, saved: 12, models: [1], catalog: file.catalog }))).models, null, 'models that are not a table of them are left out');

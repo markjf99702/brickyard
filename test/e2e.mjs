@@ -296,7 +296,7 @@ await page.click('[data-close]');
   await p.goto(link);
   await p.waitForSelector('#rv-add');
   assert.deepEqual([(await rows()).map(r => r[0]), await p.textContent('.sheet .flag')], [[true, false, true, false], 'You opened this link before. Sets you already have are unticked.']);
-  assert.deepEqual(Object.keys(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog).sort(), ['cases', 'loose', 'seen', 'sets'], 'the catalog holds nothing new');
+  assert.deepEqual(Object.keys(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog).sort(), ['cases', 'loose', 'places', 'seen', 'sets'], 'the catalog holds nothing new');
   await c.close();
 }
 
@@ -956,7 +956,7 @@ await page.click('.chip[data-f="all"]');
   await p.click('[data-close]');
   await p.waitForTimeout(700);
   await p.click('[data-close]');
-  assert.deepEqual([await sheets(), await p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.h))], [0, [33]], 'and is left as it was once discarded');
+  assert.deepEqual([await sheets(), await p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels.map(l => l.h))], [0, [33]], 'and is left as it was once discarded');
   await p.click('[data-act="add-case"]');
   await p.click('#k-preset [data-k="2"]');
   await outside();
@@ -1012,7 +1012,7 @@ assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 're
   assert.deepEqual([await p.locator('.case').count(), await p.locator('.sv-set').count()], [1, 0]);
   await p.click('.toast button');
   assert.deepEqual([await toastSays(), await p.locator('.case').count(), await p.locator('.sv-set').count()], [['Hall Billy is back', ''], 2, 1], 'Undo puts the bookcase back with the set on it');
-  assert.deepEqual((await kept('cases')).k.levels, [{ h: 40, sets: [{ id: 't' }] }, { h: 32, sets: [] }]);
+  assert.deepEqual((await p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()))).k.levels, [{ h: 40, sets: [{ id: 't' }] }, { h: 32, sets: [] }]);
   await p.click('[data-case="e"]');
   await twice('#k-del');
   assert.deepEqual(await toastSays(), ['Removed Empty Kallax', 'Undo'], 'an empty bookcase has no sets to speak of');
@@ -1991,7 +1991,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
   const { c, p } = await withSets({ sets: { a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), d: set('d', 'Set D', 20), w: set('w', 'Too wide', 90) },
     cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
-  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const on = () => p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
   const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
   await p.goto(base + '#shelves');
   await p.tap('[data-act="fill"]');
@@ -2049,7 +2049,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
   const { c, p } = await withSets({ sets: { a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), d: set('d', 'Set D', 20), w: set('w', 'Too wide', 90) },
     cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
-  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const on = () => p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
   const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
   const undo = async () => { const b = await p.locator('.toast button').boundingBox(); await p.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); };
   await p.goto(base + '#shelves');
@@ -2202,10 +2202,10 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   q.on('pageerror', e => problems.push(e.message));
   await p.goto(base + '#shelves');
   await q.goto(base + '#shelves');
-  const on = pg => pg.evaluate(() => { const d = window.brickyard.doc().cases; return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
+  const on = pg => pg.evaluate(() => { const d = window.BrickCore.shelves(window.brickyard.doc()); return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
   const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? null : t.textContent; });
   const closed = pg => pg.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
-  const sameHere = async () => { const there = await on(q); await p.waitForFunction(there => { const d = window.brickyard.doc().cases; return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; ') === there; }, there); };
+  const sameHere = async () => { const there = await on(q); await p.waitForFunction(there => { const d = window.BrickCore.shelves(window.brickyard.doc()); return Object.keys(d).sort().map(k => d[k].del ? k + ' removed' : d[k].name + ': ' + d[k].levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; ') === there; }, there); };
   // A bookcase's Edit sheet is open here; the other tab stands a set on that bookcase. Save keeps it there.
   await p.click('[data-case="k"]');
   await p.waitForSelector('#k-save');
@@ -2291,7 +2291,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   // The message's words (a file's name is kept in one piece by joiners after its dashes, taken out here) and its button.
   const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? [] : [t.querySelector('span').textContent.replace(/⁠/g, ''), t.querySelector('button') ? t.querySelector('button').textContent : '']; });
   const closed = () => p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
-  const on = () => p.evaluate(() => { const d = window.brickyard.doc().cases; return Object.values(d).filter(k => !k.del).sort((x, y) => x.name.localeCompare(y.name)).map(k => k.name + ': ' + k.levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
+  const on = () => p.evaluate(() => { const d = window.BrickCore.shelves(window.brickyard.doc()); return Object.values(d).filter(k => !k.del).sort((x, y) => x.name.localeCompare(y.name)).map(k => k.name + ': ' + k.levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
   await p.goto(base + '#catalog');
   for (const [id, what, name] of [['m-backup', 'Backup', /^Brickyard \d{4}-\d\d-\d\d\.json$/], ['m-csv', 'Spreadsheet', /^Brickyard sets \d{4}-\d\d-\d\d\.csv$/]]) {
     await p.click('#menu-btn');
@@ -2361,7 +2361,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
   const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built' }, a: set('a', 'Set A', 20) }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }] } } });
   const words = sel => p.$eval(sel, b => (b.querySelector('span') ? b.querySelector('span').firstChild : b).textContent);
-  const kept = () => p.evaluate(() => { const d = window.brickyard.doc(); return [Object.values(d.sets).filter(x => !x.del).length, Object.values(d.cases).filter(x => !x.del).length, d.cases.k.levels[0].sets.length, Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}')).length].join(); });
+  const kept = () => p.evaluate(() => { const d = window.brickyard.doc(); return [Object.values(d.sets).filter(x => !x.del).length, Object.values(d.cases).filter(x => !x.del).length, window.BrickCore.shelves(d).k.levels[0].sets.length, Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}')).length].join(); });
   // One tap, then the focus goes to `away`: the button's own words are back, and a tap is a first tap again.
   const calms = async (sel, own, asks, away) => {
     await p.click(sel);
@@ -4111,7 +4111,7 @@ assert.equal(await page.locator('.sv-set').count(), builtIds.length - 1, 'a set 
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the shelf planner scrolls sideways on a phone');
 await page.click('[data-case]');
 await page.dblclick('#k-del');
-assert.equal(await page.evaluate(() => Object.values(window.brickyard.doc().cases).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
+assert.equal(await page.evaluate(() => Object.values(window.BrickCore.shelves(window.brickyard.doc())).filter(c => !c.del).length), 1, 'a double tap does not remove a bookcase');
 await page.click('[data-close]');
 
 // Put these places in My sets writes over what My sets said, so its message has Undo, and the card says first how
@@ -4180,7 +4180,7 @@ await page.click('[data-close]');
   const { c, p } = await withSets({ sets: { x: set('x', 'Bonsai Tree'), y: set('y', 'Orchid') },
     cases: { k1: { id: 'k1', t: 12, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'x' }, { id: 'y' }] }, { h: 32, sets: [] }] },
       k2: { id: 'k2', t: 11, name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [{ id: 'x' }] }] } } });
-  const saved = () => p.evaluate(() => Object.values(window.brickyard.doc().cases).map(k => k.id + ':' + k.levels.map(l => l.sets.map(q => q.id).join('+')).join('/')).sort().join(' '));
+  const saved = () => p.evaluate(() => Object.values(window.BrickCore.shelves(window.brickyard.doc())).map(k => k.id + ':' + k.levels.map(l => l.sets.map(q => q.id).join('+')).join('/')).sort().join(' '));
   await p.goto(base + '#shelves');
   await p.waitForSelector('.case');
   assert.deepEqual([await p.locator('.sv-set[data-set="x"]').count(), await p.locator('.sv-set').count(), await p.textContent('#shelves-body .sumline')], [1, 2, 'All 2 sets are on shelves'], 'a set on two bookcases is drawn once');
@@ -4205,7 +4205,7 @@ await page.click('[data-close]');
   const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree', 20, 15, 18), b: set('b', 'Typewriter', 27, 26, 11), g: set('g', 'London Bus', 34, 9, 18) },
     cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 30, sets: [{ id: 'a' }] }, { h: 28, sets: [{ id: 'b' }, { id: 'g' }] }] } } });
   const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
-  const kept = () => p.evaluate(() => { const k = window.brickyard.doc().cases.k; return [k.w, k.d, k.levels.map(l => l.h + ':' + l.sets.map(q => q.id).join('+')).join(' ')]; });
+  const kept = () => p.evaluate(() => { const k = window.BrickCore.shelves(window.brickyard.doc()).k; return [k.w, k.d, k.levels.map(l => l.h + ':' + l.sets.map(q => q.id).join('+')).join(' ')]; });
   const rows = () => p.evaluate(() => [...document.querySelectorAll('#k-levels li')].map(li => [li.querySelector('input').value, li.querySelector('.on').textContent, li.querySelector('input').getAttribute('aria-label'), li.querySelector('button').getAttribute('aria-label')].join(' | ')));
   await p.goto(base + '#shelves');
   await p.click('[data-case="k"]');
@@ -4272,7 +4272,7 @@ await page.click('[data-close]');
   const rows = () => p.evaluate(() => [...document.querySelectorAll('#shelves-body .list .item')].map(e => e.querySelector('.t').textContent + ': ' + ((e.querySelector('.m.warn') || {}).textContent || '')));
   assert.deepEqual([await p.textContent('[data-act="fill"]'), await rows()], ['Fit the sets onto the shelves', ['Low: ', 'Snug: 32 cm tall: needs 33 cm of space', 'Snug too: 31.5 cm tall: needs 32.5 cm of space']], 'a set with no room above it says what it needs');
   await p.click('[data-act="fill"]');
-  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().cases.k.levels[0].sets.map(q => q.id)), await p.textContent('#need-line'), await p.locator('[data-act="fill"]').count()],
+  assert.deepEqual([await p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels[0].sets.map(q => q.id)), await p.textContent('#need-line'), await p.locator('[data-act="fill"]').count()],
     [['l'], '2 need a shelf 1 cm taller than they are.', 0], 'Fit leaves them, and one line adds them up');
   await p.click('#shelves-body .list .item >> nth=0');
   await p.waitForSelector('#z-where');
@@ -4280,7 +4280,7 @@ await page.click('[data-close]');
     ['32 cm tall: needs 33 cm of space. Fit keeps 1 cm clear above a set; you can still choose a shelf here.', false], 'its sheet says it can still be put there by hand');
   await p.selectOption('#z-where', 'k:0');
   await p.click('#z-save');
-  assert.deepEqual(await p.evaluate(() => window.brickyard.doc().cases.k.levels[0].sets.map(q => q.id)), ['l', 'a'], 'and by hand it goes on a shelf exactly its height');
+  assert.deepEqual(await p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels[0].sets.map(q => q.id)), ['l', 'a'], 'and by hand it goes on a shelf exactly its height');
   await c.close();
 }
 
@@ -4291,7 +4291,7 @@ await page.click('[data-close]');
   const set = (id, name, theme, w, h) => ({ id, t: 1, name, theme, state: 'built', size: { w, d: 20, h } });
   const sets = { f: set('f', 'Falcon', 'Star Wars', 40, 20), x: set('x', 'X-wing', 'Star Wars', 20, 20), b: set('b', 'Bonsai', 'Botanical', 50, 20) };
   const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'f' }] }, { h: 30, sets: [{ id: 'b' }] }] } } });
-  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const on = () => p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
   await p.goto(base + '#shelves');
   await p.waitForSelector('.case');
   assert.deepEqual([await p.isChecked('#fit-themes'), await p.textContent('#fit-themes-row')], [false, ' Keep themes together'], 'the choice is under Fit, not ticked');
@@ -4318,7 +4318,7 @@ await page.click('[data-close]');
   for (let i = 0; i < 6; i++) sets['s' + i] = set('s' + i, 'Set ' + i, 30, 20, 20);
   const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }, { h: 32, sets: [] }] } } });
   const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? [t.querySelector('span').textContent, (t.querySelector('button') || {}).textContent || ''] : null; });
-  const on = () => p.evaluate(() => window.brickyard.doc().cases.k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
+  const on = () => p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels.map(l => l.sets.map(q => q.id).join('+')).join(' / '));
   const waiting = () => p.evaluate(() => ({ sum: document.querySelector('#shelves-body .sumline').textContent, line: (document.getElementById('need-line') || {}).textContent || '', rows: [...document.querySelectorAll('#shelves-body .list .item .t')].map(e => e.textContent).join(', ') }));
   await p.goto(base + '#shelves');
   await p.waitForSelector('.case');
@@ -4412,13 +4412,13 @@ await page.click('[data-close]');
   const { c, p } = await withSets({ sets: { lm: set('lm', 'Lamborghini Sián', 60, 25, 13, { num: '42115-1', theme: 'Technic' }), bs: set('bs', 'Medieval Blacksmith', 27, 21, 27), lb: set('lb', 'London Bus', 34, 9, 18),
     bq: set('bq', 'Flower Bouquet', 26, 13, 20), ge: set('ge', 'Galaxy Explorer', 52, 32, 13) },
     cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'lm' }] }, { h: 32, sets: [{ id: 'bs' }, { id: 'lb' }, { id: 'bq', turn: true }] }] } } });
-  const row = () => p.evaluate(() => window.brickyard.doc().cases.k.levels[1].sets.map(q => q.id + (q.turn ? '*' : '')).join(' '));
+  const row = () => p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels[1].sets.map(q => q.id + (q.turn ? '*' : '')).join(' '));
   await p.goto(base + '#shelves');
   await p.click('.sv-set[data-set="lm"]');
   assert.deepEqual([await p.textContent('#z-which'), await p.textContent('#z-where option:checked'), await p.textContent('#z-msg')], ['42115 · Technic', 'Billy · shelf 1 (32 cm)', ''], 'the sheet says which set it is, and which bookcase its shelf is on');
   await p.check('#z-turn');
   await p.click('#z-save');
-  assert.deepEqual([await p.locator('.sheet').count(), await p.textContent('#z-msg'), await p.evaluate(() => !!window.brickyard.doc().cases.k.levels[0].sets[0].turn)], [1, 'Side-on it’s 60 cm deep; the shelf is 26.', false], 'a tick that can’t be honoured keeps the sheet open and says why');
+  assert.deepEqual([await p.locator('.sheet').count(), await p.textContent('#z-msg'), await p.evaluate(() => !!window.BrickCore.shelves(window.brickyard.doc()).k.levels[0].sets[0].turn)], [1, 'Side-on it’s 60 cm deep; the shelf is 26.', false], 'a tick that can’t be honoured keeps the sheet open and says why');
   await discard(p);
   // Facing out needs more room than the shelf has left.
   await p.click('.sv-set[data-set="bq"]');
@@ -4458,7 +4458,7 @@ await page.click('[data-close]');
   assert.deepEqual(await sheet(), ['', '', '', ''], 'My own starts with one empty shelf');
   await p.click('#k-preset [data-k="0"]');
   await p.click('#k-save');
-  assert.deepEqual(await p.evaluate(() => Object.values(window.brickyard.doc().cases).map(k => [k.name, k.w, k.d, k.levels.map(l => l.h).join(' ')])), [['Billy', 76, 26, '30 30 30 30 30 30']]);
+  assert.deepEqual(await p.evaluate(() => Object.values(window.BrickCore.shelves(window.brickyard.doc())).map(k => [k.name, k.w, k.d, k.levels.map(l => l.h).join(' ')])), [['Billy', 76, 26, '30 30 30 30 30 30']]);
   await c.close();
 }
 

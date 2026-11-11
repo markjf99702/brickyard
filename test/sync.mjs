@@ -121,6 +121,34 @@ await syncNow(A.page);
 assert.deepEqual(await names(A.page), ['Bonsai Tree', 'Typewriter'], 'a set removed on one device is gone on the other');
 assert.deepEqual(inDrive(), ['Bonsai Tree', 'Typewriter'], 'and in Drive');
 
+// Bookcases travel set by set. Each device stands a set on the same bookcase before it has heard from the other:
+// both sets are there afterwards. (The bookcase went whole, the later one winning, and one device's set came off.)
+// Then one device takes a set off while the other renames the bookcase: the set stays off, and the name is kept.
+{
+  const shelf = page => page.evaluate(() => Object.values(window.BrickCore.shelves(window.brickyard.doc())).filter(c => !c.del).map(c => c.name + ': ' + c.levels.map(l => l.sets.map(s => s.id).join('+')).join(' / ')).join('; '));
+  const change = (page, how) => page.evaluate(how => { const c = JSON.parse(JSON.stringify(window.BrickCore.shelves(window.brickyard.doc()).k)); new Function('c', how)(c); window.brickyard.putCase(c); }, how);
+  await A.page.evaluate(() => window.brickyard.putCase({ id: 'k', name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }, { h: 30, sets: [] }] }));
+  await A.page.waitForTimeout(2600); await synced(A.page);
+  await syncNow(B.page);
+  assert.equal(await shelf(B.page), 'Billy:  / ', 'a bookcase added on one device arrives on the other');
+  await change(A.page, 'c.levels[0].sets.push({ id: "a1" })');
+  await change(B.page, 'c.levels[0].sets.push({ id: "a2" })');
+  await A.page.waitForTimeout(14000); await synced(A.page); await synced(B.page);
+  await syncNow(A.page);
+  assert.deepEqual([await shelf(A.page), await shelf(B.page)], ['Billy: a1+a2 / ', 'Billy: a1+a2 / '], 'two devices each stand a set on the same bookcase: both sets are on it on both devices');
+  await change(B.page, 'c.levels[0].sets = c.levels[0].sets.filter(function (p) { return p.id !== "a1"; })');
+  await change(A.page, 'c.name = "Hall Billy"');
+  await A.page.waitForTimeout(14000); await synced(A.page); await synced(B.page);
+  await syncNow(A.page);
+  assert.deepEqual([await shelf(A.page), await shelf(B.page)], ['Hall Billy: a2 / ', 'Hall Billy: a2 / '], 'a set taken off on one device stays off, and the name given on the other is kept');
+  const f = g.files().find(x => x.appProperties && x.appProperties.brickyard === 'catalog' && !x.trashed), cat = JSON.parse(f.body).catalog;
+  assert.deepEqual([Object.keys(cat.cases.k.levels[0]), cat.places.a1.del, cat.places.a2.c], [['h'], 1, 'k'], 'in Drive, each set has its place by itself');
+  await A.page.evaluate(() => window.brickyard.removeCase('k'));
+  await A.page.waitForTimeout(2600); await synced(A.page);
+  await syncNow(B.page);
+  assert.equal(await shelf(B.page), '', 'and a bookcase removed on one device is gone on the other');
+}
+
 // Drive answering with an error: the button says Sync failed and a message says why, once. A tap on the button opens
 // the sheet, which gives the reason and has Sync now (the reason was only in the button's tooltip, and a tap tried
 // again without a word). With no answer at all it says the changes are kept here.

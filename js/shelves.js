@@ -26,17 +26,16 @@
   var COLOURS = ['#c8322b', '#1f5ba6', '#2c8249', '#b85a00', '#6d4fa0', '#20817a', '#8a5a3c', '#5b6770'];
   function $(id) { return document.getElementById(id); }
 
-  // The bookcases, each set standing in one place (S.dedupe: two devices can each have saved it on a different
-  // one). A bookcase that had to lose a set comes back as a copy, and is saved that way the next time anything
-  // here saves a bookcase (put). So a bookcase is always taken from here (caseOf), never from the catalog as kept.
+  // The bookcases with the sets that stand on them. The catalog keeps a bookcase and each set's place apart, so
+  // that two devices' changes merge set by set (C.shelves puts them together, and app.putCase takes them apart
+  // again): a bookcase is always taken from here (caseOf), never from the catalog as kept.
   function cases() {
-    var d = app.doc().cases;
-    return S.dedupe(Object.keys(d).map(function (k) { return d[k]; }).filter(function (c) { return !c.del; })
-      .sort(function (a, b) { return C.natural(a.room || '', b.room || '') || C.natural(a.name, b.name) || C.natural(a.id, b.id); }));
+    var d = C.shelves(app.doc());
+    return Object.keys(d).map(function (k) { return d[k]; }).filter(function (c) { return !c.del; })
+      .sort(function (a, b) { return C.natural(a.room || '', b.room || '') || C.natural(a.name, b.name) || C.natural(a.id, b.id); });
   }
   function caseOf(id) { return cases().filter(function (c) { return c.id === id; })[0] || null; }
-  function tidy(but) { var d = app.doc().cases; cases().forEach(function (c) { if (c.id !== but && c !== d[c.id]) app.putCase(c); }); }
-  function put(c) { tidy(c.id); app.putCase(c); }
+  function put(c) { app.putCase(c); }
   // Undo for a change to bookcases: each goes back as it was (copies kept from before). A set stood on another
   // bookcase in the meantime stays there.
   function putCasesBack(kept) {
@@ -680,7 +679,7 @@
         said.push({ id: x.id, spot: x.spot });
         var y = copy(x); delete y.spot; app.putSet(y);
       });
-      tidy(c.id); app.removeCase(c.id); app.closeSheet(); render();
+      app.removeCase(c.id); app.closeSheet(); render();
       toast('Removed ' + c.name + (n ? '. Its sets are back in Not on a shelf yet.' : '') +
         (said.length ? (n ? ' ' : '. ') + (said.length === 1 ? '1 set no longer says' : said.length.toLocaleString() + ' sets no longer say') + ' ' + c.name + ' in My sets.' : ''), false, { label: 'Undo', run: function () {
         said.forEach(function (w) {
@@ -723,12 +722,12 @@
       // Sets on a shelf that was removed go back to the list, and the message says how many.
       var still = S.placements([y]), before = live ? copy(live) : null, all = byId();
       var off = live ? Object.keys(S.placements([live])).filter(function (id) { return all[id] && !still[id]; }).length : 0;
-      if (gone) { tidy(y.id); app.putBack('cases', y); } else put(y);
+      if (gone) app.putBack('cases', y); else put(y);
       app.closeSheet(); render();
       // A new bookcase is named in a message, with Undo: the sheet used to close without a word. So does a Save
       // that had nothing else to say.
       var said = [isNew ? 'Added ' + y.name : gone ? y.name + ' is back' : '', off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ') || 'Saved';
-      if (isNew) toast(said, false, { label: 'Undo', run: function () { tidy(y.id); app.removeCase(y.id); render(); toast('Took ' + y.name + ' out again'); } });
+      if (isNew) toast(said, false, { label: 'Undo', run: function () { app.removeCase(y.id); render(); toast('Took ' + y.name + ' out again'); } });
       else if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([before]); toast(before.name + ' is as it was'); } });
       else toast(said);
     };

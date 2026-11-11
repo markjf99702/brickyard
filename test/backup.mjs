@@ -84,7 +84,7 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await p.click('#e-del'); await p.waitForTimeout(650); await p.click('#e-del');
   await p.click('.toast span'); // the ten seconds of Undo, gone
   assert.deepEqual(await p.evaluate(() => [window.brickyard.doc().sets.t, Object.keys(JSON.parse(localStorage.getItem('brickyard.v1')).catalog)].flat().map(x => typeof x === 'object' ? Object.keys(x).sort().join() : x)),
-    ['del,id,t', 'sets', 'seen', 'cases', 'loose'], 'the catalog keeps only the removal, as it did');
+    ['del,id,t', 'sets', 'seen', 'cases', 'loose', 'places'], 'the catalog keeps only the removal, as it did');
   await p.click('#menu-btn');
   await p.click('#m-gone');
   assert.deepEqual(await p.evaluate(() => [document.querySelector('.sheet .lede').textContent, ...[...document.querySelectorAll('#gone li')].map(li => li.querySelector('.t').textContent + ' | ' + li.querySelector('.m').textContent)]),
