@@ -1467,6 +1467,9 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual([await on(), await says()], ['a+b+d', '3 sets placed; 1 didn’t fitUndo']);
   await p.tap('.sv-set[data-set="a"]');
   await p.waitForSelector('#z-right');
+  // Once the sheet has come up: on its way it's 30 px lower, and its buttons are measured clear of a message that
+  // would lie on them a fifth of a second later.
+  await p.waitForFunction(() => !document.getAnimations().length);
   const hits = await p.evaluate(() => ['z-left', 'z-right', 'z-save', 'z-cat'].filter(id => !document.getElementById(id).disabled).map(id => {
     const r = document.getElementById(id).getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
     return id + ':' + (hit && hit.closest('#' + id) ? 'itself' : hit && hit.closest('.toast') ? 'the message' : 'something else');
