@@ -7,12 +7,18 @@
 <p align="center">
   <img src="docs/phone-catalog.png" alt="My sets, grouped by room: Bonsai Tree and Tree House on the living-room bookcase, the Large Creative Brick Box taken apart in the office closet, each with its picture, number, year and piece count" width="250">
   &nbsp;
-  <img src="docs/phone-boxes.png" alt="The same sets grouped by moving box: Box 3 holds the sealed Medieval Castle and the partly built Typewriter, Box 12 the Lamborghini, marked Check" width="250">
+  <img src="docs/phone-boxes.png" alt="The same sets grouped by moving box: Box 3 holds the sealed Medieval Castle and the partly built Typewriter, Box 12 the Lamborghini, with what to check about it in red" width="250">
   &nbsp;
   <img src="docs/phone-review.png" alt="Adding seven sets from Claude: a list with tick boxes, and fields to put them all in one room, shelf or moving box" width="250">
 </p>
 
 Brickyard is one app with three parts, all reading from the same catalog: **My sets**; **Build from your box**, where Claude designs a new model from only the pieces you own, Brickyard checks you can really build it, and shows it in 3D step by step; and the **Shelf planner**, which fits your built sets onto your bookcases.
+
+<p align="center">
+  <img src="docs/phone-home.png" alt="The home screen, a card for each part: My sets with 7 sets and 13,159 pieces, Build from your box with 790 pieces to build from, and the Shelf planner" width="250">
+  &nbsp;
+  <img src="docs/phone-set.png" alt="One set's sheet, the Tree House: its picture, then set number, year, name, pieces and theme, State with Built chosen out of Built, Partly built, Taken apart and Sealed, and its room and shelf" width="250">
+</p>
 
 ## How it works
 
@@ -51,8 +57,10 @@ The skill has to work on its own once it's uploaded to Claude, so it carries a c
 
 ## Shelf planner
 
+<p align="center"><img src="docs/phone-shelves.png" alt="The Shelf planner after Fit: a Billy drawn from the front with the Bonsai Tree and the Galaxy Explorer on its top shelf, the Lamborghini on the second and the Typewriter on the third; a line above says 4 of 5 sets are on shelves, and one is not on a shelf yet" width="250"></p>
+
 - **Bookcases**: add each one with its inside width and depth and the clear height of each shelf, top shelf first, a box for each (presets for an IKEA Billy, a narrow Billy and a Kallax column; a Billy's shelves move, so its preset is six even spaces of about 30 cm to measure against yours). Each is drawn from the front, to scale, with your sets on it. Sizes are in cm; one typed with `in` or `"` after it is worked out and the message says so.
-- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put, and the message has Undo. Anything that doesn't fit says why (too tall, too deep, too wide, no room left), and one line adds the reasons up, with about how much more shelf the sets short of room would take. **Take every set off** in a bookcase's sheet starts it again.
+- **Fit the sets onto the shelves** places every built or partly built set that isn't on a shelf yet: tallest first, each on the shortest shelf that takes it, facing out, or side-on when only that fits. Sets already placed stay put, and the message has Undo. Anything that doesn't fit says why (too tall, too deep, too wide, no room left), and one line adds the reasons up, with about how much more shelf the sets short of room would take. **Take every set off** in a bookcase's sheet starts it again. Under the count at the top, **not on a shelf yet** and **need a size** go to those two lists, which can be a long way down the page.
 - Tap a set to move it to another shelf, turn it side-on, move it left or right, or fix its size. A line over a bookcase says what's wrong on it: a shelf that's overfull, a set too tall or too deep, a set that has been taken apart or sealed since it was placed (with a button to take it off).
 - **Put these places in My sets** copies each placed set's room and shelf into the catalog, with Undo; the card counts the sets it would change first.
 - **Sizes**: the planner needs each set's built width, depth and height. **Copy these for Claude** sends Claude the sets without one; it answers with a sizes link (`#z1z…`) that fills them in after you review them. A size that looks wrong for its set (3 cm tall for 4,514 pieces) arrives unticked with the reason.
@@ -78,6 +86,7 @@ npm test                      # unit tests, then uses it in Chromium through the
 node tools/screenshots.mjs    # redraws docs/*.png and og.png (fetches the sample sets' pictures into tools/pics once; PICS=none for plain bricks)
 node tools/make-icons.mjs     # redraws the PNG icons from icon.svg
 node tools/copy-skill-data.mjs  # copies parts/ into the designer skill's data/, after parts/ changes
+node tools/build-artifact.mjs # packs the whole app into one file, dist/artifact.html, for a copy opened inside Claude
 ```
 
 To put it online with GitHub Pages: **Settings → Pages → Build and deployment → Deploy from a branch**, then pick `main` and `/ (root)`. The `CNAME` file serves it at brickyard.junkdrawer.works.
@@ -87,12 +96,15 @@ To put it online with GitHub Pages: **Settings → Pages → Build and deploymen
 - `index.html`: the home screen, the catalog, the builder and the shelf planner.
 - `js/core.js`: cleaning sets and lots of loose pieces, merging catalogs, finding doubles, search, links and the spreadsheet. No DOM, so the tests run it in Node.
 - `js/app.js`: the screens, sheets and storage (`brickyard.v1` in localStorage).
+- `js/sync.js`: Google Drive sync.
 - `js/build-core.js`: the builder's checks and model links, no DOM; `js/build.js`: the builder's screens and 3D view.
+- `js/vendor/`: three.js and its OrbitControls (MIT, `LICENSE.three`), kept here so nothing loads from elsewhere.
 - `js/shelf-core.js`: the shelf planner's fitting and sizes links, no DOM; `js/shelves.js`: its screen and drawings.
 - `parts/`: part shapes on the stud grid, LDraw colours, other numbers for the same piece (`aliases.json`: 3023 is the 1x2 plate the builder knows as 3023b), and each set's parts list (copied into `skill/brickyard-designer/data/`). `models/`: the example cottage.
 - `css/app.css`: light and dark palettes.
 - `skill/brickyard-cataloger/`, `skill/brickyard-designer/`: the Claude skills and their scripts.
-- `test/core.test.cjs`, `test/build.test.cjs`, `test/shelf.test.cjs`, `test/e2e.mjs`: the tests; `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
+- `test/core.test.cjs`, `test/build.test.cjs`, `test/shelf.test.cjs`, `test/e2e.mjs`, `test/sync.mjs`: the tests. `test/sync.mjs` runs Drive sync against `test/fake-google.mjs`, a stand-in for Google's sign-in and Drive. `test/fixtures/sample.json` is the sample batch the tests and screenshots use.
+- `tools/`: the scripts under Running it: `screenshots.mjs`, `make-icons.mjs` (from `icon.svg` and `icon-full-bleed.svg`), `copy-skill-data.mjs` and `build-artifact.mjs`.
 - `fonts/`: Rubik (SIL Open Font License, `fonts/OFL.txt`), served from here so nothing loads from elsewhere.
 - `sw.js`: keeps a copy for using offline, and opens from it when the connection isn't answering. `FILES` in it is a fingerprint of the files it keeps: change one and `npm test` says what to set it to, so a release never leaves the copy half old.
 

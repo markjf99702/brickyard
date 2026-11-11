@@ -69,7 +69,7 @@ async function open(viewport, deviceScaleFactor, hash = '', seed = true) {
     catch { route.fulfill({ status: 404 }); }
   });
   const page = await ctx.newPage();
-  if (seed) await page.addInitScript(c => localStorage.setItem('brickyard.v1', JSON.stringify(c)), catalog);
+  if (seed) await page.addInitScript(c => localStorage.setItem('brickyard.v1', JSON.stringify(c)), seed === true ? catalog : seed);
   await page.goto(base + hash);
   await page.evaluate(() => document.fonts.ready);
   await settled(page);
@@ -107,6 +107,20 @@ for (const [name, hash, act] of shots) {
   await page.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
   await page.waitForTimeout(1000);
   await page.screenshot({ path: join(root, 'docs/phone-build.png'), fullPage: true });
+  await page.context().close();
+}
+// The Shelf planner: the sample's built sets with made-up sizes and one Billy, after Fit, with its message put away.
+// The Tree House is taller than a Billy's shelf, so it stays off, counted under the line at the top.
+{
+  const sizes = { '10497-1': [52, 26, 13], '21318-1': [27, 24, 37], '10281-1': [20, 21, 18], '21327-1': [27, 26, 11], '42115-1': [60, 25, 13] };
+  const shelved = JSON.parse(JSON.stringify(catalog));
+  Object.values(shelved.catalog.sets).forEach(x => { const z = sizes[x.num]; if (z) x.size = { w: z[0], d: z[1], h: z[2] }; });
+  shelved.catalog.cases = { k: { id: 'k', t: 1790000000000, name: 'Billy', room: 'Living room', w: 76, d: 26, levels: [30, 30, 30, 30, 30, 30].map(h => ({ h, sets: [] })) } };
+  const page = await open({ width: 390, height: 844 }, 2, '#shelves', shelved);
+  await page.click('[data-act="fill"]');
+  await page.click('.toast span');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(root, 'docs/phone-shelves.png') });
   await page.context().close();
 }
 // What opening a link from Claude looks like, on an empty catalog.
