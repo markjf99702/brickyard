@@ -2566,6 +2566,34 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await side.c.close();
 }
 
+// Coming back to My sets from the home screen, the builder or the planner returns to where the list was (it always
+// landed at the top), by the links on the page and by the browser's Back alike. The other screens still open at
+// their tops, and so does My sets the first time.
+{
+  const sets = {};
+  for (let i = 0; i < 60; i++) sets['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), room: 'Room ' + (i % 4), state: 'built' };
+  const { c, p } = await withSets({ sets });
+  const y = () => p.evaluate(() => Math.round(scrollY));
+  const on = id => p.waitForSelector('#' + id + ':not([hidden])');
+  await p.click('#go-catalog'); await on('catalog');
+  assert.equal(await y(), 0, 'My sets opens at its top');
+  await p.evaluate(() => scrollTo(0, 1500));
+  await p.click('#catalog .back'); await on('home');
+  assert.equal(await y(), 0, 'the home screen opens at its top');
+  await p.click('#go-catalog'); await on('catalog');
+  assert.equal(await y(), 1500, 'back in My sets, the list is where it was left');
+  await p.evaluate(() => scrollTo(0, 2200));
+  await p.evaluate(() => { location.hash = '#shelves'; }); await on('shelves');
+  assert.equal(await y(), 0, 'the Shelf planner opens at its top');
+  await p.goBack(); await on('catalog');
+  assert.equal(await y(), 2200, 'the browser’s Back from the planner comes back to the place too');
+  await p.evaluate(() => { location.hash = '#build'; }); await on('build');
+  await p.click('#build-back'); await on('home');
+  await p.click('#go-catalog'); await on('catalog');
+  assert.equal(await y(), 2200, 'and from the builder, by way of the home screen');
+  await c.close();
+}
+
 // With the Missing pieces filter on, Copy this list puts what's missing on the clipboard, a line a set, for an order
 // of replacement pieces: the sets the list is showing, so a search narrows it. Under any other filter there's no
 // such button. Where the browser won't copy, the text is shown to copy by hand.

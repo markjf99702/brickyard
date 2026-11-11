@@ -308,8 +308,14 @@
     // Each screen has its own title, for the tab, the browser's history and a phone's app switcher (they all read
     // "Brickyard"). A model's is its name, once Build from your box has it open (js/build.js).
     document.title = onCat ? 'My sets · Brickyard' : onBuild ? 'Build from your box · Brickyard' : onShelves ? 'Shelf planner · Brickyard' : 'Brickyard';
+    // My sets is left where it was scrolled to, and comes back there from the home screen, the builder or the
+    // planner (it used to start again at its top: down a long list, a look at a shelf cost the place). For this
+    // visit; a reload has its own way back (comeBack). Every other screen opens at its top.
+    var was = onScreenNow === 'catalog';
+    if (was && !onCat) catY = leftAt === null ? window.scrollY : leftAt;
+    leftAt = null;
     if (onCat) renderCatalog(); else if (!onBuild && !onShelves) renderHome();
-    window.scrollTo(0, 0);
+    window.scrollTo(0, onCat && onScreenNow && !was ? catY : 0);
     // On a move to another screen its heading takes the focus, so a screen reader says where this is and Tab starts
     // from the top of it (the link that was pressed is hidden by now, which left the focus nowhere). Not when
     // Brickyard opens, and Build from your box says when its heading is ready (a model's name).
@@ -320,6 +326,18 @@
     document.dispatchEvent(new CustomEvent('brickyard:route', { detail: h }));
   }
   var onScreenNow = '', arriving = false;
+  // Leaving My sets: where the page is, kept before the browser moves it. A link to "#", the way home, puts the
+  // page at its top before it says the address changed; a move to another screen's address does the same between
+  // saying the history moved and saying the address changed.
+  var catY = 0, leftAt = null;
+  document.addEventListener('click', function (e) {
+    if (onScreenNow !== 'catalog' || !e.target.closest || !e.target.closest('a[href^="#"]')) return;
+    leftAt = window.scrollY;
+    setTimeout(function () { leftAt = null; }, 1000); // a link that went nowhere after all
+  }, true);
+  window.addEventListener('popstate', function () {
+    if (onScreenNow === 'catalog' && leftAt === null && location.hash !== '#catalog') leftAt = window.scrollY;
+  }, true);
   function heading() {
     if (!arriving) return;
     arriving = false;
