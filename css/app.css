@@ -406,8 +406,10 @@ a.item { color: inherit; text-decoration: none; }
 /* Turn left and right in the picture's bottom left corner, zoom out and in in its bottom right: one tap each, for a
    hand that can't drag or pinch (the other is holding bricks). The hint moved to the top to leave them room. */
 .stage-keys { position: absolute; bottom: 10px; display: flex; gap: 4px; }
-.stage-keys.left { left: 10px; }
-.stage-keys.right { right: 10px; }
+/* On a screen wider than the page's column they stand at the column's edges, over Previous and Next, not out in
+   the far corners of a picture as wide as the window. */
+.stage-keys.left { left: max(10px, calc(50% - 364px)); }
+.stage-keys.right { right: max(10px, calc(50% - 364px)); }
 @media (max-width: 230px) { .stage-keys { flex-direction: column; } } /* a very narrow screen: each pair stands up, so the two don't meet */
 .stage-keys .icon-btn { background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); }
 .stage:has(.stage-reset:not([hidden])) .stage-hint { top: 62px; } /* "The picture was dropped", under Reset view */

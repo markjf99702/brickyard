@@ -3543,6 +3543,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.waitForFunction(() => window.BrickyardBuild.inView());
   const v = await p.evaluate(() => window.BrickyardBuild.inView());
   assert.ok(v.box.every(n => n >= 0 && n <= 1) && v.box[3] - v.box[1] > 0.8, 'the cottage fills the stage’s height on a laptop: ' + v.box.map(n => n.toFixed(2)));
+  // The turn and zoom buttons stand at the edges of the page's column, over Previous and Next, not in the far
+  // corners of a picture as wide as the window.
+  await p.click('#step-next');
+  const edges = await p.evaluate(() => ['[data-turn="left"]', '#step-prev', '[data-zoom="in"]', '#step-next'].map(s => document.querySelector(s).getBoundingClientRect()).map((r, i) => Math.round(i < 2 ? r.left : r.right)));
+  assert.deepEqual([edges[0], edges[2]], [edges[1], edges[3]], 'on a laptop the turn and zoom buttons line up with Previous and Next');
   await c.close();
 }
 
