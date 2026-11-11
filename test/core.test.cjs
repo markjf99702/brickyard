@@ -806,6 +806,27 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     eq(C.restoreDoc(file, file, 1000).n, { back: 0, gone: 0, cases: 0, lots: 0 }, 'a file that is the same as what is here changes nothing');
   }
 
+  // What a sync brought in from the other devices, for the line that says so.
+  {
+    const cat = (sets, more) => C.cleanDoc({ catalog: Object.assign({ sets }, more) });
+    const s = (id, name, more) => Object.assign({ id, t: 1, name }, more);
+    const shelf = name => ({ k: { id: 'k', t: 1, name, w: 76, d: 26, levels: [{ h: 30, sets: [] }] } });
+    const lot = n => ({ l: { id: 'l', t: 1, name: 'Blue tub', parts: [['3001', 4, n]] } });
+    const said = (a, b, skip) => C.arrivedText(C.arrived(a, b, skip));
+    const here = cat({ a: s('a', 'Orchid'), b: s('b', 'Bonsai Tree'), c: s('c', 'Typewriter'), d: s('d', 'Tree House'), x: { id: 'x', t: 1, del: 1 } });
+    eq(said(here, here), '', 'nothing arrived, nothing said');
+    eq(said(here, C.mergeDocs(here, cat({ e: s('e', 'Saturn V'), f: s('f', 'Globe'), g: s('g', 'Piano') }))), 'From your other devices: 3 sets added', 'sets added');
+    eq(said(here, C.mergeDocs(here, cat({ a: s('a', 'Orchid', { t: 5, room: 'Hall' }), b: { id: 'b', t: 5, del: 1 } }))), 'From your other devices: 1 set changed, Bonsai Tree removed', 'a set changed and one removed, by name');
+    eq(said(here, C.mergeDocs(here, cat({ a: { id: 'a', t: 5, del: 1 }, b: { id: 'b', t: 5, del: 1 } }))), 'From your other devices: Orchid and Bonsai Tree removed', 'two removed are both named');
+    eq(said(here, C.mergeDocs(here, cat({ a: { id: 'a', t: 5, del: 1 }, b: { id: 'b', t: 5, del: 1 }, c: { id: 'c', t: 5, del: 1 } }))), 'From your other devices: 3 sets removed', 'more are counted');
+    eq(said(here, C.mergeDocs(here, cat({ a: s('a', 'Orchid', { t: 9 }), x: { id: 'x', t: 9, del: 1 }, y: { id: 'y', t: 9, del: 1 } }))), '', 'a set saved again unchanged, and the removal of a set that was not here, are not news');
+    eq(said(here, C.mergeDocs(here, cat({ x: s('x', 'Castle', { t: 9 }) }))), 'From your other devices: 1 set added', 'a set put back on another device is added here');
+    eq(said(here, C.mergeDocs(here, cat({}, { cases: shelf('Billy'), loose: lot(40) }))), 'From your other devices: 1 bookcase changed, loose pieces changed', 'bookcases and loose pieces');
+    const withCase = cat({ a: s('a', 'Orchid') }, { cases: shelf('Billy'), loose: lot(40) });
+    eq(said(withCase, C.mergeDocs(withCase, cat({}, { cases: { k: { id: 'k', t: 5, del: 1 } }, loose: lot(40) }))), 'From your other devices: 1 bookcase changed', 'a bookcase removed is a bookcase changed; the same lot again is not news');
+    eq(said(here, C.mergeDocs(here, cat({ e: s('e', 'Saturn V'), a: { id: 'a', t: 5, del: 1 } })), { e: true, a: true }), '', 'the two copies of a folded twin are left out');
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

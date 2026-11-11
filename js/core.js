@@ -338,6 +338,38 @@
     return out;
   }
 
+  // What changed between the catalog as it was (`before`) and as it is after a sync brought another device's changes
+  // in (`after`): { added, changed, removed: sets, cases, lots: how many bookcases and lots differ }. `skip` is ids
+  // to leave out ({ id: true }): twins folded in the same sync, which are said in a line of their own. A removal of
+  // something that was never here isn't a change here.
+  function arrived(before, after, skip) {
+    var out = { added: [], changed: [], removed: [], cases: 0, lots: 0 };
+    var each = function (kind, f) {
+      Object.keys(after[kind] || {}).forEach(function (id) {
+        if (skip && skip[id]) return;
+        var a = (before[kind] || {})[id], b = after[kind][id], was = !!a && !a.del, is = !b.del;
+        if (was || is) f(a, b, was, is);
+      });
+    };
+    each('sets', function (a, b, was, is) {
+      if (!was) out.added.push(b); else if (!is) out.removed.push(a); else if (!sameThing(a, b)) out.changed.push(b);
+    });
+    each('cases', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) out.cases++; });
+    each('loose', function (a, b, was, is) { if (was !== is || !sameThing(a, b)) out.lots++; });
+    return out;
+  }
+  // The same in a line: "From your other devices: 3 sets added", "…: 1 set changed, Bonsai Tree removed". One or two
+  // removed sets are named; more are counted. '' when nothing changed here.
+  function arrivedText(n) {
+    var called = function (x) { return x.name || 'Set ' + shortNum(x.num); }, bits = [];
+    if (n.added.length) bits.push(count(n.added.length, 'set') + ' added');
+    if (n.changed.length) bits.push(count(n.changed.length, 'set') + ' changed');
+    if (n.removed.length) bits.push((n.removed.length > 2 ? count(n.removed.length, 'set') : n.removed.map(called).join(' and ')) + ' removed');
+    if (n.cases) bits.push(count(n.cases, 'bookcase') + ' changed');
+    if (n.lots) bits.push('loose pieces changed');
+    return bits.length ? 'From your other devices: ' + bits.join(', ') : '';
+  }
+
   // Going back to a backup: the catalog as `file` has it, made so that it wins every merge (with this device's copy,
   // with Drive, with the other devices). Opening a backup merges, and the later change to each set wins, so a file
   // from yesterday couldn't undo today's mistake. Here everything the file has that differs from `here` comes back
@@ -733,7 +765,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
-    foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc,
+    foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

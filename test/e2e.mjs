@@ -2671,6 +2671,18 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.clock.runFor(10500);
   assert.deepEqual([await up(), await p.textContent('.toast span')], [true, 'Sync didn’t work.'], 'it shows once the Undo has gone');
   await p.clock.runFor(4000);
+  // Several that wait are each shown in turn (it was the last one only), and the same words aren't kept twice.
+  await p.evaluate(() => {
+    const b = window.brickyard;
+    b.toast('Removed Orchid', false, { label: 'Undo', run() {} });
+    b.toastAfter('From your other devices: 3 sets added'); b.toastAfter('Google signs Brickyard out after an hour. Tap Sync to sync again.'); b.toastAfter('From your other devices: 3 sets added');
+  });
+  await p.clock.runFor(10500);
+  assert.deepEqual([await up(), await p.textContent('.toast span')], [true, 'From your other devices: 3 sets added'], 'the first that waited shows once the Undo has gone');
+  await p.clock.runFor(3700);
+  assert.deepEqual([await up(), await p.textContent('.toast span')], [true, 'Google signs Brickyard out after an hour. Tap Sync to sync again.'], 'then the second');
+  await p.clock.runFor(6000);
+  assert.equal(await up(), false, 'and nothing is said twice');
   // Ctrl+Z is Undo while the button shows.
   const sets = () => p.locator('.item .t').allTextContents();
   await p.focus('.item:has-text("Tree House")');

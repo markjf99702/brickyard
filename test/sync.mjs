@@ -137,7 +137,8 @@ assert.deepEqual(inDrive(), ['Bonsai Tree', 'Typewriter'], 'and in Drive');
   assert.deepEqual(await btn(), ['ok', 'Saving', 'Saving to Google Drive'], 'while a change waits to go, the button’s description says Saving too');
   await failed();
   assert.deepEqual(await btn(), ['err', 'Sync failed', 'Drive said: Backend Error']);
-  await A.page.waitForFunction(() => !document.querySelector('.toast').hidden);
+  // It waits its turn behind the line about what the last sync brought in ("From your other devices: …").
+  await A.page.waitForFunction(() => { const t = document.querySelector('.toast'); return !t.hidden && /^Sync didn/.test(t.textContent); });
   assert.equal(await toast(), 'Sync didn’t work. Drive said: Backend Error', 'a message says why');
   await A.page.click('.toast');
   await A.page.click('#home .sync-btn');
@@ -246,6 +247,49 @@ assert.deepEqual(inDrive(), ['Bonsai Tree', 'Enterprise', 'Galaxy Explorer', 'Ty
   await F.page.waitForTimeout(2600); await synced(F.page);
   await syncNow(A.page);
   assert.equal(await count(A.page, 'Orchid'), 3, 'a copy added after the first sync stays');
+}
+
+// What a sync brought in from another device is said in one line; nothing is said for this device's own changes.
+{
+  const said = async page => { await page.waitForFunction(() => { const t = document.querySelector('.toast'); return !t.hidden && /^From your other devices/.test(t.textContent); }); return page.evaluate(() => document.querySelector('.toast span').textContent); };
+  const quiet = page => page.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden || !/^From your other devices/.test(t.textContent); });
+  const B2 = await device();
+  await B2.page.click('#sync-offer'); await B2.page.click('#dv-go'); await B2.page.click('[data-close]');
+  await synced(B2.page);
+  assert.match(await said(B2.page), /^From your other devices: \d+ sets added$/, 'a device that joins is told how many sets arrived');
+  await B2.page.click('.toast');
+  if (await A.page.isVisible('.toast')) await A.page.click('.toast span'); // what an earlier sync brought in, kept up by the mouse resting on it
+  await A.page.evaluate(() => window.brickyard.putSet({ id: 'v1', name: 'Saturn V', state: 'built' }));
+  await A.page.waitForTimeout(2600); await synced(A.page);
+  assert.equal(await quiet(A.page), true, 'nothing is said on the device that made the change');
+  await syncNow(B2.page);
+  assert.equal(await said(B2.page), 'From your other devices: 1 set added');
+  await B2.page.click('.toast');
+  await A.page.goto(SITE + '#catalog');
+  await A.page.evaluate(() => window.brickyard.putSet(Object.assign({}, window.brickyard.doc().sets.v1, { room: 'Den' })));
+  await A.page.click('.item:has-text("Typewriter")');
+  await A.page.click('#e-del'); await A.page.waitForTimeout(700); await A.page.click('#e-del');
+  await A.page.waitForTimeout(2600);
+  await A.page.goto(SITE); await synced(A.page);
+  await syncNow(B2.page);
+  assert.equal(await said(B2.page), 'From your other devices: 1 set changed, Typewriter removed');
+  await B2.page.click('.toast');
+  await syncNow(B2.page);
+  assert.equal(await quiet(B2.page), true, 'a sync that brings nothing says nothing');
+
+  // The sync button is on Build from your box and the Shelf planner too (bookcases and loose pieces sync), and
+  // gives way to a model's own name and menu.
+  const btn = (page, screen) => page.evaluate(s => { const b = document.querySelector('#' + s + ' .sync-btn'); return b.getClientRects().length ? b.textContent : ''; }, screen);
+  await B2.page.goto(SITE + '#shelves');
+  await B2.page.waitForFunction(() => document.querySelector('#shelves .sync-btn').textContent === 'Synced');
+  assert.equal(await btn(B2.page, 'shelves'), 'Synced', 'on the Shelf planner');
+  await B2.page.goto(SITE + '#build');
+  await B2.page.waitForSelector('#build-list .item');
+  assert.equal(await btn(B2.page, 'build'), 'Synced', 'on Build from your box');
+  assert.equal(await B2.page.evaluate(() => { const h = document.querySelector('#build h1').getBoundingClientRect(), s = getComputedStyle(document.querySelector('#build h1')); return Math.round(h.height / parseFloat(s.lineHeight)); }), 1, 'the title beside it is still on one line on a phone');
+  await B2.page.goto(SITE + '#model-x-cottage');
+  await B2.page.waitForSelector('#model-menu:not([hidden])');
+  assert.equal(await btn(B2.page, 'build'), '', 'not over a model, which has its own name and menu there');
 }
 
 assert.deepEqual(problems, [], 'problems while using it');

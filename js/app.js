@@ -90,7 +90,7 @@
   var says = document.createElement('div'), toastEl = document.createElement('div'), aside = document.createElement('span');
   says.setAttribute('role', 'status'); toastEl.className = 'toast'; toastEl.hidden = true; aside.className = 'vh';
   says.appendChild(toastEl); says.appendChild(aside); document.body.appendChild(says);
-  var toastTimer, toastEnds = 0, toastLeft = 0, toastHeld = false, toastStays = false, toastN = 0, over = 0, queued = null;
+  var toastTimer, toastEnds = 0, toastLeft = 0, toastHeld = false, toastStays = false, toastN = 0, over = 0, waiting = [];
   var MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
   // A tap on a message puts it away: a long one can sit over the box you want to type in next. Not a held one
   // (it's the only sign something went wrong), and not by a tap on its button.
@@ -145,14 +145,22 @@
     toastEl.hidden = true;
     clearTimeout(toastTimer); toastHeld = false; toastStays = false; over = 0;
     fit();
-    if (pressed === true || !queued) return;
-    var next = queued; queued = null;
-    setTimeout(function () { toastAfter(next[0], next[1]); }, 400);
+    if (pressed === true || !waiting.length || showing) return;
+    showing = setTimeout(function () {
+      showing = 0;
+      if (!toastEl.hidden || !waiting.length) return; // something else came up meanwhile: they wait for that to go
+      var next = waiting.shift(); toast(next[0], next[1]);
+    }, 400);
   }
-  // A message that can wait (Drive sync saying it failed): shown once whatever is showing has gone, so it never
-  // takes the place of an Undo. The last one waiting is the one shown.
+  // A message that can wait (Drive sync saying it failed, or what arrived from another device): shown once whatever
+  // is showing has gone, so it never takes the place of an Undo. Several wait in a line, each shown in its turn (it
+  // used to be the last one only: what a sync brought in would have taken the place of why the button says Sync,
+  // or the other way round). The same words aren't kept twice.
+  var showing = 0;
   function toastAfter(msg, hold) {
-    if (toastEl.hidden) toast(msg, hold); else queued = [msg, hold];
+    if (toastEl.hidden && !waiting.length) { toast(msg, hold); return; }
+    if (!waiting.some(function (w) { return w[0] === msg; })) waiting.push([msg, hold]);
+    if (toastEl.hidden) hideToast();
   }
   // A message never sits on an open sheet. At the bottom of a phone's screen it lay over the sheet's own controls:
   // after Fit, "3 sets placed · Undo" was on Move right in the set's sheet opened next, and a tap there took every
