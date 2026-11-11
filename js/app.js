@@ -286,16 +286,17 @@
   function metaBits(x) { return [C.shortNum(x.num), x.year, x.pieces ? plural(x.pieces, 'piece') : ''].filter(Boolean); }
   function metaLine(x) { return metaBits(x).join(' · '); }
   // `what` is the file in a word ("Backup"), for the message that says it was made and where it went: the menu
-  // used to close on a download without a word.
+  // used to close on a download without a word. Without it the caller says so, in its own message.
   function download(name, type, text, what) {
     if (FRAMED) { toast('Downloads don’t work in this preview. Open Brickyard at its own address.'); return; }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: type }));
     a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    // The name stays in one piece: a joiner after each dash, where the line broke it as "2026-" / "11-10.json".
-    toast(what + ' made: ' + name.replace(/-/g, '-\u2060') + '. It’s in your downloads.');
+    if (what) toast(what + ' made: ' + fileName(name) + '. It’s in your downloads.');
   }
+  // A file's name stays in one piece: a joiner after each dash, where the line broke it as "2026-" / "11-10.json".
+  function fileName(name) { return name.replace(/-/g, '-\u2060'); }
 
   // ---------- screens ----------
   // #catalog is My sets; #build, #model-… and model links (#d1z…) belong to Build from your box (js/build.js);
@@ -1853,7 +1854,8 @@
   // change wins, and with sync on a slip is on every device within a minute. This overwrites newer changes on
   // purpose, so the sheet counts what will change before anything does, the button takes a second tap, and the
   // message afterwards has Undo, which is the same thing run back the other way. The sets it removes are in
-  // Recently removed.
+  // Recently removed. And before anything changes it downloads a backup of how things are, so there is a way back
+  // after Undo has gone too: a set moved to another box can't be put back from Recently removed.
   function catalogSheet(doc, from, more) {
     var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
     var builder = window.BrickyardBuild, models = more && more.models && builder ? builder.countModels(more.models) : 0;
@@ -1869,7 +1871,7 @@
         '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') +
       (twins.length ? '<p class="note" id="cs-twins">' + esc(foldedText(twins, link ? 'here and in this link' : 'here and in this file', true)) + '</p>' : '') +
       (link ? '' : '<div class="how" id="cs-old"><b>Or go back to this file</b><p id="cs-old-says">' + (more && more.saved ? 'Saved ' + esc(dayOf(more.saved)) + '. ' : '') +
-        (old.any ? 'Everything is put back the way this file has it, and changes made since are undone: ' + esc(old.says) + '.' : 'Everything here is already the way this file has it.') + '</p>' +
+        (old.any ? 'Everything is put back the way this file has it, and changes made since are undone: ' + esc(old.says) + '.' + (FRAMED ? '' : ' A backup of how things are now is downloaded first.') : 'Everything here is already the way this file has it.') + '</p>' +
         (old.any ? '<button class="btn quiet" type="button" id="cs-old-go">Put everything back the way this file has it</button>' : '') + '</div>') + '</div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
     if ($('cs-old-go')) $('cs-old-go').onclick = function () {
@@ -1900,11 +1902,12 @@
   }
   function dayOf(t) { return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
   function goBackTo(doc, more) {
+    var saved = backup(true);
     var before = JSON.parse(JSON.stringify(DOC)), listWas = read(GONE), r = C.restoreDoc(DOC, doc, Date.now());
     DOC = r.doc; remember(r.went);
     if (more && more.models && window.BrickyardBuild) window.BrickyardBuild.addModels(more.models);
     save(); closeSheet(); refresh();
-    toast('Everything is back the way the file has it: ' + restoreSays(r.n).says + '.', false, { label: 'Undo', run: function () {
+    toast('Everything is back the way the file has it: ' + restoreSays(r.n).says + '.' + (saved ? ' How things were is in your downloads: ' + fileName(saved) + '.' : ''), false, { label: 'Undo', run: function () {
       DOC = C.restoreDoc(DOC, before, Date.now()).doc;
       write(GONE, Array.isArray(listWas) ? listWas : []);
       save(); refresh(); toast('Undone. Your catalog is as it was before.');
@@ -1958,15 +1961,20 @@
   // Download a backup: the whole catalog as one file, with the day it was saved and, under their own heading, the
   // models from Claude kept in this browser (only the catalog syncs to Drive, and a model was in no file at all).
   // An older Brickyard opens the file and takes the catalog.
-  function backup() {
+  // `before`: the backup made just before going back to a file (goBackTo), under a name of its own so it isn't
+  // taken for the file being gone back to; its name is returned for that message to say, and none in the preview,
+  // where nothing can be downloaded.
+  function backup(before) {
     var models = read('brickyard.models'), kept = {};
     Object.keys(models && typeof models === 'object' ? models : {}).forEach(function (k) { if (models[k] && models[k].model) kept[k] = models[k]; });
     var o = { brickyard: 1, saved: new Date().toISOString(), catalog: DOC };
     if (Object.keys(kept).length) o.models = kept;
-    download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify(o, null, 1), 'Backup');
-    if (FRAMED) return;
+    var name = 'Brickyard ' + today() + (before === true ? ' before going back' : '') + '.json';
+    download(name, 'application/json', JSON.stringify(o, null, 1), before === true ? '' : 'Backup');
+    if (FRAMED) return '';
     write(BACKUP, { t: Date.now() });
     nudge(); keepStorage(true);
+    return name;
   }
   // When the last backup was downloaded in this browser is remembered (brickyard.backup), for the menu ("Last backup
   // 12 days ago") and for one quiet line on the home screen when a backup is due. Unless Drive sync is on, the

@@ -227,13 +227,22 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   assert.deepEqual(await state(), mistake);
   await openFile(p, saved);
   await p.waitForSelector('#cs-old-go');
-  assert.equal(await p.textContent('#cs-old-says'), 'Saved ' + day + '. Everything is put back the way this file has it, and changes made since are undone: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes.',
-    'the sheet counts what will change before anything does');
+  assert.equal(await p.textContent('#cs-old-says'), 'Saved ' + day + '. Everything is put back the way this file has it, and changes made since are undone: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes. A backup of how things are now is downloaded first.',
+    'the sheet counts what will change before anything does, and says a backup comes first');
+  let downloads = 0;
+  p.on('download', () => downloads++);
   await p.click('#cs-old-go');
-  assert.deepEqual([await p.textContent('#cs-old-go'), await state()], ['Tap again to put everything back', mistake], 'one tap asks, and changes nothing');
+  assert.deepEqual([await p.textContent('#cs-old-go'), await state(), downloads], ['Tap again to put everything back', mistake, 0], 'one tap asks, and changes nothing');
   await p.waitForTimeout(650);
+  const now = await p.evaluate(() => JSON.parse(JSON.stringify(window.brickyard.doc())));
+  const got = p.waitForEvent('download');
   await p.click('#cs-old-go');
-  assert.equal(await toast(p), 'Everything is back the way the file has it: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes.');
+  // Before anything changes, a backup of how things were, under a name of its own, so a set moved to the wrong box
+  // since can be had back after Undo has gone.
+  const dl = await got, kept = JSON.parse(await readFile(await dl.path(), 'utf8'));
+  const today = await p.evaluate(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+  assert.deepEqual([dl.suggestedFilename(), kept.catalog, downloads], ['Brickyard ' + today + ' before going back.json', now, 1], 'the second tap downloads how things are first');
+  assert.equal(await toast(p), 'Everything is back the way the file has it: 2 sets go back to how they were; 1 added since is removed; 1 bookcase changes. How things were is in your downloads: Brickyard ' + today.replace(/-/g, '-\u2060') + ' before going back.json.');
   assert.deepEqual(await state(), ['Bonsai Tree in 3, Orchid, Typewriter', 'Billy'], 'the catalog is the way the file has it: the box, the removed set and the bookcase are back, and the set added since is gone');
   assert.equal(await p.evaluate(() => { const d = window.brickyard.doc(); return Math.min(d.sets.b.t, d.sets.t.t, d.sets[Object.keys(d.sets).find(k => d.sets[k].del && k !== 't')].t, d.cases.k.t) > Date.now() - 60000; }), true, 'timed now, so it wins on every device');
   await p.click('.toast button');
