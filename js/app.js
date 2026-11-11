@@ -151,9 +151,10 @@
   // The question doesn't stay for good: after 5 seconds, or when the focus leaves the button, it has its own words
   // back and the next tap is a first tap again. ("Tap again to remove" used to stay until the sheet closed, so a tap
   // minutes later, after other things in the sheet, removed the set.) The caller changes the words after the first
-  // tap; what the button held before is kept here to put back.
+  // tap; what the button held before is kept here to put back. `calmed`, when given, runs as the words go back, for
+  // whatever else on the screen was asking with the button.
   var CALM = 5000; // ms
-  function secondTap(btn, key) {
+  function secondTap(btn, key, calmed) {
     key = key || 'sure';
     var first = Number(btn.dataset[key] || 0);
     if (!first) {
@@ -163,6 +164,7 @@
         clearTimeout(timer); btn.removeEventListener('blur', calm);
         if (btn.dataset[key] !== at) return; // put back already, or asked again since
         delete btn.dataset[key]; btn.innerHTML = words;
+        if (calmed) calmed();
       };
       var timer = setTimeout(calm, CALM);
       btn.addEventListener('blur', calm);
@@ -882,7 +884,11 @@
       // A set you already have takes a second tap: a new set, or one whose number was changed to another set's
       // (which used to save without a word).
       var dup = isNew ? C.findDup(DOC, y) : y.num && renumbered ? C.live(DOC).filter(function (o) { return o.id !== x.id && o.num === y.num; })[0] : null;
-      if (dup && !secondTap(btn, 'again')) {
+      // The line under the number asks with the button. When the button has its own words back, the line keeps
+      // what it knows and stops saying "Tap again": it went on promising a second copy at the next tap, and that
+      // tap only asked again.
+      var have = dup ? 'You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + '.' : '', line = $('e-dup');
+      if (dup && !secondTap(btn, 'again', function () { if (!line.hidden) line.textContent = have; })) {
         btn.textContent = isNew ? 'Add another copy' : 'Save anyway';
         // A second copy added by its number alone takes the first copy's name, year, pieces and theme, into the
         // boxes left empty, where they can be seen and changed before the second tap. (It was a bare "Set 75192"
@@ -891,12 +897,12 @@
           var el = $(f[0]);
           if (!el.value.trim() && f[1]) { el.value = f[1]; lent[f[0]] = String(f[1]); }
         });
-        var ask = 'You already have ' + (dup.name || 'this set') + (C.where(dup) ? ' (' + C.where(dup) + ')' : '') + (isNew ? '. Tap again to add a second copy.' : '. Tap again to keep both.');
+        var ask = have + (isNew ? ' Tap again to add a second copy.' : ' Tap again to keep both.');
         // Said under the number too, where it stays until the number changes. With the number box in use on a
         // phone, the keyboard covers the button that just changed its words, and the bottom of the screen where
         // the message used to show: pressing Done there seemed to do nothing.
-        $('e-dup').textContent = ask; $('e-dup').hidden = false;
-        if ($('e-dup').scrollIntoView) $('e-dup').scrollIntoView({ block: 'nearest' });
+        line.textContent = ask; line.hidden = false;
+        if (line.scrollIntoView) line.scrollIntoView({ block: 'nearest' });
         toast(ask);
         return;
       }

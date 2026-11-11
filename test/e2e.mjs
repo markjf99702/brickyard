@@ -1860,7 +1860,14 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   // Add set, for a set that's already here.
   await p.click('#add-btn');
   await p.fill('#e-num', '21318');
+  await p.click('#e-save');
+  assert.equal(await p.textContent('#e-dup'), 'You already have Tree House. Tap again to add a second copy.', 'the line under the number asks with the button');
+  await p.waitForTimeout(650);
+  await p.focus('#e-year');
+  assert.deepEqual([await words('#e-save'), await p.textContent('#e-dup'), await p.isVisible('#e-dup')], ['Add set', 'You already have Tree House.', true],
+    'when the button has its own words back, the line under the number stops saying "Tap again": the next tap is a first tap');
   await calms('#e-save', 'Add set', 'Add another copy', '#e-year');
+  assert.equal(await p.textContent('#e-dup'), 'You already have Tree House. Tap again to add a second copy.', 'asked again, the line says so again');
   assert.equal(await p.inputValue('#e-name'), 'Tree House', 'the first copy’s name is still in its box');
   await p.waitForTimeout(650);
   await p.click('#e-save');
