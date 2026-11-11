@@ -166,7 +166,7 @@
   // `where` is for a set that needs a size but is on a shelf already (its size was cleared): it isn't in the drawing.
   function setRow(x, why, where) {
     var meta = S.hasSize(x) ? sizeText(x.size) : [C.shortNum(x.num), x.theme].filter(Boolean).join(' · ');
-    return '<li><button class="item" type="button" data-set="' + esc(x.id) + '"><div class="pic none swatch" style="background:' + colourOf(x) + '"></div>' +
+    return '<li><button class="item" type="button" data-set="' + esc(x.id) + '">' + app.picHtml(x, colourOf(x)) +
       '<div class="main"><div class="t">' + esc(nameOf(x)) + '</div>' + (meta ? '<div class="m">' + esc(meta) + '</div>' : '') +
       (where ? '<div class="m">' + esc(where) + '</div>' : '') +
       (why ? '<div class="m warn">' + esc(why) + '</div>' : '') + '</div><span></span></button></li>';
@@ -871,7 +871,7 @@
         (unknown ? ' ' + (unknown === 1 ? 'One set in the list isn’t' : unknown.toLocaleString() + ' sets in the list aren’t') + ' in My sets.' : '') + '</p>' +
       '<ul class="rv" id="zr">' + rows.map(function (r, i) {
         return '<li class="' + (r.on ? '' : 'off') + '"><input type="checkbox" data-i="' + i + '"' + (r.on ? ' checked' : '') + ' aria-label="Add size for ' + esc(nameOf(r.x)) + '" aria-describedby="zr-d' + i + '">' +
-          '<div class="pic none swatch" style="background:' + colourOf(r.x) + '"></div><div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div><div id="zr-d' + i + '">' +
+          app.picHtml(r.x, colourOf(r.x)) + '<div><div class="t">' + esc(r.x.name || C.shortNum(r.x.num)) + '</div><div id="zr-d' + i + '">' +
           '<div class="m">' + esc(C.shortNum(r.x.num)) + ' · ' + sizeText(r.z) + (S.hasSize(r.x) ? ' · replaces ' + sizeText(r.x.size) : '') + '</div>' + (r.z.note ? '<div class="m">' + esc(r.z.note) + '</div>' : '') +
           (r.doubt ? '<div class="w">Check: ' + esc(r.doubt) + '</div>' : '') + '</div></div></li>';
       }).join('') + '</ul></div>' +

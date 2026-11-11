@@ -232,12 +232,16 @@
   var gotPic = {}, noPic = {}, settling = 0;
   window.addEventListener('online', function () { noPic = {}; });
   function thumb(num, big) { return 'https://cdn.rebrickable.com/media/thumbs/sets/' + num + '.jpg/' + (big ? '1000x800p' : '250x250p') + '.jpg'; }
-  function picHtml(x, cls) {
+  // `swatch` is a colour, for the shelf planner's lists: a set with no picture there is a block of its theme's colour
+  // (what those rows always showed), on its way the brick as here, and a picture that doesn't come leaves the block.
+  function swatchHtml(colour) { return '<div class="pic none swatch" style="background:' + esc(colour) + '"></div>'; }
+  function picHtml(x, cls, swatch) {
     var head = cls === 'head-pic';
+    if (swatch && (!prefs.pics || !x.num || noPic[x.num])) return swatchHtml(swatch);
     if (!prefs.pics || !x.num || (head && noPic[x.num])) return '<div class="pic none ' + (cls || '') + '">' + BRICK + '</div>';
     var src = thumb(x.num, head);
     if (!settling) settling = setTimeout(settle, 0);
-    return '<div class="pic ' + (gotPic[src] ? 'in ' : '') + (cls || '') + '">' + (gotPic[src] ? '' : BRICK) +
+    return '<div class="pic ' + (gotPic[src] ? 'in ' : '') + (cls || '') + '"' + (swatch ? ' data-swatch="' + esc(swatch) + '"' : '') + '>' + (gotPic[src] ? '' : BRICK) +
       // The menu says of these pictures "Loaded from Rebrickable by set number. Nothing else is sent": so not the
       // address of the page asking either, which a browser adds unless it's told not to (no-referrer).
       '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(src) + '" data-fallback="1" data-num="' + esc(x.num) + '"></div>';
@@ -276,6 +280,7 @@
     if (img && img.tagName === 'IMG' && img.dataset.fallback && img.parentNode) {
       var box = img.parentNode;
       noPic[img.dataset.num] = 1;
+      if (box.dataset.swatch) { box.outerHTML = swatchHtml(box.dataset.swatch); return; }
       box.classList.remove('in'); box.innerHTML = BRICK;
       // At the top of a set's sheet the tile stays, with the brick, until the sheet closes: it used to go, and on a
       // slow connection that was a second or two after the sheet opened, moving every box under it up 184 px as a
@@ -2143,6 +2148,8 @@
     pref: function (k, v) { if (arguments.length > 1) { prefs[k] = v; savePrefs(); } return prefs[k]; },
     // Where a set's small picture is, for the planner's drawing: '' with pictures off, or for a set with no number.
     picSrc: function (x) { return prefs.pics && x && x.num ? thumb(x.num) : ''; },
+    // A set's small picture as My sets shows it, for the planner's lists, with a block of `swatch` in place of one.
+    picHtml: function (x, swatch) { return picHtml(x, '', swatch); },
     newId: newId, takeDoc: takeDoc, showSet: showSet, nudge: nudge, folded: folded, foldedText: foldedText,
     // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
     // gives this the new copy of the thing that opened it.

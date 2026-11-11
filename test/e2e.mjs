@@ -4644,6 +4644,33 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// The planner's two lists, Not on a shelf yet and Needs a size, and the list of sizes from Claude, show each set's
+// picture as My sets does, with Show set pictures on. A set with no number, one whose picture doesn't come, and
+// every set with pictures off keep the block of their theme's colour.
+{
+  const sets = { a: { id: 'a', t: 1, name: 'Galaxy Explorer', num: '10497-1', state: 'built', size: { w: 90, d: 20, h: 20 } }, b: { id: 'b', t: 1, name: 'Tree House', num: '21318-1', state: 'built', size: { w: 90, d: 20, h: 20 } },
+    n: { id: 'n', t: 1, name: 'My own castle', state: 'built', size: { w: 90, d: 20, h: 20 } }, s: { id: 's', t: 1, name: 'Orchid', num: '10311-1', state: 'built' } };
+  const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }] } } });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  await c.route('https://cdn.rebrickable.com/**', r => /10497-1|10311-1/.test(r.request().url()) ? r.fulfill({ body: png, contentType: 'image/png' }) : r.fulfill({ status: 404 }));
+  const tiles = sel => p.$$eval(sel + ' li', ls => ls.map(l => { const t = l.querySelector('.pic'), img = t.querySelector('img');
+    return l.querySelector('.t').textContent + ': ' + (t.classList.contains('swatch') ? (t.style.background ? 'block' : 'empty block') : img && t.classList.contains('in') ? 'picture' : 'loading'); }));
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('#sv-waiting');
+  await p.waitForFunction(() => document.querySelectorAll('#shelves-body .pic.in').length === 2 && !document.querySelector('#shelves-body .pic:not(.in):not(.swatch)'));
+  assert.deepEqual(await tiles('#shelves-body ul.list'), ['Galaxy Explorer: picture', 'Tree House: block', 'My own castle: block', 'Orchid: picture'], 'pictures in Not on a shelf yet and Needs a size, a block where there is none');
+  await p.goto(base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: [{ num: '10311', w: 20, d: 12, h: 30 }, { num: '21318', w: 30, d: 30, h: 30 }] })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  await p.waitForFunction(() => document.querySelector('#zr .pic.in') && !document.querySelector('#zr .pic:not(.in):not(.swatch)'));
+  assert.deepEqual(await tiles('#zr'), ['Orchid: picture', 'Tree House: block'], 'and in the sizes from Claude');
+  await p.click('[data-close]');
+  await p.evaluate(() => { window.brickyard.pref('pics', false); window.brickyard.refresh(); });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('#sv-waiting');
+  assert.equal(await p.locator('#shelves-body .pic:not(.swatch)').count(), 0, 'with Show set pictures off, every row is a block');
+  await c.close();
+}
+
 // A set can be put on a full shelf by hand. In Where it stands, a shelf that is only short of room can be chosen
 // and says by how much it would be over (every full shelf was greyed out, so after Fit nothing could be moved); one
 // too short for the set stays greyed out. Chosen, the set stands there and the shelf is flagged overfull.
