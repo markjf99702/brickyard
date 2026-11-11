@@ -435,11 +435,17 @@ ul.need li.short small::after { content: ' · short'; color: var(--red-text); fo
 .case-hd { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
 .case-hd h2 { margin: 0; font-size: 18px; }
 .case-hd .m { color: var(--muted); font-size: 13.5px; }
-/* A bookcase is drawn at most 7 px a cm (--w) and, on a big screen, short enough to see whole (72% of the screen's
-   height, from its width over its height, --ar). On a phone a tall bookcase drawn that short is too narrow to read
-   its labels, so there it takes the full width and the page scrolls. */
-svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); height: auto; margin: 0 auto; }
-@media (max-width: 600px) { svg.shelf { width: min(100%, var(--w)); } }
+/* A bookcase is drawn at most 7 px a cm (--w). On a phone it takes the full width and the page scrolls: drawn
+   short enough to see whole, a tall one is too narrow to read its labels. On anything wider every bookcase is
+   drawn at one scale (--sw, its width at that scale, and --cw the same for its card; js/shelves.js works it out so
+   the tallest is 72% of the window's height) and they stand in a row that wraps, feet level, like furniture along
+   a wall. The row may be wider than the column of words: up to 1320 px, 24 px clear of each edge of the window. */
+svg.shelf { display: block; width: min(100%, var(--w)); height: auto; margin: 0 auto; }
+@media (min-width: 601px) {
+  .cases { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 12px calc((100% - min(100vw - 48px, 1320px)) / 2); }
+  .cases .case { display: flex; flex-direction: column; width: max(236px, calc(var(--cw) + 26px)); margin: 0; }
+  .cases svg.shelf { width: var(--sw); margin-top: auto; }
+}
 .sv-frame, .sv-board { fill: #a8865f; }
 .sv-board.bad { fill: var(--red); }
 .sv-back { fill: color-mix(in srgb, #a8865f 16%, var(--card)); }

@@ -4790,6 +4790,42 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// On a screen wider than a phone every bookcase is drawn at one scale, the largest at which the tallest is 72% of
+// the window's height, and they stand in a row with their feet level, like furniture along a wall. (Each was drawn
+// as big as would fit, so a Kallax column and a low bench looked as tall as the Billy between them.) The row
+// wraps in a narrower window, and never makes the page scroll sideways. On a phone each still has the full width.
+{
+  const cases = { b: { id: 'b', t: 1, name: 'Billy', w: 76, d: 26, levels: [30, 30, 30, 30, 30, 30].map(h => ({ h, sets: [] })) },
+    k: { id: 'k', t: 1, name: 'Kallax', w: 33, d: 39, levels: [33, 33, 33, 33].map(h => ({ h, sets: [] })) },
+    l: { id: 'l', t: 1, name: 'Low bench', w: 120, d: 30, levels: [{ h: 35, sets: [{ id: 'a' }] }] } };
+  const sets = { a: { id: 'a', t: 1, name: 'Galaxy Explorer', state: 'built', size: { w: 52, d: 25, h: 13 } } };
+  const drawn = p => p.evaluate(() => ({ wide: document.documentElement.scrollWidth - window.innerWidth, list: [...document.querySelectorAll('svg.shelf')].map(s => {
+    const r = s.getBoundingClientRect(), t = s.querySelector('.sv-t');
+    return { scale: r.width / s.viewBox.baseVal.width, top: r.top + scrollY, bottom: r.bottom + scrollY, left: r.left, right: r.right, h: r.height, name: t ? parseFloat(t.getAttribute('font-size')) * r.width / s.viewBox.baseVal.width : 0 };
+  }) }));
+  const same = (list, of) => Math.max(...list.map(of)) - Math.min(...list.map(of));
+  const desk = await withSets({ sets, cases }, { viewport: { width: 1280, height: 800 }, hasTouch: false });
+  await desk.p.goto(base + '#shelves');
+  await desk.p.waitForSelector('.case');
+  let d = await drawn(desk.p);
+  assert.ok(same(d.list, x => x.scale) < 0.03, 'on a laptop the three bookcases are drawn at one scale: ' + d.list.map(x => x.scale.toFixed(2)).join(', '));
+  assert.ok(Math.abs(Math.max(...d.list.map(x => x.h)) - 0.72 * 800) < 4, 'the tallest is 72% of the window’s height: ' + d.list.map(x => Math.round(x.h)).join(', '));
+  assert.ok(same(d.list, x => x.bottom) < 1.5 && d.list.every((x, i) => !i || x.left > d.list[i - 1].right), 'they stand in a row, feet level: ' + JSON.stringify(d.list.map(x => [Math.round(x.left), Math.round(x.bottom)])));
+  assert.ok(d.wide <= 0 && d.list[2].name >= 9, 'the page doesn’t scroll sideways, and a set’s name is ' + d.list[2].name.toFixed(1) + ' px');
+  await desk.p.setViewportSize({ width: 700, height: 800 });
+  await until(async () => (await drawn(desk.p)).list[2].top > (await drawn(desk.p)).list[0].bottom, 3000, 'the row didn’t wrap when the window narrowed');
+  d = await drawn(desk.p);
+  assert.ok(same(d.list, x => x.scale) < 0.03 && d.wide <= 0 && d.list.every(x => x.left >= 0 && x.right <= 700), 'in a narrower window the row wraps, still at one scale: ' + JSON.stringify(d.list.map(x => [x.scale.toFixed(2), Math.round(x.left), Math.round(x.right)])));
+  await desk.c.close();
+  const phone = await withSets({ sets, cases });
+  await phone.p.goto(base + '#shelves');
+  await phone.p.waitForSelector('.case');
+  d = await drawn(phone.p);
+  assert.ok(d.list.every((x, i) => !i || x.top > d.list[i - 1].bottom) && d.list[1].scale > d.list[0].scale + 1 && d.list[0].scale > d.list[2].scale + 1 && d.wide <= 0,
+    'on a phone each bookcase still has the width to itself, one under the other: ' + d.list.map(x => x.scale.toFixed(2)).join(', '));
+  await phone.c.close();
+}
+
 // A bookcase wider than a Billy is squeezed into the same width on a phone, and its words and tap targets were
 // squeezed with it: on a 180 cm bench names were under 5 px and sets 19 px to tap. They're sized for the width the
 // drawing gets: at least 9 px and 43 px on a phone at 120, 147 and 180 cm, and no bigger than a Billy's on a laptop.

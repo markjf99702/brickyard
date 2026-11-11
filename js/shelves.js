@@ -85,7 +85,9 @@
       // can spread the sets over more shelves. Kept on this device with the other settings.
       if (fitting) html += '<label class="check" id="fit-themes-row"><input type="checkbox" id="fit-themes"' + (app.pref('fitThemes') ? ' checked' : '') + '> Keep themes together</label>';
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
-      all.forEach(function (c, i) { html += caseHtml(c, ids, i); });
+      // On a screen wider than a phone the bookcases stand in a row, all drawn at one scale (shared, below).
+      var scale = window.innerWidth > 600 ? shared(all) : 0;
+      html += '<div class="cases">' + all.map(function (c, i) { return caseHtml(c, ids, i, scale); }).join('') + '</div>';
       if (sorted.placed.length) {
         // The card says whether My sets is behind these shelves: after Fit moves a set, or a bookcase is renamed,
         // nothing else on the screen did.
@@ -205,18 +207,31 @@
   // bench had names 4.7 px tall and sets to tap of 19 px; a tall one kept short on a laptop) has them scaled up by
   // `k` to come out the same size on the screen. The size it will be drawn at is worked out the way the
   // stylesheet does it (svg.shelf in css/app.css), so the planner is drawn again when the window's size changes.
+  //
+  // On a phone each bookcase has the page's width to itself (pxPerCm). On anything wider they all share one scale
+  // (`scale`, px to a cm, from shared) and stand in a row that wraps, feet level, like furniture along a wall: each
+  // used to be drawn as big as would fit, so a Kallax column looked as tall as a Billy beside it.
   var HIT = 10.5; // the least a set's tap target measures, cm: about 44 px where a Billy fills a phone's width
   var PX = 4.15; // CSS px to a cm where a Billy fills a 390 px phone's width, a little under
-  function pxPerCm(W, H) {
+  var ROW = 1320, EDGE = 48; // px: the widest the row of bookcases gets, and what it leaves of the window (css/app.css, .cases)
+  function pxPerCm(W) {
     var body = $('shelves-body'), cs = getComputedStyle(body);
     var room = body.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 26, w = Math.min(room, W * 7); // 26: the card's padding and border
-    if (window.innerWidth > 600) w = Math.min(w, 0.72 * window.innerHeight * W / H);
     return w > 0 ? w / W : PX;
   }
-  function caseHtml(c, ids, n) {
-    var W = c.w + 2 * T, H = T, y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [];
-    c.levels.forEach(function (l) { H += l.h + T; });
-    var k = Math.max(1, PX / pxPerCm(W, H)), hit = HIT * k;
+  function heightOf(c) { var H = T; c.levels.forEach(function (l) { H += l.h + T; }); return H; }
+  // The one scale for every bookcase on a wide screen: the largest at which the tallest is 72% of the window's
+  // height and the widest fits the row, and never over 7 px a cm.
+  function shared(all) {
+    var W = Math.max.apply(null, all.map(function (c) { return c.w + 2 * T; })), H = Math.max.apply(null, all.map(heightOf));
+    var s = Math.min(7, 0.72 * window.innerHeight / H, (Math.min(window.innerWidth - EDGE, ROW) - 26) / W);
+    return s > 0 ? s : PX;
+  }
+  function caseHtml(c, ids, n, scale) {
+    var W = c.w + 2 * T, H = heightOf(c), y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [];
+    // On a wide screen the words are the same size on every bookcase, whatever the shared scale comes to (a lone
+    // low bench is drawn at 7 px a cm, where words sized for a phone's Billy would be 18 px tall).
+    var k = scale ? PX / scale : Math.max(1, PX / pxPerCm(W)), hit = HIT * k;
     parts.push('<defs><pattern id="svh' + n + '" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="0.9" height="2.4" class="sv-stripe"/></pattern></defs>');
     parts.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="0.8" class="sv-frame"/>');
     c.levels.forEach(function (l, li) {
@@ -237,6 +252,9 @@
       // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
       // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
       var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + cm(l.h) + ' cm', tw = (text.length * 1.28 + 1.6) * k;
+      // On a bookcase drawn so small that the label would be wider than its shelf, the number alone (the height
+      // is in what a screen reader is told, and in the bookcase's sheet).
+      if (tw > c.w - 0.8) { text = (bad ? '! ' : '') + (li + 1); tw = (text.length * 1.28 + 1.6) * k; }
       var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 * k };
       var says = ['Shelf ' + (li + 1), cm(l.h) + ' cm', row.length ? plural(row.length, 'set') : 'empty', full ? 'overfull' : '', tall ? (tall === 1 ? 'a set too tall' : tall + ' sets too tall') : '', out ? (out === 1 ? 'a set too deep' : out + ' sets too deep') : ''].filter(Boolean).join(', ');
       tags.push('<g role="img" aria-label="' + esc(says) + '"><rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + +tag.h.toFixed(2) + '" rx="' + +(1.85 * k).toFixed(2) + '" class="sv-tag' + (bad ? ' bad' : '') + '"/>' +
@@ -270,14 +288,14 @@
     // Up to three sets too tall are named with their heights; more than that are counted (their shelves have the "!").
     var highSays = !high.length ? '' : high.length > 3 ? high.length.toLocaleString() + ' sets are too tall for their shelves. Move them to taller shelves.'
       : high.map(function (o) { return nameOf(o.x) + ' (' + cm(o.x.size.h) + ' cm) is too tall for shelf ' + (o.li + 1) + ' (' + cm(o.h) + ' cm).'; }).join(' ') + (high.length === 1 ? ' Move it to a taller shelf.' : ' Move them to taller shelves.');
-    return '<section class="case">' +
+    return '<section class="case"' + (scale ? ' style="--cw:' + Math.round(W * scale) + 'px"' : '') + '>' +
       '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(drawn, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '" aria-label="Edit ' + esc(c.name) + '">Edit</button></div>' +
       (over.length ? '<p class="flag bad"><span>' + esc(over.join(' ')) + ' Move a set off, or turn one side-on.</span></p>' : '') +
       (high.length ? '<p class="flag bad"><span>' + esc(highSays) + '</span></p>' : '') +
       (deep.length ? '<p class="flag bad"><span>' + esc(deepSays(c, deep)) + '</span></p>' : '') +
       (gone.length ? '<p class="flag bad"><span>' + esc(goneSays) + '</span><button class="btn sm quiet" type="button" data-act="take-off" data-k="' + esc(c.id) + '">' + (gone.length === 1 ? 'Take it off the shelf' : 'Take them off') + '</button></p>' : '') +
-      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px;--ar:' + (W / H).toFixed(3) + '" role="group" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
+      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px' + (scale ? ';--sw:' + Math.round(W * scale) + 'px' : '') + '" role="group" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
   }
 
   // A set that sticks out past the front of its bookcase: the bookcase's depth was edited, or the set's size was,
@@ -837,6 +855,7 @@
     clearTimeout(resizing);
     resizing = setTimeout(function () {
       if (window.innerWidth === sizedFor && window.innerWidth <= 600) return;
+      // Across 600 px the layout changes (one scale for all, or each its own), so the keyboard's place is found again.
       sizedFor = window.innerWidth;
       if (!$('shelves').hidden) render();
     }, 150);
