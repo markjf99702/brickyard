@@ -440,11 +440,25 @@ ul.need li.short small::after { content: ' · short'; color: var(--red-text); fo
    drawn at one scale (--sw, its width at that scale, and --cw the same for its card; js/shelves.js works it out so
    the tallest is 72% of the window's height) and they stand in a row that wraps, feet level, like furniture along
    a wall. The row may be wider than the column of words: up to 1320 px, 24 px clear of each edge of the window. */
-svg.shelf { display: block; width: min(100%, var(--w)); height: auto; margin: 0 auto; }
+/* The drawing is in a box of its own size (.shelf-box), so that set pictures can be laid over it (.sv-pics): each
+   is placed in its set's rectangle by percentages of the drawing, and taps go through it to the set beneath. A
+   picture shows once it has arrived; until then, and if it never does, the set's colour block and name do. */
+.shelf-box { position: relative; width: min(100%, var(--w)); margin: 0 auto; }
+svg.shelf { display: block; width: 100%; height: auto; }
+.sv-pics { position: absolute; inset: 0; pointer-events: none; }
+.sv-p { position: absolute; overflow: hidden; border-radius: 2px; background: #fff; opacity: 0; transition: opacity .15s; }
+.sv-p.in { opacity: 1; }
+:root[data-theme="dark"] .sv-p { background: #f4f1ea; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sv-p { background: #f4f1ea; } }
+.sv-p img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.sv-st { display: none; fill: #fff; font-weight: 600; pointer-events: none; }
+.sv-set.pic .sv-st { display: inline; }
+.sv-set.pic .sv-t { display: none; }
+@media (prefers-reduced-motion: reduce) { .sv-p { transition: none; } }
 @media (min-width: 601px) {
   .cases { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 12px calc((100% - min(100vw - 48px, 1320px)) / 2); }
   .cases .case { display: flex; flex-direction: column; width: max(236px, calc(var(--cw) + 26px)); margin: 0; }
-  .cases svg.shelf { width: var(--sw); margin-top: auto; }
+  .cases .shelf-box { width: var(--sw); margin-top: auto; }
 }
 .sv-frame, .sv-board { fill: #a8865f; }
 .sv-board.bad { fill: var(--red); }

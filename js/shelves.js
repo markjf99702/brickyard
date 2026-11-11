@@ -124,6 +124,8 @@
     // an open sheet will give the focus back to when it closes.
     var had = keyOf(document.activeElement), from = keyOf(app.lastFocus());
     $('shelves-body').innerHTML = html;
+    // A picture the browser already has can be whole without saying so.
+    [].forEach.call($('shelves-body').querySelectorAll('.sv-img'), function (img) { if (img.complete && img.naturalWidth) showPic(img); });
     if (from) app.lastFocus(again(from));
     if (had) again(had).focus({ preventScroll: true });
   }
@@ -227,8 +229,26 @@
     var s = Math.min(7, 0.72 * window.innerHeight / H, (Math.min(window.innerWidth - EDGE, ROW) - 26) / W);
     return s > 0 ? s : PX;
   }
+  //
+  // With Show set pictures on, a set with a number has its picture in its rectangle, inside a thin edge of its
+  // theme's colour, and its name on a strip of that colour below (four small green blocks on one shelf couldn't be
+  // told apart). The picture is an <img> laid over the drawing, not part of it, so that it can be asked for without
+  // saying which page is asking, as the rest of Brickyard's pictures are. Until it arrives, and when it doesn't
+  // (no signal, a set Rebrickable has no picture of), the set is the colour block with its name that it always was.
+  var got = {}, lost = {}; // pictures that have arrived and ones that haven't, by address, for this visit
+  window.addEventListener('online', function () { lost = {}; });
+  function showPic(img) {
+    got[img.getAttribute('src')] = 1;
+    img.parentNode.classList.add('in');
+    [].forEach.call($('shelves-body').querySelectorAll('.sv-set'), function (g) { if (g.dataset.set === img.dataset.set) g.classList.add('pic'); });
+  }
+  $('shelves-body').addEventListener('load', function (e) { if (e.target.classList && e.target.classList.contains('sv-img')) showPic(e.target); }, true);
+  $('shelves-body').addEventListener('error', function (e) {
+    if (e.target.classList && e.target.classList.contains('sv-img')) { lost[e.target.getAttribute('src')] = 1; e.target.parentNode.remove(); }
+  }, true);
   function caseHtml(c, ids, n, scale) {
-    var W = c.w + 2 * T, H = heightOf(c), y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [];
+    var W = c.w + 2 * T, H = heightOf(c), y = T, parts = [], tags = [], over = [], high = [], drawn = 0, gone = [], deep = [], pics = [];
+    var pct = function (v, of) { return (v / of * 100).toFixed(3) + '%'; };
     // On a wide screen the words are the same size on every bookcase, whatever the shared scale comes to (a lone
     // low bench is drawn at 7 px a cm, where words sized for a phone's Billy would be 18 px tall).
     var k = scale ? PX / scale : Math.max(1, PX / pxPerCm(W)), hit = HIT * k;
@@ -269,14 +289,29 @@
         var off = !onShelf(x), bw = Math.max(0.5, f.along - 0.3), box = 'x="' + (r.x0 + 0.15) + '" y="' + top + '" width="' + bw + '" height="' + f.h + '" rx="0.8"';
         var name = [x.name || C.shortNum(x.num), shelfName(c, li), r.p.turn ? 'side-on' : '', r.tall ? 'too tall for this shelf' : '', r.deep ? 'too deep for this bookcase' : '',
           !off ? '' : x.state === 'apart' ? 'taken apart' : x.state === 'sealed' ? 'sealed' : 'not built'].filter(Boolean).join(', ');
-        parts.push('<g class="sv-set' + (off ? ' off' : '') + '" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc(name) + '">' +
+        // The picture's place: under the shelf's label when the set stands there, over the strip when there's
+        // room for one (a name, or the start of one, or the set's number), and not at all in a rectangle too small
+        // to show it. A set that isn't built any more stays a hatched block.
+        var src = off ? '' : app.picSrc(x), strip = '';
+        if (src && !lost[src]) {
+          var p0 = r.x0 + f.along > tag.x && top < tag.y + tag.h ? Math.min(top + f.h, tag.y + tag.h) : top, sf = 2.3 * k, sh = 3.5 * k, edge = 0.4;
+          var st = top + f.h - p0 >= sh + 4 * k ? shorten(x.name || '', (f.along - k) / sf) || (ems(C.shortNum(x.num)) <= (f.along - k) / sf ? C.shortNum(x.num) : '') : '';
+          if (!st) sh = edge;
+          var pw = bw - 2 * edge, ph = top + f.h - sh - p0 - (p0 === top ? edge : 0);
+          if (pw >= 2 * k && ph >= 2 * k) {
+            pics.push('<span class="sv-p' + (got[src] ? ' in' : '') + '" style="left:' + pct(r.x0 + 0.15 + edge, W) + ';top:' + pct(top + f.h - sh - ph, H) + ';width:' + pct(pw, W) + ';height:' + pct(ph, H) + '">' +
+              '<img class="sv-img" alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(src) + '" data-set="' + esc(x.id) + '"></span>');
+            if (st) strip = '<text x="' + (r.x0 + f.along / 2) + '" y="' + (top + f.h - sh / 2 + sf * 0.36).toFixed(2) + '" font-size="' + sf.toFixed(2) + '" text-anchor="middle" class="sv-st">' + esc(st) + '</text>';
+          } else src = '';
+        }
+        parts.push('<g class="sv-set' + (off ? ' off' : '') + (src && got[src] ? ' pic' : '') + '" data-set="' + esc(x.id) + '" role="button" tabindex="0" aria-label="' + esc(name) + '">' +
           '<rect x="' + hx.toFixed(2) + '" y="' + hy + '" width="' + hw.toFixed(2) + '" height="' + hh + '" class="sv-hit"/>' +
           // Shown when the set has the keyboard's focus: a light line outside the dark one round the set, so one of
           // them shows against whatever is beside it.
           '<rect x="' + (r.x0 - 0.45).toFixed(2) + '" y="' + (top - 0.6) + '" width="' + (bw + 1.2).toFixed(2) + '" height="' + (f.h + 1.2) + '" rx="1.3" class="sv-ring"/>' +
           '<rect ' + box + ' fill="' + colourOf(x) + '" class="sv-box' + (r.p.turn ? ' turned" stroke-dasharray="1.2 0.8' : '') + '"/>' +
           (off ? '<rect ' + box + ' fill="url(#svh' + n + ')" class="sv-hatch"/>' : '') +
-          label(x, r.x0, top, f, tag, k) + '</g>');
+          label(x, r.x0, top, f, tag, k) + strip + '</g>');
       });
       y += l.h;
       parts.push('<rect x="0" y="' + y + '" width="' + W + '" height="' + T + '" class="sv-board' + (bad ? ' bad' : '') + '"/>');
@@ -295,7 +330,7 @@
       (high.length ? '<p class="flag bad"><span>' + esc(highSays) + '</span></p>' : '') +
       (deep.length ? '<p class="flag bad"><span>' + esc(deepSays(c, deep)) + '</span></p>' : '') +
       (gone.length ? '<p class="flag bad"><span>' + esc(goneSays) + '</span><button class="btn sm quiet" type="button" data-act="take-off" data-k="' + esc(c.id) + '">' + (gone.length === 1 ? 'Take it off the shelf' : 'Take them off') + '</button></p>' : '') +
-      '<svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" style="--w:' + Math.round(W * 7) + 'px' + (scale ? ';--sw:' + Math.round(W * scale) + 'px' : '') + '" role="group" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg></section>';
+      '<div class="shelf-box" style="--w:' + Math.round(W * 7) + 'px' + (scale ? ';--sw:' + Math.round(W * scale) + 'px' : '') + '"><svg class="shelf" viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="' + esc(c.name) + ' from the front">' + parts.join('') + tags.join('') + '</svg>' + (pics.length ? '<div class="sv-pics" aria-hidden="true">' + pics.join('') + '</div>' : '') + '</div></section>';
   }
 
   // A set that sticks out past the front of its bookcase: the bookcase's depth was edited, or the set's size was,

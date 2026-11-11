@@ -231,10 +231,11 @@
   var BRICK = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
   var gotPic = {}, noPic = {}, settling = 0;
   window.addEventListener('online', function () { noPic = {}; });
+  function thumb(num, big) { return 'https://cdn.rebrickable.com/media/thumbs/sets/' + num + '.jpg/' + (big ? '1000x800p' : '250x250p') + '.jpg'; }
   function picHtml(x, cls) {
     var head = cls === 'head-pic';
     if (!prefs.pics || !x.num || (head && noPic[x.num])) return '<div class="pic none ' + (cls || '') + '">' + BRICK + '</div>';
-    var src = 'https://cdn.rebrickable.com/media/thumbs/sets/' + x.num + '.jpg/' + (head ? '1000x800p' : '250x250p') + '.jpg';
+    var src = thumb(x.num, head);
     if (!settling) settling = setTimeout(settle, 0);
     return '<div class="pic ' + (gotPic[src] ? 'in ' : '') + (cls || '') + '">' + (gotPic[src] ? '' : BRICK) +
       // The menu says of these pictures "Loaded from Rebrickable by set number. Nothing else is sent": so not the
@@ -2075,6 +2076,8 @@
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
     // A setting kept on this device with the others (prefs), for the other screens: the planner's "Keep themes together".
     pref: function (k, v) { if (arguments.length > 1) { prefs[k] = v; savePrefs(); } return prefs[k]; },
+    // Where a set's small picture is, for the planner's drawing: '' with pictures off, or for a set with no number.
+    picSrc: function (x) { return prefs.pics && x && x.num ? thumb(x.num) : ''; },
     newId: newId, takeDoc: takeDoc, showSet: showSet, nudge: nudge, folded: folded, foldedText: foldedText,
     // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
     // gives this the new copy of the thing that opened it.

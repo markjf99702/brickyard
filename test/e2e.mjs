@@ -4310,6 +4310,46 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// With Show set pictures on, a set on a shelf has its picture in its rectangle and its name on a strip below; the
+// picture is asked for without saying which page wants it. A set whose picture doesn't come, one with no number
+// and one that isn't built any more stay colour blocks with their names, and so does every set with pictures off.
+{
+  const set = (id, name, num, w, h, more) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h }, ...(num ? { num } : {}), ...more });
+  const sets = { a: set('a', 'Galaxy Explorer', '10497-1', 40, 20), b: set('b', 'Tree House', '21318-1', 20, 28), n: set('n', 'My own castle', '', 20, 20), o: set('o', 'Typewriter', '21327-1', 27, 11, { state: 'apart' }), s: set('s', 'Orchid', '10311-1', 6, 6) };
+  const { c, p } = await withSets({ sets, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'a' }, { id: 'b' }] }, { h: 30, sets: [{ id: 'n' }, { id: 'o' }, { id: 's' }] }] } } });
+  const asked = [];
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  await c.route('https://cdn.rebrickable.com/**', r => {
+    const h = r.request().headers();
+    asked.push(r.request().url().replace(/.*sets\//, '') + (h.referer || h.origin ? ' from ' + (h.referer || h.origin) : ''));
+    if (/10497-1|10311-1/.test(r.request().url())) r.fulfill({ body: png, contentType: 'image/png' }); else r.fulfill({ status: 404 });
+  });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.sv-set.pic');
+  await p.waitForFunction(() => document.querySelectorAll('.sv-img').length === 2 && document.querySelectorAll('.sv-p.in').length === 2);
+  const drawn = () => p.evaluate(() => [...document.querySelectorAll('.sv-set')].map(g => {
+    const shown = t => !!t && getComputedStyle(t).display !== 'none', img = document.querySelector('.sv-img[data-set="' + g.dataset.set + '"]');
+    const box = g.querySelector('.sv-box').getBoundingClientRect(), i = img && img.parentNode.getBoundingClientRect(), st = g.querySelector('.sv-st');
+    return [g.dataset.set, img && img.parentNode.classList.contains('in') && img.naturalWidth ? 'picture' : 'block', shown(g.querySelector('.sv-t')) ? 'name' : shown(st) ? 'strip: ' + st.textContent : 'no name',
+      !i || (i.left >= box.left && i.right <= box.right && i.top >= box.top && i.bottom <= (shown(st) ? st.getBoundingClientRect().top + 1 : box.bottom)) ? '' : 'picture outside its set'].filter(Boolean).join(', ');
+  }));
+  assert.deepEqual(await drawn(), ['a, picture, strip: Galaxy Explorer', 'b, block, name', 'n, block, name', 'o, block, name', 's, picture, no name'],
+    'a set whose picture arrives shows it over its name on a strip; a tiny one the picture alone; the others stay colour blocks');
+  assert.deepEqual(asked.filter(a => /from/.test(a)), [], 'no picture request says which page asked');
+  assert.ok(!asked.some(a => /21327/.test(a)) && asked.some(a => /21318/.test(a)), 'a set that isn’t built any more isn’t asked for: ' + asked.join(' '));
+  // A tap on the picture opens the set, and the drawing keeps its pictures when it's drawn again.
+  const at = await p.evaluate(() => { const r = document.querySelector('.sv-img[data-set="a"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await p.touchscreen.tap(at[0], at[1]);
+  await p.waitForSelector('#z-save');
+  assert.equal(await p.textContent('#sheetTitle'), 'Galaxy Explorer', 'a tap on a picture opens its set');
+  await p.click('#z-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.equal((await drawn())[0], 'a, picture, strip: Galaxy Explorer', 'drawn again, the picture is there at once');
+  await p.evaluate(() => { window.brickyard.pref('pics', false); window.brickyard.refresh(); });
+  assert.deepEqual([await p.locator('.sv-img').count(), (await drawn())[0]], [0, 'a, block, name'], 'with Show set pictures off the drawing is colour blocks');
+  await c.close();
+}
+
 // A set can be put on a full shelf by hand. In Where it stands, a shelf that is only short of room can be chosen
 // and says by how much it would be over (every full shelf was greyed out, so after Fit nothing could be moved); one
 // too short for the set stays greyed out. Chosen, the set stands there and the shelf is flagged overfull.
@@ -4560,7 +4600,7 @@ await page.click('[data-close]');
   await p.waitForSelector('svg.shelf');
   const [w, room, px] = await p.evaluate(() => {
     const s = document.querySelector('svg.shelf'), r = s.getBoundingClientRect();
-    return [r.width, s.parentNode.clientWidth - 24, parseFloat(getComputedStyle(s.querySelector('.sv-h')).fontSize) * r.width / s.viewBox.baseVal.width];
+    return [r.width, s.closest('.case').clientWidth - 24, parseFloat(getComputedStyle(s.querySelector('.sv-h')).fontSize) * r.width / s.viewBox.baseVal.width];
   });
   assert.ok(Math.abs(w - room) < 1, 'a Billy takes the card’s width on a phone (' + Math.round(w) + ' of ' + room + ' px)');
   assert.ok(px >= 9, 'its shelf labels are at least 9 px (' + px.toFixed(1) + ')');
