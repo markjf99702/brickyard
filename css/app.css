@@ -364,6 +364,9 @@ a.item { color: inherit; text-decoration: none; }
    wide, with the name's button 4 px from the box). */
 .menu.pool li.lot label.tick { flex: none; width: auto; margin: 0 -8px 0 -12px; padding: 12px; }
 .menu.pool li.lot .lot-name { flex: 1; min-width: 0; width: auto; padding: 11px 0; border-bottom: 0; }
+/* The arrow after its name, the mark a moving box's heading has, says the name opens something. A screen reader
+   hears the button, not the arrow (the second content, where the browser knows it). */
+.menu.pool li.lot .lot-name .nm::after { content: "›"; content: "›" / ""; margin-left: 6px; font-size: 17px; line-height: 1; }
 .menu.pool li.lot .btn { flex: none; width: auto; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
 /* Recently removed: a set and its Put back */
 .gone { list-style: none; padding: 0; margin: 0; }

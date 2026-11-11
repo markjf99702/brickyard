@@ -699,6 +699,8 @@ await page.click('.chip[data-f="all"]');
   assert.deepEqual(await rows(), ['Blue tubLoose · 42 pieces · Box 9', 'Red bagLoose · 10 pieces']);
   assert.deepEqual(await p.$$eval('li.lot', ls => ls.map(l => [...l.children].map(e => e.tagName + ':' + Math.round(e.getBoundingClientRect().height >= 40)).join())), Array(2).fill('LABEL:1,BUTTON:1,BUTTON:1'), 'a tick, the name and Remove, each tall enough for a finger');
   assert.equal(await p.getAttribute('[data-pool="tub"]', 'aria-label'), 'Build from Blue tub');
+  assert.deepEqual(await p.$$eval('li.lot .lot-name', bs => bs.map(b => { const n = b.querySelector('.nm'); return [n.textContent, getComputedStyle(n, '::after').content.slice(0, 3)]; })), [['Blue tub', '"›"'], ['Red bag', '"›"']],
+    'an arrow after each name says it opens, like a moving box’s heading');
   await p.click('[data-edit="tub"]');
   assert.deepEqual([await p.textContent('#sheetTitle'), await p.textContent('.sheet .lede'), await p.inputValue('#lt-name'), await p.inputValue('#lt-box'), await p.$$eval('#dl-box option', os => os.map(o => o.value))],
     ['Blue tub', '42 loose pieces of 2 kinds', 'Blue tub', '9', ['3', '9']], 'the lot’s sheet, with the boxes in use to choose from');

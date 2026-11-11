@@ -244,9 +244,10 @@ const renderList = orSay(async () => {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
       '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (!s.on && OFF[s.state] ? ' · ' + OFF[s.state] : '') + '</small></span></label></li>').join('') +
       // A lot's tick is on its own, and its name is a button that opens the lot's sheet (lotSheet): what it's called
-      // and which moving box it's in could only be typed when the lot first arrived.
+      // and which moving box it's in could only be typed when the lot first arrived. An arrow after the name says it
+      // opens, as a moving box's heading in My sets has.
       lots.map(l => '<li class="lot"><label class="tick"><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + ' aria-label="Build from ' + esc(l.name) + '"></label>' +
-        '<button type="button" class="lot-name" data-edit="' + esc(l.id) + '"><span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · Box ' + esc(window.BrickCore.boxName(l.box)) : '') +
+        '<button type="button" class="lot-name" data-edit="' + esc(l.id) + '"><span><span class="nm">' + esc(l.name) + '</span><small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · Box ' + esc(window.BrickCore.boxName(l.box)) : '') +
         (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></button>' +
         '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
     if (!any) html += '<p class="flag"><span>' + (!lots.length ? 'Tick a set to build from its pieces.' : sets.length ? 'Tick a set or some loose pieces to build from them.' : 'Tick your loose pieces to build from them.') + '</span></p>';
