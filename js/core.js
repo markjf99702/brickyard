@@ -74,6 +74,12 @@
     return m[1] + '-' + (m[2] ? String(parseInt(m[2], 10)) : '1');
   }
   function shortNum(num) { return String(num || '').replace(/-1$/, ''); }
+  // LEGO's own page of building instructions for a set, by its number as printed on the box (no "-1"); '' for a
+  // number that isn't all digits, which LEGO's page doesn't go by.
+  function instructionsUrl(num) {
+    var m = /^([0-9]{3,7})-[0-9]+$/.exec(setNum(num));
+    return m ? 'https://www.lego.com/service/buildinginstructions/' + m[1] : '';
+  }
 
   function names(v, n) {
     if (typeof v === 'string') v = v.split(/\s*[,;]\s*/);
@@ -763,7 +769,7 @@
 
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
-    STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
+    STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,

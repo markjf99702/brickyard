@@ -854,6 +854,9 @@
       field('Moving box', box('e-box', x.box, ' list="dl-box" placeholder="Leave blank if it’s not packed"')) +
       field('Missing pieces', '<textarea id="e-missing" placeholder="e.g. one red 2×4 brick, the minifigure’s hat">' + esc(x.missing) + '</textarea>') +
       '<label class="check"><input type="checkbox" id="e-instr"' + (x.instr ? ' checked' : '') + '> I have the paper instructions</label>' +
+      // LEGO's page of building instructions for the number in the box above (C.instructionsUrl), in a new tab.
+      // Nothing goes to LEGO until it's tapped, and then not the address of this page (noreferrer).
+      '<p class="out" id="e-lego-p"' + (C.instructionsUrl(x.num) ? '' : ' hidden') + '><a id="e-lego" target="_blank" rel="noopener noreferrer" href="' + esc(C.instructionsUrl(x.num)) + '">Instructions at LEGO<span aria-hidden="true"> ↗</span><span class="vh"> (opens in a new tab)</span></a></p>' +
       // Each box has its own label: a placeholder is gone once the box holds a number, leaving a bare "50 8 16".
       '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
       field('Width, cm', box('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', box('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', box('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
@@ -899,7 +902,8 @@
     // A different number is a different question: the button that was asking about a set you already have goes
     // back to its own words.
     $('e-num').addEventListener('input', function () {
-      var b = $('e-save');
+      var b = $('e-save'), lego = C.instructionsUrl(this.value.trim());
+      $('e-lego-p').hidden = !lego; $('e-lego').href = lego || '#'; // the link follows the number as it's typed
       if (b.dataset.again) { delete b.dataset.again; b.textContent = isNew ? 'Add set' : 'Save'; }
       $('e-dup').hidden = true;
       // What the boxes took from a first copy of the old number goes with it, unless it's been changed since.

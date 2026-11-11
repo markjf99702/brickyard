@@ -2533,6 +2533,27 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// A set with a number has a link in its sheet to LEGO's own page of building instructions for that number, opened in
+// a new tab without saying where from. It follows the number as it's typed, and a set with no number has none.
+// Nothing is asked of LEGO until it's tapped (the check at the end that no request left the site covers that).
+{
+  const { c, p } = await withSets({ sets: { f: { id: 'f', t: 1, num: '75192-1', name: 'Millennium Falcon', state: 'apart' }, m: { id: 'm', t: 1, name: 'Mystery castle', state: 'built' } } });
+  await p.goto(base + '#catalog');
+  await p.click('.item[data-id="f"]');
+  const link = () => p.$eval('#e-lego', a => [a.closest('p').hidden, a.textContent, a.href, a.target, a.rel, Math.round(a.getBoundingClientRect().height) >= 44]);
+  assert.deepEqual(await link(), [false, 'Instructions at LEGO ↗ (opens in a new tab)', 'https://www.lego.com/service/buildinginstructions/75192', '_blank', 'noopener noreferrer', true], 'the Falcon’s sheet links to LEGO’s instructions for 75192');
+  await p.fill('#e-num', '10698');
+  assert.equal((await link())[2], 'https://www.lego.com/service/buildinginstructions/10698', 'the link follows the number in the box');
+  await p.fill('#e-num', '');
+  assert.equal((await link())[0], true, 'and goes when the number does');
+  await discard(p);
+  await p.click('.item[data-id="m"]');
+  assert.equal((await link())[0], true, 'a set with no number has no link');
+  await p.fill('#e-num', '6080');
+  assert.deepEqual((await link()).slice(0, 3), [false, 'Instructions at LEGO ↗ (opens in a new tab)', 'https://www.lego.com/service/buildinginstructions/6080'], 'until one is typed');
+  await c.close();
+}
+
 // Small things for fingers. The keyboard's Search key (Enter) in the search box puts the keyboard away: the list
 // is searched at every letter, so the key did nothing and the keyboard stayed over the results. Only on a touch
 // screen: on a laptop Enter does nothing, and the cursor stays in the box (it used to leave it). Two quick taps on

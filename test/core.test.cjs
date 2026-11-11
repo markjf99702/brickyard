@@ -70,6 +70,9 @@ eq(C.setNum('LEGO'), '', 'LEGO alone is not a set number');
 }
 eq(C.shortNum('10698-1'), '10698', 'short form drops -1');
 eq(C.shortNum('10698-2'), '10698-2', 'short form keeps other versions');
+eq(C.instructionsUrl('75192-1'), 'https://www.lego.com/service/buildinginstructions/75192', "LEGO's instructions page goes by the number on the box");
+eq([C.instructionsUrl('10698'), C.instructionsUrl('Set 10698-2')], Array(2).fill('https://www.lego.com/service/buildinginstructions/10698'), 'however the number is written, and for a second version of the set');
+eq([C.instructionsUrl(''), C.instructionsUrl('tlm123-1'), C.instructionsUrl('brick box')], ['', '', ''], 'no link without a number, or for a number that is not all digits');
 
 // Cleaning.
 eq(C.cleanSet({ num: '10698', name: '  Large   Creative Brick Box ', pieces: '790', state: 'Disassembled', year: '2015', box: 7, junk: 1 }),
