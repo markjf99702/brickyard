@@ -166,7 +166,9 @@
   // first, each on the shortest shelf that takes it with CLEAR cm above it, so tall shelves stay free for tall
   // sets. Among shelves of that height, one that takes it facing out comes before one where it has to turn side-on
   // (it used to turn on the first shelf it came to while the next one still had room for it facing out); then the
-  // shelf it fills most nearly. Returns new bookcases (the old ones aren't changed) and the sets that didn't fit,
+  // shelf it fills most nearly. Before any of that, a set with a room in My sets goes on a bookcase in that room
+  // when one takes it, and anywhere only when none does; sets and bookcases with no room are placed as ever.
+  // Returns new bookcases (the old ones aren't changed) and the sets that didn't fit,
   // with why.
   function fill(cases, sets) {
     var byId = {}; sets.forEach(function (x) { byId[x.id] = x; });
@@ -182,7 +184,7 @@
           var f = fits(c, li, x, byId, false, CLEAR);
           if (f.why) return;
           // What makes one shelf better than another, most important first; less is better.
-          var key = [tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along)];
+          var key = [x.room && !sameRoom(x.room, c.room) ? 1 : 0, tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along)];
           if (!best || before(key, best.key)) best = { l: l, turn: f.turn, key: key };
         });
       });
@@ -192,6 +194,8 @@
     });
     return { cases: out, left: left };
   }
+  // Rooms are typed by hand in two places, so "Office" and "office " are the same room.
+  function sameRoom(a, b) { var f = function (t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); }; return !!f(a) && f(a) === f(b); }
   function before(a, b) {
     for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
     return false;

@@ -85,6 +85,21 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq(S.fill([k2], all).cases[0].levels[0].sets, [{ id: 'a' }, { id: 'x', turn: true }], 'a taller shelf is still kept for taller sets');
 }
 
+// A set with a room goes on a bookcase in that room when one takes it, whatever fits it more closely elsewhere;
+// when none there takes it, or it has no room, it goes wherever it fits best, as before.
+{
+  const inRoom = (x, room) => Object.assign(x, { room });
+  const hall = { id: 'h', name: 'Hall', room: 'Hall', w: 60, d: 30, levels: [{ h: 22, sets: [] }] }, office = { id: 'o', name: 'Office', room: 'Office', w: 60, d: 30, levels: [{ h: 40, sets: [] }] };
+  const mine = inRoom(set('mine', 30, 20, 20), ' office'), free = set('free', 20, 20, 20), tall = inRoom(set('tall', 20, 20, 39.5), 'Hall'), wide = inRoom(set('wide', 40, 20, 20), 'Office');
+  const r = S.fill([hall, office], [mine, free, tall, wide]);
+  // The widest goes first: into the Office, its room, though the Hall's shelf is the closer fit. The next Office set
+  // has no room left there and goes to the Hall, with the set that has no room.
+  eq(r.cases.map(c => c.levels[0].sets.map(p => p.id)), [['mine', 'free'], ['wide']], 'its own room first; a set with no room, or with no place left in its room, goes where it fits');
+  eq(r.left.map(x => x.set.id), ['tall'], 'and a set no shelf takes is still left');
+  const bare = { id: 'b', name: 'Bare', w: 60, d: 30, levels: [{ h: 40, sets: [] }] };
+  eq(S.fill([hall, bare], [mine]).cases.map(c => c.levels[0].sets.length), [1, 0], 'a bookcase with no room is not the set’s room');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
