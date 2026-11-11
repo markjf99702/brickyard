@@ -609,7 +609,9 @@
     });
   }
 
-  $('q').addEventListener('input', renderCatalog);
+  // What a search finds is shown from its top: the search box stays in view down the list now, and a search typed
+  // there left the page wherever it was in what was found.
+  $('q').addEventListener('input', function () { renderCatalog(); if (window.scrollY > 0) window.scrollTo(0, 0); });
   // Going into the search while it holds the last thing looked for selects it, so typing replaces it: packing one
   // set after another, each search started with clearing the one before.
   $('q').addEventListener('focus', function () { if (this.value) this.select(); });
@@ -1641,7 +1643,8 @@
     var rows = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; }), row = rows[0];
     if (!row) return;
     var fab = document.querySelector('#catalog .fab-row'), at = row.getBoundingClientRect();
-    var top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom;
+    var top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, tools = document.querySelector('#catalog .tools');
+    if (getComputedStyle(tools).position === 'sticky') top += tools.offsetHeight; // the search stays under the bar
     var bottom = fab.hidden || getComputedStyle(fab).position !== 'sticky' ? window.innerHeight : Math.min(window.innerHeight, fab.getBoundingClientRect().top);
     if (!gently || at.top < top || at.bottom > bottom) row.scrollIntoView({ block: 'center' });
     clearTimeout(tinted);

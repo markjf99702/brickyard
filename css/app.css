@@ -144,6 +144,21 @@ a { color: var(--blue); }
 
 /* ---------- catalog ---------- */
 .tools { display: flex; gap: 8px; margin: 2px 0 10px; }
+/* The search stays in view under the title bar while the list scrolls (it went with the page: 20 screens down a long
+   list, a search began with the way back up). #cat-tools is only a wrapper, so the search sticks for the whole
+   length of the list and not just of the wrapper; the line a scrolled bar has under it goes under the search
+   instead. What the keyboard moves to stops clear of both. Not on a screen too short to spare the room (a phone on
+   its side). */
+#cat-tools { display: contents; }
+@media (min-height: 500px) {
+  .tools { position: sticky; top: calc(env(safe-area-inset-top) + 65px); z-index: 4; background: var(--bg); margin: 0 -16px; padding: 2px 16px 10px; border-bottom: 1px solid transparent; }
+  #catalog .bar.scrolled:has(~ .wrap > #cat-tools:not([hidden])) { border-bottom-color: transparent; }
+  #catalog .bar.scrolled ~ .wrap .tools { border-bottom-color: var(--line); }
+  /* The search box is always in view, a little inside the room the page keeps clear for the bar: its own margin
+     takes that back, or the page moved when it took the focus. Everything else in My sets stops under it. */
+  .tools input { scroll-margin-top: -12px; }
+  #catalog > .wrap :is(button, a, select, .group) { scroll-margin-top: 58px; }
+}
 .search { flex: 1; min-width: 0; position: relative; }
 .search input {
   width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); padding: 0 12px 0 38px;

@@ -2533,6 +2533,39 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// The search box stays in view under the title bar while My sets scrolls (it went with the page). Going into it
+// doesn't move the page; what a search typed down the list finds is shown from its top; and a row the keyboard
+// moves to stops under the search, not behind it. On a screen too short for both (a phone on its side) the search
+// scrolls with the page as before.
+{
+  const sets = {};
+  for (let i = 0; i < 60; i++) sets['s' + i] = { id: 's' + i, t: 1, name: 'Set ' + String(i).padStart(2, '0'), room: 'Room ' + (i % 4), state: 'built' };
+  for (const opts of [{}, { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 }]) {
+    const { c, p } = await withSets({ sets }, opts);
+    await p.goto(base + '#catalog');
+    const q = () => p.$eval('#q', e => { const r = e.getBoundingClientRect(), bar = document.querySelector('#catalog .bar').getBoundingClientRect(); return [Math.round(r.top - bar.bottom), document.elementFromPoint(r.left + 60, r.top + 20) === e]; });
+    assert.deepEqual(await q(), [2, true], 'the search box is under the bar to begin with');
+    await p.evaluate(() => scrollTo(0, 1500));
+    assert.deepEqual([await q(), await p.evaluate(() => Math.round(scrollY))], [[2, true], 1500], 'and still there, on top of the rows, 1,500 px down the list');
+    await p.evaluate(() => document.getElementById('q').focus());
+    assert.equal(await p.evaluate(() => Math.round(scrollY)), 1500, 'going into it leaves the page where it is');
+    // Shift+Tab from a row down the list: the row before it stops clear of the search.
+    await p.evaluate(() => { document.querySelectorAll('#list-wrap .item')[30].focus({ preventScroll: true }); scrollTo(0, document.querySelectorAll('#list-wrap .item')[30].getBoundingClientRect().top + scrollY - 140); });
+    await p.keyboard.press('Shift+Tab');
+    assert.ok(await p.evaluate(() => document.activeElement.getBoundingClientRect().top >= document.querySelector('.tools').getBoundingClientRect().bottom), 'a row the keyboard moves up to is shown under the search box');
+    await p.evaluate(() => scrollTo(0, 1500));
+    await p.focus('#q');
+    await p.keyboard.type('set 4');
+    assert.deepEqual([await p.evaluate(() => Math.round(scrollY)), await p.locator('#list-wrap .item').count()], [0, 15], 'what a search finds is shown from its top');
+    await c.close();
+  }
+  const side = await withSets({ sets }, { viewport: { width: 844, height: 390 } });
+  await side.p.goto(base + '#catalog');
+  await side.p.evaluate(() => scrollTo(0, 1500));
+  assert.ok(await side.p.$eval('#q', e => e.getBoundingClientRect().bottom < 0), 'on a phone on its side the search scrolls away, leaving the room to the list');
+  await side.c.close();
+}
+
 // With the Missing pieces filter on, Copy this list puts what's missing on the clipboard, a line a set, for an order
 // of replacement pieces: the sets the list is showing, so a search narrows it. Under any other filter there's no
 // such button. Where the browser won't copy, the text is shown to copy by hand.
