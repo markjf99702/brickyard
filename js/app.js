@@ -519,6 +519,9 @@
   // Going into the search while it holds the last thing looked for selects it, so typing replaces it: packing one
   // set after another, each search started with clearing the one before.
   $('q').addEventListener('focus', function () { if (this.value) this.select(); });
+  // The keyboard's Search key (Enter) puts the keyboard away: the list is searched as each letter is typed, so the
+  // key had nothing to do, and the keyboard stayed over all but a row and a half of what was found.
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;

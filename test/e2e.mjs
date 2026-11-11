@@ -1988,6 +1988,57 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Small things for fingers. The keyboard's Search key (Enter) in the search box puts the keyboard away: the list
+// is searched at every letter, so the key did nothing and the keyboard stayed over the results. Two quick taps on
+// a button are never a double tap that zooms the page (touch-action), while the 3D picture keeps its touches to
+// itself. A hover look is only for a device that hovers (on a phone it stayed on the last row tapped), and rows,
+// cards, chips and menu rows have a pressed look. And a run of digits is never made a phone link.
+{
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built' }, o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' } } });
+  await p.goto(base + '#catalog');
+  await p.fill('#q', 'tree');
+  await p.press('#q', 'Enter');
+  assert.deepEqual([await p.evaluate(() => document.activeElement.tagName), await p.inputValue('#q'), await p.locator('#list-wrap .item .t').allTextContents()], ['BODY', 'tree', ['Tree House']], 'Enter leaves the search box, with what it found still showing');
+  await p.fill('#q', '');
+  const touch = sels => p.evaluate(list => list.map(s => getComputedStyle(document.querySelector(s)).touchAction).join(), sels);
+  assert.equal(await touch(['#add-btn', '.chip', '#q', '.item', '#group', '#menu-btn', '#catalog .back', '.jd-foot a']), Array(8).fill('manipulation').join());
+  assert.equal(await p.getAttribute('meta[name="format-detection"]', 'content'), 'telephone=no');
+  // Every hover look is inside "a device that hovers", but the footer's links, which lose theirs on the next page.
+  const looks = await p.evaluate(() => {
+    const out = { hover: [], active: [] };
+    const walk = (rules, media) => { for (const r of rules) {
+      if (r.media) walk(r.cssRules, media + ' ' + r.conditionText);
+      else if (r.selectorText) for (const sel of r.selectorText.split(',').map(x => x.trim())) { if (/:hover/.test(sel) && !/hover: hover/.test(media)) out.hover.push(sel); if (/:active/.test(sel)) out.active.push(sel); }
+    } };
+    for (const sheet of document.styleSheets) walk(sheet.cssRules, '');
+    return out;
+  });
+  assert.deepEqual(looks.hover, ['.jd-foot a:hover']);
+  for (const sel of ['.item:active', '.room:active', '.chip:active', '.menu button:active', '.back:active']) assert.ok(looks.active.includes(sel), 'a pressed look for ' + sel);
+  // Pressed: the row's ground is the soft colour while the mouse is down on it, and its own again after.
+  const soft = await p.evaluate(() => { const d = document.createElement('div'); d.style.background = 'var(--soft)'; document.body.appendChild(d); const v = getComputedStyle(d).backgroundColor; d.remove(); return v; });
+  const ground = sel => p.$eval(sel, el => getComputedStyle(el).backgroundColor);
+  for (const sel of ['#list-wrap .item', '.chip[aria-pressed="false"]']) {
+    const b = await p.locator(sel).first().boundingBox(), was = await ground(sel);
+    await p.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await p.mouse.down();
+    assert.deepEqual([await ground(sel), was === soft], [soft, false], sel + ' looks pressed while it’s held');
+    await p.mouse.move(195, 30); // off it, onto the bar, so letting go presses nothing
+    await p.mouse.up();
+    assert.equal(await ground(sel), was);
+  }
+  // The chosen chip keeps its dark ground when pressed.
+  const lit = await p.locator('.chip[aria-pressed="true"]').boundingBox(), dark = await ground('.chip[aria-pressed="true"]');
+  await p.mouse.move(lit.x + lit.width / 2, lit.y + lit.height / 2);
+  await p.mouse.down();
+  assert.equal(await ground('.chip[aria-pressed="true"]'), dark);
+  await p.mouse.up();
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await touch(['.stage', '#stage', '#step-next', '#step-range']), 'none,none,manipulation,manipulation', 'the 3D picture keeps its touches; the buttons under it don’t zoom the page');
+  await c.close();
+}
+
 // "You already have …" is said under the Set number box as well as in a message, and stays there until the number
 // changes. On a phone with the number box in use, the keyboard covers the bottom half of the screen: the message
 // showed at y 697 and the button that had turned into "Add another copy" at y 788, both under it, so pressing Done
