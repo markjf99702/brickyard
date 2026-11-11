@@ -1395,7 +1395,9 @@
         var part = {};
         if ('room' in u.set || 'spot' in u.set) { part.room = u.after.room; part.spot = u.after.spot; }
         if (u.set.box) part.box = u.set.box;
-        to.push(C.where(part));
+        // A set that's in a moving box stays in it (a link never unpacks), and the row says so: "Den › Shelf 2 (now
+        // Office · Box 3)" read as if it were coming out.
+        to.push(C.where(part) + (!u.set.box && have.box ? ', still in Box ' + C.boxName(have.box) : ''));
         from.push(C.where(have));
       }
       if (u.state) { to.push(C.STATE_NAMES[u.after.state]); from.push(C.STATE_NAMES[have.state]); }

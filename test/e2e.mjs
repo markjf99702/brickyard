@@ -224,7 +224,7 @@ await page.waitForSelector('.rv');
 assert.equal(await page.locator('.rv li').count(), 7);
 // It's owned once, and the link has it on a shelf the catalog doesn't: that row offers to move it (see further down).
 // Unticked here, so the catalog below is the one these checks were written for.
-assert.deepEqual([await page.locator('.rv li.off').count(), await page.textContent('.rv li .w'), await page.textContent('#rv-add')], [0, 'Move it: Office › Closet (now Office · Box 7)', 'Add 6, move 1'], 'the set already owned is offered as a move');
+assert.deepEqual([await page.locator('.rv li.off').count(), await page.textContent('.rv li .w'), await page.textContent('#rv-add')], [0, 'Move it: Office › Closet, still in Box 7 (now Office · Box 7)', 'Add 6, move 1'], 'the set already owned is offered as a move');
 await page.click('.rv li >> nth=0 >> input');
 assert.equal(await page.locator('.rv li.off').count(), 1, 'the set already owned is unticked');
 assert.match(await page.textContent('#rv-add'), /Add 6 sets/);
@@ -1451,7 +1451,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.goto('about:blank');
   await p.goto(just);
   await p.waitForSelector('#rv-add');
-  assert.deepEqual([(await rows()).map(r => r[2]), await p.textContent('#rv-add')], [['Move it: Box 9 (now Living room › Bookcase)', 'Change it: Taken apart (now Built)', 'Move it: Den (now Office · Box 7)'], 'Move 2, change 1']);
+  assert.deepEqual([(await rows()).map(r => r[2]), await p.textContent('#rv-add')], [['Move it: Box 9 (now Living room › Bookcase)', 'Change it: Taken apart (now Built)', 'Move it: Den, still in Box 7 (now Office · Box 7)'], 'Move 2, change 1']);
   await p.click('#rv li:nth-child(2) input');
   assert.equal(await p.textContent('#rv-add'), 'Move 2 sets');
   await p.click('#rv-add');
