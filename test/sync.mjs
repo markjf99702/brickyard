@@ -214,7 +214,7 @@ assert.equal(await L.locator('#m-sync').count(), 0, 'no Drive in the menu there'
 await L.click('#m-link');
 await L.waitForTimeout(300);
 const link = await L.inputValue('#all-link');
-assert.ok(link.startsWith(SITE + '#b1z'), 'the link points at Brickyard');
+assert.ok(link.startsWith(SITE + '#b2z'), 'the link points at Brickyard, and is the checked kind');
 await A.page.goto(link);
 await A.page.waitForSelector('#cs-go');
 await A.page.click('#cs-go');

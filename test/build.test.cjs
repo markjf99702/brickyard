@@ -177,6 +177,24 @@ eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
   check(B.isModelLink(link), 'model link recognised');
   eq((await B.parseModel(link)).parts, cottage.parts, 'd1z link opens');
   eq((await B.parseModel('#d1j' + Buffer.from(doc).toString('base64url'))).name, 'Cottage', 'd1j link opens');
+  // The checked form (#d2z, #d2j): the same data with a check on its end (FNV-1a of what's before it, in base 36,
+  // seven characters, as linkCheck in js/core.js). Whole it opens; with a character changed, or cut short, it doesn't.
+  {
+    const core = { exports: {} };
+    new Function('module', fs.readFileSync(path.join(root, 'js/core.js'), 'utf8'))(core);
+    const checked = (kind, data) => '#' + kind + data + core.exports.linkCheck(kind + data);
+    const small = JSON.stringify({ brickyard: 1, model: { name: 'Wall', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2]] } });
+    const z2 = checked('d2z', zlib.deflateRawSync(small).toString('base64url')), j2 = checked('d2j', Buffer.from(small).toString('base64url'));
+    check(B.isModelLink('https://brickyard.junkdrawer.works/' + z2), 'checked model link recognised');
+    eq([(await B.parseModel(z2)).name, (await B.parseModel('Open it: https://brickyard.junkdrawer.works/' + j2 + '.')).parts.length], ['Wall', 2], 'd2z and d2j links open');
+    let refused = 0, tried = 0;
+    for (const l of [z2, j2]) for (let i = 4; i < l.length; i++) {
+      tried += 2;
+      if (await B.parseModel(l.slice(0, i) + (l[i] === 'A' ? 'B' : 'A') + l.slice(i + 1)).then(() => false, () => true)) refused++;
+      if (await B.parseModel(l.slice(0, i)).then(() => false, () => true)) refused++;
+    }
+    eq(refused, tried, 'a checked model link with a wrong character, or cut short, is refused');
+  }
   // A model link with a dash or an underscore stuck to its end (markdown's _link_) still opens: they're characters
   // a link is made of, and with one more on the end it didn't always unpack.
   {
@@ -381,10 +399,10 @@ print(json.dumps(cm.read_pieces(sys.argv[2])))`, script, f], { encoding: 'utf8' 
     const failing = sh([over, '--out', dir, '--pieces', pasted]);
     check(failing[0] === 1 && /NOT READY: 1 problem\./.test(failing[1]) && !/https:|File:/.test(failing[1]) && !fs.existsSync(made), 'script: a failing model gets no file and no link');
     const forced = sh([over, '--out', dir, '--pieces', pasted, '--force']);
-    check(forced[0] === 1 && /NOT READY/.test(forced[1]) && /https:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(forced[1]) && fs.existsSync(made), 'script: --force makes the file and link, and still exits 1');
+    check(forced[0] === 1 && /NOT READY/.test(forced[1]) && /https:\/\/brickyard\.junkdrawer\.works\/#d2z/.test(forced[1]) && fs.existsSync(made), 'script: --force makes the file and link, and still exits 1');
     check(/from an earlier run/.test(sh([over, '--out', dir, '--pieces', pasted])[1]), 'script: a file left by an earlier run is pointed out');
     const passing = sh([model, '--out', dir, '--pieces', lotFile]);
-    check(passing[0] === 0 && !/NOT READY/.test(passing[1]) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(passing[1]) && fs.existsSync(path.join(dir, 'tower.brickyard-model.json')), 'script: a passing model gets its file and link');
+    check(passing[0] === 0 && !/NOT READY/.test(passing[1]) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d2z/.test(passing[1]) && fs.existsSync(path.join(dir, 'tower.brickyard-model.json')), 'script: a passing model gets its file and link');
 
     // --sets and --pieces take every word after them. A model file put last is named, not "file is required".
     for (const [args, says] of [[['--pieces', pasted, '--sets', model], /No model file\. .*tower\.json came after --sets.*Put the model first/], [['--pieces', pasted, model], /No model file\. .*--pieces takes everything after it.*tower\.json/], [[], /No model file\. Put the model first/]]) {
@@ -398,7 +416,7 @@ print(json.dumps(cm.read_pieces(sys.argv[2])))`, script, f], { encoding: 'utf8' 
     fs.copyFileSync(path.join(root, 'models/cottage.json'), path.join(lone, 'cottage.json'));
     const away = require('child_process').spawnSync('python3', ['-B', 'brickyard-designer/scripts/check_model.py', 'cottage.json', '--out', 'out'], { cwd: lone, encoding: 'utf8' });
     check(!path.resolve(lone).startsWith(root + path.sep), 'the copied skill is outside the repo');
-    check(away.status === 0 && /Cottage: 40 pieces/.test(away.stdout) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d1z/.test(away.stdout) && fs.existsSync(path.join(lone, 'out/cottage.brickyard-model.json')),
+    check(away.status === 0 && /Cottage: 40 pieces/.test(away.stdout) && /\nhttps:\/\/brickyard\.junkdrawer\.works\/#d2z/.test(away.stdout) && fs.existsSync(path.join(lone, 'out/cottage.brickyard-model.json')),
       'the skill on its own checks the cottage' + (away.status === 0 ? '' : '\n    ' + (away.stdout + away.stderr).trim().split('\n').pop()));
     // A link long enough to be cut off on the way gets a note to lead with the file, at the same length and in
     // the same words as the cataloger's script. A wall of 1,400 bricks in mixed colours makes one (its first two courses are one

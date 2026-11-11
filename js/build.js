@@ -148,7 +148,7 @@ const route = orSay(async () => {
   const h = location.hash;
   if ($('build').hidden) { stopStage(); return; }
   await load();
-  if (/^#d1[zj]/.test(h)) {
+  if (/^#d[12][zj]/.test(h)) {
     try {
       const r = await window.BrickCore.parseIncoming(h);
       const m = r.kind === 'model' ? B.cleanModel(r.doc) : null;

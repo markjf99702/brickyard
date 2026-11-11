@@ -190,6 +190,21 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
   check(S.isSizesLink('https://brickyard.junkdrawer.works/#z1z' + zlib.deflateRawSync(doc).toString('base64url')), 'sizes link recognised');
   eq(await S.parseSizes('#z1z' + zlib.deflateRawSync(doc).toString('base64url')), clean, 'z1z link opens');
   eq(await S.parseSizes('#z1j' + Buffer.from(doc).toString('base64url')), clean, 'z1j link opens');
+  // The checked form (#z2z, #z2j): the same data with the check js/core.js works out on its end. Whole it opens;
+  // with one character changed, or cut short, it is refused.
+  {
+    const checked = (kind, data) => '#' + kind + data + C.linkCheck(kind + data);
+    const z2 = checked('z2z', zlib.deflateRawSync(doc).toString('base64url')), j2 = checked('z2j', Buffer.from(doc).toString('base64url'));
+    check(S.isSizesLink('https://brickyard.junkdrawer.works/' + z2), 'checked sizes link recognised');
+    eq([await S.parseSizes(z2), await S.parseSizes('_https://brickyard.junkdrawer.works/' + j2 + '_')], [clean, clean], 'z2z and z2j links open');
+    let refused = 0, tried = 0;
+    for (const l of [z2, j2]) for (let i = 4; i < l.length; i++) {
+      tried += 2;
+      if (await S.parseSizes(l.slice(0, i) + (l[i] === 'A' ? 'B' : 'A') + l.slice(i + 1)).then(() => false, () => true)) refused++;
+      if (await S.parseSizes(l.slice(0, i)).then(() => false, () => true)) refused++;
+    }
+    eq(refused, tried, 'a checked sizes link with a wrong character, or cut short, is refused');
+  }
   eq(await S.parseSizes(doc), clean, 'pasted file opens');
   // A whole message from Claude, copied: the link in a sentence, or the file in ```json fences.
   for (const [t, what] of [
@@ -226,7 +241,7 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
   try { out = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(dir, 'sizes.json'), '--out', dir]).toString(); }
   catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (out) {
-    const link = out.split('\n').find(l => l.includes('#z1z'));
+    const link = out.split('\n').find(l => l.includes('#z2z'));
     eq(await S.parseSizes(link), clean, 'script and page agree on sizes');
     check(!/NOTE: this link is long/.test(out), 'a short sizes link has no note about its length');
     // Sizes that end in 5 hundredths (they come from inches: 2.5 in is 6.35 cm) are rounded the same way by both: a
@@ -237,7 +252,7 @@ eq(S.cleanSizes({ sets: [] }), null, 'not a sizes list');
     eq(S.cleanSizes(halves).slice(0, 2), [{ num: '10497-1', w: 12.3, d: 0.2, h: 6.4 }, { num: '21318-1', w: 19.1, d: 500, h: 500 }], 'the page rounds a half up');
     fs.writeFileSync(path.join(dir, 'halves.json'), JSON.stringify(halves));
     const half = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(dir, 'halves.json'), '--out', dir]).toString();
-    eq(await S.parseSizes(half.split('\n').find(l => l.includes('#z1z'))), S.cleanSizes(halves), 'script and page agree on sizes that end in a half');
+    eq(await S.parseSizes(half.split('\n').find(l => l.includes('#z2z'))), S.cleanSizes(halves), 'script and page agree on sizes that end in a half');
     eq(S.cleanSizes(halves).find(z => z.num === '42115-1'), { num: '42115-1', w: 60, d: 25.5, h: 13.4 }, 'and a size inside its limits is kept as it is');
     // A long sizes link gets the same note as a long batch link: lead with the file.
     fs.writeFileSync(path.join(dir, 'many.json'), JSON.stringify({ sizes: Array.from({ length: 900 }, (_, i) => ({ num: String(10000 + i * 37), w: 10 + i % 41, d: 8 + i % 23, h: 5 + i % 31, note: 'estimate ' + (i * 7919 % 1000) })) }));

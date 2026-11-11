@@ -64,7 +64,7 @@ python3 scripts/check_model.py lighthouse.json --layers --out OUTDIR
 - `--layers` draws the model from above, layer by layer (a layer is one plate high; the first row is the back), one letter per part, with a key of each part that starts on that layer: its name, colour, turn and step, and for slopes, curves and inverted slopes which side is high. A run of layers on which nothing starts is one line. Read it: it's how you see that the door is where you meant, the slopes face the right way, and the windows line up.
 - Coordinates, turns and steps are whole numbers. The script warns about one that isn't and reads it as Brickyard would (2.5 as 3). It prints a NOTE for a colour that isn't in `data/colors.json`: nobody has pieces in a colour Brickyard doesn't know.
 - Put the model file first: `--sets` and `--pieces` take everything after them. `--sets 10698-1` replaces the model's own `sets`, `--no-sets` counts no set at all, and `--pieces FILE` is a pasted list (the whole budget) or a loose-pieces file (added to the sets). Without any sets or pieces it can't check counts, so always give them.
-- When it passes it writes `NAME.brickyard-model.json` to `--out`, prints a link starting `https://brickyard.junkdrawer.works/#d1z`, and exits 0.
+- When it passes it writes `NAME.brickyard-model.json` to `--out`, prints a link starting `https://brickyard.junkdrawer.works/#d2z`, and exits 0.
 - `--force` writes the file and prints the link for a model that failed, to look at what's wrong in Brickyard. That one is never for handing over.
 
 Write the model's JSON and the outputs to a scratch or outputs folder, never into the skill's folder or a repo.

@@ -39,10 +39,12 @@ Brickyard ignores fields it doesn't know and drops values that don't fit, so a s
 ## Links
 
 ```
-https://brickyard.junkdrawer.works/#b1z<data>
+https://brickyard.junkdrawer.works/#b2z<data><check>
 ```
 
-`<data>` is the compact batch JSON, compressed with raw DEFLATE, then base64url-encoded without padding. `#b1j<data>` is the same without compression, and `#batch=<URL-encoded JSON>` can be written by hand. The part after `#` never reaches a server.
+`<data>` is the compact batch JSON, compressed with raw DEFLATE, then base64url-encoded without padding. `<check>` is seven characters worked out from the rest, so a link that loses or changes a character on the way is turned down instead of opening as something else: the 32-bit FNV-1a hash of `b2z<data>` (the letters after the `#`, then the data), written in base 36 and padded with zeros on the left to seven characters. `#b2j<data><check>` is the same without compression. `make_brickyard.py` writes `#b2z`.
+
+The unchecked forms still open, and always will: `#b1z<data>` and `#b1j<data>` (the same data with no check on the end; every link made before the check existed, and the ones Stud Finder sends), and `#batch=<URL-encoded JSON>`, which can be written by hand. The other kinds of link below have both forms too: `#z2z` and `#z1z` for sizes, `#l2z` and `#l1z` for loose pieces, `#d2z` and `#d1z` for a model, each with a `j` form. A copy of Brickyard from before the check says a `2` link needs a newer Brickyard, and to reload. The part after `#` never reaches a server.
 
 ## Sizes (for the shelf planner)
 
@@ -50,7 +52,7 @@ https://brickyard.junkdrawer.works/#b1z<data>
 {"brickyard": 1, "sizes": [{"num": "10497", "w": 52, "d": 32, "h": 13, "note": "LEGO's measurements"}]}
 ```
 
-Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front to back, `h` tall, and an optional `note` (up to 200 characters). The link is `#z1z<data>` (`#z1j` uncompressed), made the same way as a batch link; `make_brickyard.py` makes it from a file like this. A row needs the set's number and all three sides; a side over 500 cm (a size written in mm, say) leaves its row out, in the script and in the page. Opening the link offers each size for the sets in My sets with that number, unticked where a set already has a size or where the size looks wrong for the set (a side under 1.5 cm or over 150 cm, or far too small or large for its piece count), with a line saying why. It never adds sets.
+Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front to back, `h` tall, and an optional `note` (up to 200 characters). The link is `#z2z<data><check>` (`#z2j` uncompressed; `#z1z` and `#z1j` without the check), made the same way as a batch link; `make_brickyard.py` makes it from a file like this. A row needs the set's number and all three sides; a side over 500 cm (a size written in mm, say) leaves its row out, in the script and in the page. Opening the link offers each size for the sets in My sets with that number, unticked where a set already has a size or where the size looks wrong for the set (a side under 1.5 cm or over 150 cm, or far too small or large for its piece count), with a line saying why. It never adds sets.
 
 ## A backup
 
@@ -76,7 +78,7 @@ Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scan
 
 Part numbers: the everyday number for a piece is accepted as well as LDraw's current one. BrickLink and Rebrickable write a 1x2 plate as `3023` and a round 1x1 plate as `4073`; the builder knows them as `3023b` and `6141`. `parts/aliases.json` lists these, and a number in it is read as the builder's whenever pieces are counted, in the page and in the designer skill's `check_model.py`. The lot is kept with the numbers it came with.
 
-Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed. Opening one shows the lot to review, then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.
+Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed; `#l2z<data><check>` and `#l2j<data><check>` are the same with the check on the end (see Links above). Opening one shows the lot to review, then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.
 
 ## A model (for Build from your box)
 
@@ -97,4 +99,4 @@ A model Claude designed from someone's pieces. The brickyard-designer skill writ
 
 In a row, `part` and `colour` are LDraw numbers (3001 is a 2x4 brick, 4 is red). `x` runs left to right and `z` back to front, in studs (-200 to 200); `y` runs up in plates (0 to 600; a brick is 3 plates). They give the back-left-bottom corner of the part's footprint after turning. `turn` is 0, 90, 180 or 270, and at 90 or 270 the part's width runs front to back. `step` is the building step it goes on in, from 1 (up to 2,000); with steps left out, each height is a step, bottom up. An everyday part number listed in `parts/aliases.json` is read as the builder's (3023 as 3023b), as for loose pieces above.
 
-Links: `https://brickyard.junkdrawer.works/#d1z<data>` (deflated, base64url, like `#b1z`) or `#d1j<data>` uncompressed. Opening one saves the model in that browser under **Models**, checks it against the pieces ticked there (enough of each part in each colour, nothing overlapping, everything joined by studs, every step joining onto what's built), and shows it step by step. The model on its own, without the `{"brickyard": 1, "model": …}` wrapper, opens too when it's pasted or opened as a file.
+Links: `https://brickyard.junkdrawer.works/#d2z<data><check>` (deflated, base64url and checked, like `#b2z`) or `#d2j<data><check>` uncompressed; `#d1z<data>` and `#d1j<data>`, without the check, still open. `check_model.py` writes `#d2z`. Opening one saves the model in that browser under **Models**, checks it against the pieces ticked there (enough of each part in each colour, nothing overlapping, everything joined by studs, every step joining onto what's built), and shows it step by step. The model on its own, without the `{"brickyard": 1, "model": …}` wrapper, opens too when it's pasted or opened as a file.

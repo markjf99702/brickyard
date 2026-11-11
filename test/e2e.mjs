@@ -87,6 +87,10 @@ assert.equal(await page.textContent('#home-stat'), 'No sets yet. Start here.');
 // still works.
 const CUT = 'That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file that came with it.';
 const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it again.';
+// The checked form of a link: a 2 where the others have a 1, and seven characters worked out from the rest on its end
+// (linkCheck in js/core.js: FNV-1a of the kind and the data, in base 36). With one wrong character it isn't opened.
+const WRONG = 'That Brickyard link has a wrong or missing character, so nothing was opened. Copy the whole link again, or open the file that came with it.';
+const checked = (kind, data) => { let h = 2166136261; for (const ch of kind + data) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return '#' + kind + data + h.toString(36).padStart(7, '0'); };
 {
   const p = await ctx.newPage();
   p.on('pageerror', e => problems.push(e.message));
@@ -96,7 +100,14 @@ const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it 
   const screen = () => p.evaluate(() => ['home', 'catalog', 'build', 'shelves'].filter(id => !document.getElementById(id).hidden).join());
   for (const [h, says, on] of [['#b1zAAAAA', CUT, 'catalog'], ['#l1zA', CUT, 'build'], ['#z1zA', CUT, 'shelves'], ['#d1zA', CUT, 'build'],
     [whole.slice(0, whole.length - 9), CUT, 'catalog'], [whole.slice(0, 60), CUT, 'catalog'], [plain.slice(0, 80), CUT, 'catalog'], ['#batch=%7B%22sets%22%3A%5B%7B%22num', CUT, 'catalog'],
-    ['#b2z' + whole.slice(4), NEWER, 'home'], ['#q7j' + plain.slice(4), NEWER, 'home']]) {
+    ['#b3z' + whole.slice(4), NEWER, 'home'], ['#q7j' + plain.slice(4), NEWER, 'home'], ['#q2z' + whole.slice(4), NEWER, 'home'],
+    // A checked link with a character changed, missing or cut off the end says so, for every kind, on its own screen.
+    ...[['b2z', { brickyard: 1, batch: { sets: [{ num: '10698', name: 'Large Creative Brick Box' }] } }, 'catalog'], ['l2z', { brickyard: 1, loose: { name: 'Tub', parts: [['3001', 4, 12]] } }, 'build'],
+      ['z2z', { brickyard: 1, sizes: [{ num: '10497', w: 52, d: 32, h: 13 }] }, 'shelves'], ['d2z', { brickyard: 1, model: { name: 'Wall', parts: [['3001', 4, 0, 0, 0, 0, 1]] } }, 'build']].flatMap(([kind, o, on]) => {
+      const l = checked(kind, packed(o));
+      return [[l.slice(0, 20) + (l[20] === 'A' ? 'B' : 'A') + l.slice(21), WRONG, on], [l.slice(0, 20) + l.slice(21), WRONG, on], [l.slice(0, l.length - 3), WRONG, on]];
+    }),
+    [checked('b2j', plain.slice(4)).replace(/.$/, c => c === 'a' ? 'b' : 'a'), WRONG, 'catalog']]) {
     await p.goto('about:blank');
     await p.goto(base + h);
     await p.waitForFunction(() => { const t = document.querySelector('.toast'); return t && !t.hidden; }, null, { timeout: 10000 });
@@ -110,6 +121,29 @@ const NEWER = 'That link needs a newer Brickyard. Reload the page, then open it 
   await p.waitForFunction(() => document.querySelector('.toast').hidden, null, { timeout: 6000 });
   await p.goto(base + '#build');
   await p.waitForSelector('#build-list .group');
+  // Whole, a checked link of each kind opens what it carries, on its own screen: sets and loose pieces to review,
+  // sizes with no sets to put them on say so, a model opens.
+  const title = () => p.textContent('#sheetTitle');
+  await p.goto('about:blank');
+  await p.goto(base + checked('b2z', whole.slice(4)));
+  await p.waitForSelector('.sheet');
+  assert.deepEqual([await title(), await p.locator('#rv li').count(), await screen(), await p.evaluate(() => location.hash)], ['Add sets from Claude', 12, 'catalog', '#catalog'], 'a checked link of sets opens its review');
+  await p.goto('about:blank');
+  await p.goto(base + checked('b2j', plain.slice(4)));
+  await p.waitForSelector('.sheet');
+  assert.deepEqual([await title(), await p.textContent('#rv .t')], ['Add sets from Claude', 'Large Creative Brick Box'], 'and an uncompressed one');
+  await p.goto('about:blank');
+  await p.goto(base + checked('l2z', packed({ brickyard: 1, loose: { name: 'Tub', parts: [['3001', 4, 12]] } })));
+  await p.waitForSelector('.sheet');
+  assert.deepEqual([await title(), await screen()], ['Add loose pieces', 'build'], 'a checked link of loose pieces opens its review');
+  await p.goto('about:blank');
+  await p.goto(base + checked('d2z', packed({ brickyard: 1, model: { name: 'Checked wall', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2]] } })));
+  await p.waitForFunction(() => /^#model-/.test(location.hash) && document.getElementById('build-title').textContent === 'Checked wall', null, { timeout: 15000 });
+  await p.evaluate(() => localStorage.removeItem('brickyard.models')); // this browser's models are counted further down
+  await p.goto('about:blank');
+  await p.goto(base + checked('z2z', packed({ brickyard: 1, sizes: [{ num: '10497', w: 52, d: 32, h: 13 }] })));
+  await p.waitForFunction(() => { const s = document.querySelector('.sheet'), t = document.querySelector('.toast'); return s || (t && !t.hidden); }, null, { timeout: 10000 });
+  assert.deepEqual([await screen(), await p.evaluate(() => { const t = document.querySelector('.toast'); return !!t && !t.hidden && /wrong|cut short|newer/.test(t.textContent); })], ['shelves', false], 'a checked sizes link is read on the shelf planner');
   await p.close();
 }
 
@@ -1271,7 +1305,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   // The message sits over the paste box for six seconds; a tap puts it away.
   await p.click('.toast');
   assert.deepEqual([await p.isHidden('.toast'), (await at())[1]], [true, 'Open a model'], 'a tap on the message puts it away, and nothing else');
-  await p.fill('#model-paste', base + '#d2z' + packed({ brickyard: 2, model: wall }));
+  await p.fill('#model-paste', base + '#d3z' + packed({ brickyard: 2, model: wall }));
   await p.click('#model-go');
   await p.waitForFunction(w => document.querySelector('.toast span').textContent === w, NEWER);
   await p.click('[data-close]');
@@ -1355,6 +1389,16 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
     await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
     const copied = await p.evaluate(() => navigator.clipboard.readText());
     assert.deepEqual([await p.textContent('.toast'), copied.length > 8000], [says, sets === lots], 'what Copy everything as a link says for a link of ' + copied.length + ' characters');
+    // The link is the checked kind, and it opens: on another device it offers the catalog to merge in.
+    assert.match(copied, /^https:\/\/brickyard\.junkdrawer\.works\/#b2z[A-Za-z0-9_-]+$/, 'Copy everything as a link writes a checked link');
+    assert.equal(copied.slice(copied.indexOf('#')), checked('b2z', copied.slice(copied.indexOf('#') + 4, -7)), 'with the check on its end');
+    if (sets === few) {
+      const other = await withSets({ sets: {} });
+      await other.p.goto(base + copied.slice(copied.indexOf('#')));
+      await other.p.waitForSelector('.sheet');
+      assert.deepEqual([await other.p.textContent('#sheetTitle'), /This link has 1 set\b/.test(await other.p.textContent('.sheet .lede'))], ['Your catalog from a link', true], 'and the link opens on another device');
+      await other.c.close();
+    }
     await c.close();
   }
 }

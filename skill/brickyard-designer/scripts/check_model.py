@@ -402,6 +402,20 @@ def read_pieces(path):
     return pool, 'text'
 
 
+def link_check(text):
+    """The same as linkCheck in js/core.js and link_check in the cataloger's make_brickyard.py: seven characters
+    worked out from the rest of a link (FNV-1a, in base 36). They go on the end of a checked link (#d2z…), so one
+    that loses or changes a character on the way is turned down by Brickyard instead of opening changed."""
+    h = 2166136261
+    for ch in text:
+        h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    out = ''
+    while h:
+        h, r = divmod(h, 36)
+        out = '0123456789abcdefghijklmnopqrstuvwxyz'[r] + out
+    return out.rjust(7, '0')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('file', nargs='?', help='the model, as JSON. Put it first')
@@ -503,7 +517,8 @@ def main():
     if not a.no_link:
         c = zlib.compressobj(9, zlib.DEFLATED, -15)
         packed = c.compress(json.dumps(doc, ensure_ascii=False, separators=(',', ':')).encode()) + c.flush()
-        link = a.base + '#d1z' + base64.urlsafe_b64encode(packed).decode().rstrip('=')
+        data = base64.urlsafe_b64encode(packed).decode().rstrip('=')
+        link = a.base + '#d2z' + data + link_check('d2z' + data)
         print(f'Link ({len(link)} characters):')
         print(link)
         if len(link) > LINK_WARN:

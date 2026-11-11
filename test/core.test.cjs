@@ -473,8 +473,60 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
       check(ownEnd > 0, 'some of those links end in - or _ themselves (' + ownEnd + ')');
       for (const p in kinds) eq([await why('_' + site + p + pack(kinds[p]) + '_'), await why(site + p + pack(kinds[p]) + '-')], ['opened', 'opened'], 'the same for a ' + p + ' link');
     }
-    // A later format: # then a letter, a number above 1, and z or j, with a link's worth of data after it.
-    for (const t of [site + '#b2z' + z.slice(4), '#q7j' + j.slice(4), 'Open this: ' + site + '#d3z' + pack(kinds['#d1z']) + '.']) {
+    // The checked form: a 2 where the others have a 1, and a check of seven characters on the end (linkCheck).
+    // Whole, it opens as the same thing the unchecked link does, for every kind, in a sentence or in markdown.
+    {
+      const checked = (kind, data) => '#' + kind + data + C.linkCheck(kind + data);
+      const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+      const z2 = checked('b2z', z.slice(4)), j2 = checked('b2j', j.slice(4));
+      const want = JSON.stringify((await C.parseIncoming(site + z)).batch);
+      for (const [t, what] of [[site + z2, '#b2z'], [site + j2, '#b2j'], ['Here: ' + site + z2 + '. Open it.', '#b2z in a sentence'], ['_' + site + j2 + '_', '#b2j in markdown'], ['**' + site + z2 + '-_-**', '#b2z with dashes after it']]) {
+        const r = await C.parseIncoming(t).catch(e => e);
+        eq(r && r.batch && JSON.stringify(r.batch), want, 'a checked link opens: ' + what);
+      }
+      for (const p in kinds) {
+        const kind = p.slice(1, 2) + '2', doc = kinds[p];
+        const a = await C.parseIncoming(site + p + pack(doc)), b = await C.parseIncoming(site + checked(kind + 'z', pack(doc))).catch(() => null), c = await C.parseIncoming(checked(kind + 'j', b64(doc))).catch(() => null);
+        eq([JSON.stringify(b), JSON.stringify(c)], [JSON.stringify(a), JSON.stringify(a)], 'checked ' + kind + 'z and ' + kind + 'j links open as the unchecked one does');
+      }
+      eq(C.linkCheck('b2zabc').length + C.linkCheck('').length, 14, 'the check is always seven characters');
+      // One changed character anywhere after the #, to any other character a link is made of, is refused as
+      // 'wrong'. In an unchecked uncompressed link the same slip can open as a different set without a word, which
+      // is what the check is for: #b1j with the 9 of 10698 turned into an 8 opens, as 10688.
+      const slip = (link, i, ch) => link.slice(0, i) + ch + link.slice(i + 1);
+      const at = j.indexOf(Buffer.from('{"num":"10698').toString('base64url').slice(0, 4));
+      let silent = 0;
+      for (let i = 4; i < j.length; i++) for (const ch of 'AQgw048') {
+        if (j[i] === ch) continue;
+        const r = await C.parseIncoming(site + slip(j, i, ch)).catch(() => null);
+        if (r && r.kind === 'batch' && JSON.stringify(r.batch) !== want) silent++;
+      }
+      check(silent > 0 && at !== 0, 'an unchecked link with one wrong character can open as something else (' + silent + ' ways here)');
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+      for (const link of [z2, j2]) {
+        const got = {};
+        for (let i = 1; i < link.length; i++) for (let k = 0; k < 5; k++) {
+          const ch = letters[(i * 7 + k * 13) % 64];
+          if (ch === link[i]) continue;
+          const r = await C.parseIncoming(site + slip(link, i, ch)).catch(e => e);
+          const w = r.kind ? (JSON.stringify(r.batch) === want ? 'same' : 'changed') : r.why || 'not Brickyard';
+          got[w] = (got[w] || 0) + 1;
+        }
+        // The three characters after the # are the kind. Changed, they can make it no link of Brickyard's, or one
+        // of a format not known yet ('newer'); and the 2 changed to a 1 makes it an unchecked link with the check
+        // left on the end of its data, which is refused or opens as just what was sent. Never as anything else.
+        check(!got.changed && (got.same || 0) <= 1 && got.wrong > link.length * 4, 'a checked link with one wrong character never opens changed: ' + JSON.stringify(got));
+        const cut = {};
+        for (let n = 5; n < link.length; n++) { const w = await why(site + link.slice(0, n)); cut[w] = (cut[w] || 0) + 1; }
+        eq(Object.keys(cut), ['wrong'], 'and cut short at any length, it is refused');
+        eq([await why(site + link.slice(0, 40) + link.slice(41)), await why(site + link.slice(0, 40) + 'A' + link.slice(40))], ['wrong', 'wrong'], 'so is one with a character missing or one too many');
+      }
+      let lt = null; try { await C.linkText(slip(z2, 20, z2[20] === 'A' ? 'B' : 'A')); } catch (e) { lt = e; }
+      eq(lt && lt.why, 'wrong', 'linkText says wrong too');
+    }
+    // A later format: # then a letter, a number, and z or j, where the letter isn't known with that number, with a
+    // link's worth of data after it.
+    for (const t of [site + '#b3z' + z.slice(4), '#q7j' + j.slice(4), '#q2z' + z.slice(4), 'Open this: ' + site + '#d3z' + pack(kinds['#d1z']) + '.']) {
       eq([await why(t), C.newerLink(t)], ['newer', true], 'a link of a newer format: ' + t.slice(0, 50));
     }
     // Not Brickyard's at all, or whole but holding nothing: no `why`, so the page keeps its plain words.
@@ -497,7 +549,9 @@ check(C.toCsv([C.cleanSet({ num: '10698', name: 'Box', size: { w: 3 } })]).split
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickyard-'));
     const out = execFileSync('python3', [path.join(root, 'skill/brickyard-cataloger/scripts/make_brickyard.py'), path.join(root, 'test/fixtures/sample.json'), '--out', dir], { encoding: 'utf8' });
     const link = out.trim().split('\n').find(l => l.startsWith('https://'));
+    check(/^https:\/\/brickyard\.junkdrawer\.works\/#b2z[A-Za-z0-9_-]+$/.test(link), 'the script writes a checked link (#b2z)');
     const fromLink = await C.parseIncoming(link);
+    eq(await C.parseIncoming(link.slice(0, 60) + (link[60] === 'A' ? 'B' : 'A') + link.slice(61)).catch(e => e.why), 'wrong', 'and the page refuses it with one character changed');
     const file = fs.readdirSync(dir).find(f => f.endsWith('.brickyard.json'));
     const fromFile = await C.parseIncoming(fs.readFileSync(path.join(dir, file), 'utf8'));
     eq(fromLink.batch, fromFile.batch, 'the script’s link and file say the same');

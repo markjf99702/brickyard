@@ -509,15 +509,29 @@
   // links, read here when one is pasted: sizes (#z1z…, js/shelf-core.js) and models (#d1z…, js/build-core.js).
   // The part after # never reaches a server.
   //
+  // The checked form has a 2 where those have a 1 (#b2z…, #b2j…, and l, z and d the same), and seven more
+  // characters on its end: a check worked out from the rest (linkCheck). One changed character in a #b1j link
+  // opened as a different set, without a word, and sometimes in a #b1z link too; in a checked link the seven no
+  // longer fit, and it is turned down. The skills' scripts and Copy everything as a link write the checked form.
+  // The unchecked ones still open: the links made before, and the ones Stud Finder sends.
+  //
   // A link that can't be read says why, in the error's `why`, so the page can say what to do about it:
   // 'cut' when it is one of Brickyard's but doesn't unpack (a chat app cut it short, or a character changed on the
-  // way); 'newer' when it looks like a Brickyard link of a later format (# then a letter, a number above 1, and z
-  // or j) that this copy of the page doesn't know yet. Anything else isn't a Brickyard link at all.
-  function fault(why) { var e = new Error(why === 'cut' ? 'This Brickyard link doesn’t unpack' : 'This link is for a newer Brickyard'); e.why = why; return e; }
-  function newerLink(t) { return /#[a-z][2-9][zj][A-Za-z0-9_-]{12,}/.test(String(t || '')); }
+  // way); 'wrong' when it is a checked link and its check doesn't fit (a character is wrong or missing, for
+  // certain); 'newer' when it looks like a Brickyard link of a later format (# then a letter, a number, and z or
+  // j, where this copy of the page doesn't know the letter with that number). Anything else isn't a Brickyard
+  // link at all.
+  var WHY = { cut: 'This Brickyard link doesn’t unpack', wrong: 'This Brickyard link has a wrong or missing character', newer: 'This link is for a newer Brickyard' };
+  function fault(why) { var e = new Error(WHY[why]); e.why = why; return e; }
+  function newerLink(t) { return /#(?:[a-z][3-9]|[ace-km-y]2)[zj][A-Za-z0-9_-]{12,}/.test(String(t || '')); }
+  // The seven characters on the end of a checked link: the hash of what comes before them, from the letter after
+  // the # on ("b2z" and the data), in base 36. Any one changed character changes it. make_brickyard.py and
+  // check_model.py (link_check) work it out the same way, and so do js/shelf-core.js and js/build-core.js.
+  function linkCheck(t) { var c = hash(t); return '0000000'.slice(c.length) + c; }
+  var LINK = /#([bldz])([12])([zj])([A-Za-z0-9_-]+)/;
   function linkText(h) {
     h = String(h || '');
-    var m = /#([bldz]1[zj])([A-Za-z0-9_-]+)/.exec(h);
+    var m = LINK.exec(h);
     if (!m) {
       var b = /#batch=(\S+)/.exec(h);
       if (!b) return Promise.resolve('');
@@ -526,15 +540,22 @@
     }
     // Inside the promise, so a link cut short (which atob refuses) is turned down like any bad link instead of
     // throwing while the page starts.
-    return lessEnd(m[2], function (body) {
+    var unpack = function (body) {
       return Promise.resolve().then(function () {
         var bin = atob(body.replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
+        if (m[3] === 'j') return new TextDecoder().decode(bytes);
         if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links. Ask Claude for the file instead.');
         return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
       });
-    }).catch(function (e) { throw e && /browser/.test(e.message) ? e : fault('cut'); });
+    };
+    var old = function (e) { throw e && /browser/.test(e.message) ? e : fault('cut'); };
+    if (m[2] === '1') return lessEnd(m[4], unpack).catch(old);
+    // A checked link never ends in a dash or an underscore (its check is letters and numbers), so any on its end
+    // came from the text around it: markdown's _link_.
+    var body = m[4].replace(/[-_]+$/, ''), data = body.slice(0, -7);
+    if (body.length < 8 || linkCheck(m[1] + m[2] + m[3] + data) !== body.slice(-7)) return Promise.reject(fault('wrong'));
+    return unpack(data).catch(old);
   }
   // A whole link can arrive with a dash or an underscore stuck to its end, which are characters a link is made of:
   // markdown's _link_, or "link- open it". About one time in three what was captured then doesn't unpack, and the
@@ -561,7 +582,7 @@
   function parseIncoming(t) {
     t = String(t || '').trim();
     if (t.charAt(0) !== '{') {
-      if (/#([bldz]1[zj][A-Za-z0-9_-]+|batch=\S+)/.test(t)) return linkText(t).then(function (text) {
+      if (LINK.test(t) || /#batch=\S+/.test(t)) return linkText(t).then(function (text) {
         var o;
         try { o = JSON.parse(jsonPart(text)); } catch (e) { throw fault('cut'); } // it unpacked, into something that isn't whole
         return sortOut(o);
@@ -588,7 +609,7 @@
   }
 
   var api = {
-    linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
+    linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,

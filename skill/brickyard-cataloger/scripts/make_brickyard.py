@@ -168,10 +168,24 @@ def repeats(sets):
     return [any(is_dup(y, x) or is_dup(x, y) for y in sets[:i]) for i, x in enumerate(sets)]
 
 
-def make_link(base, prefix, text):
+def link_check(text):
+    """The same as linkCheck in js/core.js: seven characters worked out from the rest of a link (FNV-1a, in base 36)."""
+    h = 2166136261
+    for ch in text:
+        h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    out = ''
+    while h:
+        h, r = divmod(h, 36)
+        out = '0123456789abcdefghijklmnopqrstuvwxyz'[r] + out
+    return out.rjust(7, '0')
+
+
+def make_link(base, kind, text):
+    """A checked link: '#', the kind ('b2z' for sets, 'z2z' for sizes), the data, then the check of those two, so a
+    link that loses or changes a character on the way is turned down by Brickyard instead of opening changed."""
     c = zlib.compressobj(9, zlib.DEFLATED, -15)
-    data = c.compress(text.encode('utf-8')) + c.flush()
-    return base + prefix + base64.urlsafe_b64encode(data).decode().rstrip('=')
+    data = base64.urlsafe_b64encode(c.compress(text.encode('utf-8')) + c.flush()).decode().rstrip('=')
+    return base + '#' + kind + data + link_check(kind + data)
 
 
 def side(v):
@@ -224,7 +238,7 @@ def sizes_main(a, lst):
         print('WARNING: ' + w)
     print(f'File: {path}')
     if not a.no_link:
-        link = make_link(a.base, '#z1z', json.dumps(doc, ensure_ascii=False, separators=(',', ':')))
+        link = make_link(a.base, 'z2z', json.dumps(doc, ensure_ascii=False, separators=(',', ':')))
         print(f'Link ({len(link)} characters):')
         print(link)
         if len(link) > LINK_WARN:
@@ -279,7 +293,7 @@ def main():
         print('WARNING: ' + w)
     print(f'File: {path}')
     if not a.no_link:
-        link = make_link(a.base, '#b1z', text)
+        link = make_link(a.base, 'b2z', text)
         print(f'Link ({len(link)} characters):')
         print(link)
         if len(link) > LINK_WARN:

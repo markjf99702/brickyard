@@ -803,7 +803,7 @@
   function route() {
     if ($('shelves').hidden) return;
     var h = location.hash;
-    if (/^#z1[zj]/.test(h)) {
+    if (/^#z[12][zj]/.test(h)) {
       history.replaceState(null, '', location.pathname + location.search + '#shelves');
       render();
       // Read as whatever it is (sizes, by its prefix); a link cut short or of a newer format says so.

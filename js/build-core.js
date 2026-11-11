@@ -206,20 +206,33 @@
   // Studs to centimetres: a stud is 8 mm, a plate 3.2 mm.
   function sizeCm(size) { return { w: size.w * 0.8, d: size.d * 0.8, h: Math.round(size.h * 0.32 * 10) / 10 }; }
 
-  // brickyard/#d1z… carries a model as deflated JSON in base64url (#d1j… uncompressed).
+  // brickyard/#d1z… carries a model as deflated JSON in base64url (#d1j… uncompressed); #d2z… and #d2j… are
+  // the same with a check on the end.
   function modelText(h) {
-    var m = /#(d1[zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
+    var m = /#(d[12][zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
     if (!m) return Promise.resolve('');
     // Inside the promise, so a link cut short (which atob refuses) is turned down instead of throwing.
-    return lessEnd(m[2], function (body) {
+    var unpack = function (body) {
       return Promise.resolve().then(function () {
         var bin = atob(body.replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        if (m[1] === 'd1j') return new TextDecoder().decode(bytes);
+        if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
         if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links.');
         return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
       });
-    });
+    };
+    if (m[1].charAt(1) === '1') return lessEnd(m[2], unpack);
+    // The checked form (#d2z…): seven characters on the end are a check of the rest, as in js/core.js (linkText,
+    // linkCheck), and a link they don't fit has a wrong or missing character.
+    var body = m[2].replace(/[-_]+$/, ''), data = body.slice(0, -7);
+    if (body.length < 8 || linkCheck(m[1] + data) !== body.slice(-7)) return Promise.reject(new Error('This Brickyard link has a wrong or missing character'));
+    return unpack(data);
+  }
+  function linkCheck(t) {
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    var c = h.toString(36);
+    return '0000000'.slice(c.length) + c;
   }
   // A link with a dash or an underscore stuck to its end (markdown's _link_) is tried again without it, as in
   // js/core.js (lessEnd).
@@ -233,7 +246,7 @@
   // Pasted text can carry more than the link or the file (a sentence around the link, ```json fences around the
   // file), so the link is found wherever it is, and the JSON is what runs from the first { to the last }, as in
   // js/core.js (parseIncoming).
-  function isModelLink(t) { return /#d1[zj][A-Za-z0-9_-]+/.test(String(t || '')); }
+  function isModelLink(t) { return /#d[12][zj][A-Za-z0-9_-]+/.test(String(t || '')); }
   function parseModel(t) {
     t = String(t || '').trim();
     if (t.charAt(0) !== '{' && isModelLink(t)) return modelText(t).then(parseModel);

@@ -260,7 +260,7 @@
     // just after moving to My sets, before the browser says it moved. History has moved on already, so the sheet
     // only comes off the screen.
     if (openScrim && openScrim._at !== location.hash) dropSheet();
-    var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d1[zj])/.test(h), onShelves = /^#(shelves|z1[zj])/.test(h);
+    var h = location.hash, onCat = h === '#catalog', onBuild = /^#(build|model-|d[12][zj])/.test(h), onShelves = /^#(shelves|z[12][zj])/.test(h);
     $('home').hidden = onCat || onBuild || onShelves; $('catalog').hidden = !onCat; $('build').hidden = !onBuild; $('shelves').hidden = !onShelves;
     // Each screen has its own title, for the tab, the browser's history and a phone's app switcher (they all read
     // "Brickyard"). A model's is its name, once Build from your box has it open (js/build.js).
@@ -270,7 +270,7 @@
     // On a move to another screen its heading takes the focus, so a screen reader says where this is and Tab starts
     // from the top of it (the link that was pressed is hidden by now, which left the focus nowhere). Not when
     // Brickyard opens, and Build from your box says when its heading is ready (a model's name).
-    var screen = onBuild ? h.replace(/^#d1[zj].*/, '#model-') : onCat ? 'catalog' : onShelves ? 'shelves' : 'home';
+    var screen = onBuild ? h.replace(/^#d[12][zj].*/, '#model-') : onCat ? 'catalog' : onShelves ? 'shelves' : 'home';
     arriving = !!onScreenNow && onScreenNow !== screen;
     onScreenNow = screen;
     if (!onBuild) heading();
@@ -1262,7 +1262,8 @@
   // what to do (C.parseIncoming marks which); anything else gets `plain`, the words for where it was tried. A cut
   // link can't say who made it (Claude, Stud Finder, or Copy everything as a link here), so the words don't either.
   function unread(e, plain) {
-    if (e && e.why === 'cut') toast('That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file that came with it.', 'long');
+    if (e && e.why === 'wrong') toast('That Brickyard link has a wrong or missing character, so nothing was opened. Copy the whole link again, or open the file that came with it.', 'long');
+    else if (e && e.why === 'cut') toast('That Brickyard link is cut short or has a wrong character. Copy the whole link again, or open the file that came with it.', 'long');
     else if (e && e.why === 'newer') toast('That link needs a newer Brickyard. Reload the page, then open it again.', 'long');
     else toast(e && /browser/.test(e.message) ? e.message : plain);
   }
@@ -1303,12 +1304,12 @@
     var h = location.hash;
     // A link of a format this copy of the page doesn't know (an old copy kept for offline, say) used to land on
     // the home screen without a word.
-    if (/^#[a-z][2-9][zj]/.test(h) && C.newerLink(h)) {
+    if (/^#[a-z]\d[zj]/.test(h) && C.newerLink(h)) {
       try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
       route(); unread({ why: 'newer' });
       return true;
     }
-    if (!/^#([bl]1[zj]|batch=)/.test(h)) return false;
+    if (!/^#([bl][12][zj]|batch=)/.test(h)) return false;
     var to = h.charAt(1) === 'l' ? '#build' : '#catalog'; // loose pieces belong to Build from your box
     try { history.replaceState(null, '', location.pathname + location.search + to); } catch (e) { location.hash = to; }
     route();
@@ -1558,9 +1559,11 @@
   // can't download files). Opening it merges, like a backup.
   function copyAll() {
     var text = JSON.stringify({ brickyard: 1, catalog: DOC }), bytes = new TextEncoder().encode(text);
+    // The checked form of the link (C.linkCheck): a character lost or changed on the way is caught when it's opened.
+    var checked = function (kind, data) { return '#' + kind + data + C.linkCheck(kind + data); };
     var b64 = function (u8) { var bin = ''; for (var i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
-    var made = typeof CompressionStream === 'undefined' ? Promise.resolve('#b1j' + b64(bytes))
-      : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return '#b1z' + b64(new Uint8Array(b)); });
+    var made = typeof CompressionStream === 'undefined' ? Promise.resolve(checked('b2j', b64(bytes)))
+      : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return checked('b2z', b64(new Uint8Array(b))); });
     made.then(function (h) {
       var link = SITE + h;
       // Chat apps, notes and some browsers cut a very long link off, and what's left won't open. The preview copy

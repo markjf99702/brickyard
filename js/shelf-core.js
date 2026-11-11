@@ -246,20 +246,33 @@
     return x > 500 ? 0 : x;
   }
 
-  // brickyard/#z1z… carries a sizes list as deflated JSON in base64url (#z1j… uncompressed).
+  // brickyard/#z1z… carries a sizes list as deflated JSON in base64url (#z1j… uncompressed); #z2z… and #z2j… are
+  // the same with a check on the end.
   function sizesText(h) {
-    var m = /#(z1[zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
+    var m = /#(z[12][zj])([A-Za-z0-9_-]+)/.exec(String(h || ''));
     if (!m) return Promise.resolve('');
     // Inside the promise, so a link cut short (which atob refuses) is turned down instead of throwing.
-    return lessEnd(m[2], function (body) {
+    var unpack = function (body) {
       return Promise.resolve().then(function () {
         var bin = atob(body.replace(/-/g, '+').replace(/_/g, '/')), bytes = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        if (m[1] === 'z1j') return new TextDecoder().decode(bytes);
+        if (m[1].charAt(2) === 'j') return new TextDecoder().decode(bytes);
         if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open Brickyard links.');
         return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
       });
-    });
+    };
+    if (m[1].charAt(1) === '1') return lessEnd(m[2], unpack);
+    // The checked form (#z2z…): seven characters on the end are a check of the rest, as in js/core.js (linkText,
+    // linkCheck), and a link they don't fit has a wrong or missing character.
+    var body = m[2].replace(/[-_]+$/, ''), data = body.slice(0, -7);
+    if (body.length < 8 || linkCheck(m[1] + data) !== body.slice(-7)) return Promise.reject(new Error('This Brickyard link has a wrong or missing character'));
+    return unpack(data);
+  }
+  function linkCheck(t) {
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    var c = h.toString(36);
+    return '0000000'.slice(c.length) + c;
   }
   // A link with a dash or an underscore stuck to its end (markdown's _link_) is tried again without it, as in
   // js/core.js (lessEnd).
@@ -273,7 +286,7 @@
   // Pasted text can carry more than the link or the file (a sentence around the link, ```json fences around the
   // file), so the link is found wherever it is, and the JSON is what runs from the first { to the last }, as in
   // js/core.js (parseIncoming).
-  function isSizesLink(t) { return /#z1[zj][A-Za-z0-9_-]+/.test(String(t || '')); }
+  function isSizesLink(t) { return /#z[12][zj][A-Za-z0-9_-]+/.test(String(t || '')); }
   function parseSizes(t) {
     t = String(t || '').trim();
     if (t.charAt(0) !== '{' && isSizesLink(t)) return sizesText(t).then(parseSizes);
