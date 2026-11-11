@@ -3847,11 +3847,11 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.querySelectorAll('span')].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
   assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
-  assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Added ' + day('2026-10-21') + ' · Office'], ['10305', 'Added ' + day('2026-10-20') + ' · Hall', 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long]], 'each row says the day it was added, before where it is; a set with no day says where it is');
+  assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Office · Added ' + day('2026-10-21')], ['10305', 'Hall · Added ' + day('2026-10-20'), 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long]], 'each row says where it is, then the day it was added (the part a phone cuts is the part the heading says); a set with no day says where it is');
   assert.deepEqual([await p.textContent('.sumline label'), await p.getAttribute('#group', 'aria-label')], ['Sort and group RoomMoving boxThemeStateNewest first', 'Sort and group'], 'the menu is called Sort and group: Newest first is a sort');
   // On paper: the first line of a set's notes, and all of a long reason.
   await p.emulateMedia({ media: 'print' });
-  assert.deepEqual(await lines('d'), ['10294', 'Added ' + day('2026-10-21') + ' · Office', 'Second-hand, from Sam']);
+  assert.deepEqual(await lines('d'), ['10294', 'Office · Added ' + day('2026-10-21'), 'Second-hand, from Sam']);
   assert.equal(await p.$eval('.item[data-id="e"] .warn', e => e.scrollHeight > e.clientHeight + 1), false, 'the whole reason is printed');
   await c.close();
 }
