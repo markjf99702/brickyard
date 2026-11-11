@@ -977,7 +977,7 @@
       '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
       field('Width, ' + unitWord(), sizeBox('e-w', z.w)) + field('Depth, ' + unitWord(), sizeBox('e-d', z.d)) + field('Height, ' + unitWord(), sizeBox('e-h', z.h)) + '</div></div>' +
       field('Tags', box('e-tags', (x.tags || []).join(', '), ' placeholder="e.g. On display, Christmas" aria-describedby="e-tags-n"')) +
-      '<p class="note hint" id="e-tags-n">A comma between tags. They show on the set’s row, and search finds them.</p>' + tagPick(x) +
+      '<p class="note hint" id="e-tags-n">A comma between tags, up to ' + C.MAX_TAGS + '. They show on the set’s row, and search finds them.</p>' + tagPick(x) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
       '</form>' +
       '<div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="e-del">Remove</button>') + '<button class="btn" type="submit" form="e-form" id="e-save">' + (isNew ? 'Add set' : 'Save') + '</button></div>',
@@ -994,6 +994,8 @@
       $('e-tagpick').onclick = function (e) {
         var b = e.target.closest('button'); if (!b) return;
         var t = b.dataset.tag, list = C.names($('e-tags').value, 99), at = list.map(function (y) { return y.toLowerCase(); }).indexOf(t.toLowerCase());
+        // A set keeps 12 tags (C.MAX_TAGS): a 13th went into the box and Save dropped it without a word.
+        if (at < 0 && list.length >= C.MAX_TAGS) { toast(tooMany(list.length + 1) + ' Take one off to add “' + t + '”.'); return; }
         if (at >= 0) list.splice(at, 1); else list.push(t);
         $('e-tags').value = list.join(', ');
         lit();
@@ -1059,6 +1061,9 @@
       var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
       if (raw && !num) { wrong($('e-num'), 'That set number doesn’t look right. It’s usually 4 or 5 digits.'); return; }
+      // More tags than a set keeps: Save used to drop the ones past the 12th without a word.
+      var nTags = C.names($('e-tags').value, 99).length;
+      if (nTags > C.MAX_TAGS) { wrong($('e-tags'), tooMany(nTags) + ' Take ' + (nTags - C.MAX_TAGS === 1 ? 'one' : nTags - C.MAX_TAGS) + ' off.'); return; }
       // The sizes are in the unit shown unless they say otherwise; '14 1/8"' used to be saved as 14 cm.
       var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
       if (!z) return;
@@ -1144,6 +1149,8 @@
   // Under a set's Tags box, the tags used on your sets, most used first, each a button that adds it to the box or
   // takes it off: a tag typed again by hand comes out "display" on one set and "On display" on the next. Nothing
   // when no set has a tag yet.
+  // "A set can have 12 tags, and this would be 13."
+  function tooMany(n) { return 'A set can have ' + C.MAX_TAGS + ' tags, and this would be ' + n + '.'; }
   function tagPick(x) {
     var n = {}, name = {}, mine = {};
     (x.tags || []).forEach(function (t) { mine[t.toLowerCase()] = 1; });

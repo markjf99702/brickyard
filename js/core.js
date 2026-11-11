@@ -4,6 +4,8 @@
   'use strict';
 
   var STATES = ['built', 'partial', 'apart', 'sealed'];
+  // The most tags a set keeps (cleanSet; `tags` in make_brickyard.py keeps as many). The sheets say so before Save.
+  var MAX_TAGS = 12;
   var STATE_NAMES = { built: 'Built', partial: 'Partly built', apart: 'Taken apart', sealed: 'Sealed' };
   var STATE_WORDS = {
     built: 'built', assembled: 'built', complete: 'built', displayed: 'built', 'on display': 'built',
@@ -119,7 +121,7 @@
       box: s(x.box, 40),
       missing: para(x.missing, 600),
       instr: x.instr === true || x.instructions === true ? true : (x.instr === false || x.instructions === false ? false : null),
-      tags: names(x.tags, 12),
+      tags: names(x.tags, MAX_TAGS),
       notes: para(x.notes, 2000),
       check: s(x.check || x.unsure, 300),
       added: /^\d{4}-\d{2}-\d{2}$/.test(s(x.added, 10)) ? s(x.added, 10) : '',
@@ -916,7 +918,7 @@
 
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
-    STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, names: names, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
+    STATES: STATES, STATE_NAMES: STATE_NAMES, MAX_TAGS: MAX_TAGS, s: s, names: names, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanPlace: cleanPlace, shelves: shelves, putShelf: putShelf, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, missingList: missingList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,

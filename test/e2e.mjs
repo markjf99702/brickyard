@@ -3880,7 +3880,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.goto(base + '#catalog');
   const picks = () => p.$$eval('#e-tagpick button', bs => bs.map(b => b.textContent + (b.getAttribute('aria-pressed') === 'true' ? ' (on)' : '')));
   await p.click('.item[data-id="d"]');
-  assert.deepEqual([await picks(), await p.getAttribute('#e-tags', 'placeholder'), await p.textContent('#e-tags-n')], [['On display', 'castle'], 'e.g. On display, Christmas', 'A comma between tags. They show on the set’s row, and search finds them.'], 'the tags in use, most used first, under the box');
+  assert.deepEqual([await picks(), await p.getAttribute('#e-tags', 'placeholder'), await p.textContent('#e-tags-n')], [['On display', 'castle'], 'e.g. On display, Christmas', 'A comma between tags, up to 12. They show on the set’s row, and search finds them.'], 'the tags in use, most used first, under the box');
   assert.equal(await p.getByRole('textbox', { name: 'Tags' }).getAttribute('aria-describedby'), 'e-tags-n', 'the line under the box is its description');
   await p.getByRole('group', { name: 'Tags on your sets' }).getByRole('button', { name: 'castle' }).click();
   assert.deepEqual([await p.inputValue('#e-tags'), await picks()], ['castle', ['On display', 'castle (on)']], 'a tap puts the tag in the box');
@@ -3899,6 +3899,31 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await empty.p.click('.item[data-id="d"]');
   assert.deepEqual([await empty.p.locator('#e-tagpick').count(), await empty.p.isVisible('#e-tags-n')], [0, true], 'no tags yet: just the box and its line');
   await empty.c.close();
+}
+
+// A set keeps 12 tags. A 13th typed in the box is said under it when Save is tapped, and nothing is saved (Save used
+// to drop the tags past the 12th without a word); a tag button that would be the 13th says so and adds nothing.
+{
+  const twelve = Array.from({ length: 12 }, (_, i) => 'tag ' + (i + 1));
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10305-1', name: 'Lion Knights’ Castle', state: 'built', tags: twelve },
+    b: { id: 'b', t: 2, num: '10334-1', name: 'Retro Radio', state: 'built', tags: ['On display'] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.querySelector('span').textContent : null; });
+  await p.goto(base + '#catalog');
+  await p.click('.item[data-id="a"]');
+  await p.click('#e-tagpick button >> text=On display');
+  assert.deepEqual([await p.inputValue('#e-tags'), await toastSays()], [twelve.join(', '), 'A set can have 12 tags, and this would be 13. Take one off to add “On display”.'], 'the 13th tag button adds nothing, and says why');
+  await p.click('#e-tagpick button >> text=tag 3');
+  await p.click('#e-tagpick button >> text=On display');
+  assert.equal(await p.inputValue('#e-tags'), twelve.filter(t => t !== 'tag 3').concat('On display').join(', '), 'with one taken off, it goes in');
+  await p.fill('#e-tags', twelve.join(', ') + ', Christmas, Gift');
+  await p.click('#e-save');
+  assert.deepEqual([await p.locator('.sheet .err').allTextContents(), await p.getAttribute('#e-tags', 'aria-invalid'), await p.evaluate(() => window.brickyard.doc().sets.a.tags.length), await p.isVisible('.sheet')],
+    [['A set can have 12 tags, and this would be 14. Take 2 off.'], 'true', 12, true], 'Save says so under the box and keeps the sheet open, with nothing saved');
+  await p.fill('#e-tags', twelve.slice(1).join(', ') + ', Christmas');
+  await p.click('#e-save');
+  assert.deepEqual(await p.evaluate(() => window.brickyard.doc().sets.a.tags), twelve.slice(1).concat('Christmas'), 'twelve save');
+  await c.close();
 }
 
 // After a batch is added the screen shows it: the message says how many are to check, the chip row is moved along
