@@ -324,6 +324,7 @@ a.item { color: inherit; text-decoration: none; }
 .menu { list-style: none; padding: 0; margin: 0; }
 .menu button, .menu a, .menu label { width: 100%; display: flex; gap: 12px; align-items: center; padding: 13px 4px; border: 0; background: none; border-bottom: 1px solid var(--line); text-align: left; cursor: pointer; color: var(--ink); text-decoration: none; }
 .menu button:active { background: var(--soft); }
+.menu label input { flex: none; } /* a long line beside it doesn't squeeze the tick box */
 .menu small { display: block; color: var(--muted); font-size: 13.5px; }
 .menu li:last-child > * { border-bottom: 0; }
 .how { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
@@ -383,6 +384,10 @@ a.item { color: inherit; text-decoration: none; }
 .gone .m { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
 .gone .btn { flex: none; }
 .acts-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+/* The planner's Sizes in: cm or inches. */
+.units { display: flex; align-items: center; gap: 10px; margin: 8px 0 10px; font-size: 14px; color: var(--muted); }
+.units .seg { grid-template-columns: 1fr 1fr; width: 180px; }
+.empty .units { justify-content: center; margin-top: 14px; }
 .acts-row .btn { flex: 1 1 auto; justify-content: center; }
 .btn[disabled] { opacity: .5; cursor: default; }
 /* A model's line (pieces, steps) wraps between the two beside a wide badge, where it was cut off with "…". */

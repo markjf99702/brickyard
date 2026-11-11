@@ -319,6 +319,27 @@ eq(clean, [{ num: '10497-1', w: 51, d: 33, h: 14, note: 'LEGO says' }, { num: '1
   const tally = {}; S.cleanSizes({ sizes: list.concat([null, 'x']) }, tally);
   eq(tally.dropped, 6, 'and the rows left out are counted, but not a set that is in the list twice');
 }
+// Sizes shown in inches: to the nearest eighth, the way a tape measure reads, never as nothing; a size typed to the
+// eighth comes back as it was typed (it's kept to 0.1 cm, and an eighth is 0.32 cm). The planner's reasons follow.
+{
+  const fs = require('fs'), path = require('path'), mod = { exports: {} };
+  new Function('module', fs.readFileSync(path.join(__dirname, '..', 'js/core.js'), 'utf8'))(mod);
+  const C = mod.exports;
+  eq(S.unit(), 'cm', 'cm to start with');
+  eq([S.num(32.1), S.len(32), S.num(29.95)], ['32.1', '32 cm', '30'], 'cm as it was');
+  eq(S.setUnit('in'), 'in');
+  eq([30.5, 32.1, 76, 26, 0.1, 1, 2.5, 202, 2.54].map(S.num), ['12', '12⅝', '29⅞', '10¼', '⅛', '⅜', '1', '79½', '1'], 'inches to the eighth');
+  eq(S.len(30), '11¾ in');
+  const back = [];
+  for (let e = 1; e <= 196 * 8; e++) { const t = Math.floor(e / 8) + ' ' + (e % 8) + '/8', cm = C.readLength(t, 'in').cm; if (S.num(cm) !== S.num(e * 2.54 / 8)) back.push(t); }
+  eq(back, [], 'every eighth up to 196 in comes back as it was typed');
+  const billy = { id: 'k', w: 76, d: 26, levels: [{ h: 30, sets: [] }] };
+  eq(S.fits(billy, 0, { id: 'x', size: { w: 40, d: 20, h: 35 } }, {}).why, 'Too tall (13¾ in, the shelf has 11¾)', 'a reason in inches');
+  eq(S.whyNot([billy], { id: 'x', size: { w: 40, d: 30, h: 20 } }, {}), '11¾ in deep; your bookcase is 10¼ in deep');
+  eq(S.sizeDoubt({ w: 44, d: 33, h: 1.2 }, {}), 'Only ½ in tall?');
+  eq(S.setUnit('mm'), 'cm', 'anything else is cm');
+  eq(S.fits(billy, 0, { id: 'x', size: { w: 40, d: 20, h: 35 } }, {}).why, 'Too tall (35 cm, the shelf has 30)', 'and back in cm');
+}
 // A size that looks wrong is asked about, not ticked. The limits are this page's estimate, not a published rule.
 {
   const castle = { id: 'c', name: 'Lion Knights’ Castle', pieces: 4514 }, plain = { id: 'p', name: 'No count' };

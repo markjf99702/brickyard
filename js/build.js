@@ -490,8 +490,9 @@ function renderCheck() {
     const from = sets.filter(holds).map(s => s.name).concat(lots.filter(holds).map(l => 'loose pieces (' + l.name + ')'));
     html += '<p class="note ok">✓ You have every piece for this' + (from.length ? ', from ' + esc(listed(from)) : '') + '.</p>';
   }
-  const cm = B.sizeCm(res.size);
-  html += '<p class="note">' + plural(model.parts.length, 'piece') + (left ? ', ' + left + ' the builder can’t draw' : '') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + cm.w.toFixed(1).replace(/\.0$/, '') + ' × ' + cm.d.toFixed(1).replace(/\.0$/, '') + ' cm, ' + cm.h.toFixed(1).replace(/\.0$/, '') + ' cm tall</p>';
+  // In the unit sizes are shown in on this device (cm, or inches: window.ShelfCore).
+  const cm = B.sizeCm(res.size), Z = window.ShelfCore;
+  html += '<p class="note">' + plural(model.parts.length, 'piece') + (left ? ', ' + left + ' the builder can’t draw' : '') + ' · ' + plural(res.steps.length, 'step') + ' · about ' + Z.num(cm.w) + ' × ' + Z.len(cm.d) + ', ' + Z.len(cm.h) + ' tall</p>';
   $('model-check').innerHTML = html;
 }
 

@@ -14,7 +14,9 @@
   // and 39 cm deep (it was 37 here, which turned away sets 37.1 to 39 cm deep), with 33 cm spaces (its inserts are
   // 33x33 cm).
   var MEASURE = 'Measure yours for a close fit.';
-  var BILLY_NOTE = 'Billy shelves move: these are six even spaces of about 30 cm. Measure yours.';
+  // Said in the unit sizes are shown in (S.len): about 11¾ in.
+  function billyNote() { return 'Billy shelves move: these are six even spaces of about ' + S.len(30) + '. Measure yours.'; }
+  var BILLY_NOTE = billyNote;
   var PRESETS = [
     { k: 'billy', label: 'Billy', name: 'Billy', w: 76, d: 26, levels: [30, 30, 30, 30, 30, 30], note: BILLY_NOTE },
     { k: 'billy40', label: 'Billy narrow', name: 'Billy narrow', w: 36, d: 26, levels: [30, 30, 30, 30, 30, 30], note: BILLY_NOTE },
@@ -55,8 +57,16 @@
   // read "The tall white Billy between the window and the door, shelf 1" lost its "1"; the planner then said the
   // set was somewhere else in My sets, and pressing the button again didn't help.
   function spotName(c, li) { var tail = ', shelf ' + (li + 1); return C.s(c.name, 60 - tail.length).trim() + tail; }
-  function cm(v) { return String(v).replace(/\.0$/, ''); }
-  function sizeText(z) { return cm(z.w) + ' × ' + cm(z.d) + ' × ' + cm(z.h) + ' cm'; }
+  // A length as a number in the unit sizes are shown in on this device (cm, or inches to the eighth: S.num), and
+  // with the unit after it (S.len). Sizes are kept in cm whichever it is.
+  function cm(v) { return S.num(v); }
+  var len = S.len;
+  function sizeText(z) { return cm(z.w) + ' × ' + cm(z.d) + ' × ' + len(z.h); }
+  // About how much more shelf: to 5 cm, or to 2 inches; past 1 m (10 ft), in metres (feet).
+  function about(need) {
+    if (S.unit() === 'in') { var i = need / 2.54; return i < 120 ? Math.ceil(i / 2) * 2 + ' in' : Math.round(i / 12) + ' ft'; }
+    return need < 100 ? Math.ceil(need / 5) * 5 + ' cm' : (need < 1000 ? (Math.round(need / 10) / 10) : Math.round(need / 100)) + ' m';
+  }
   function colourOf(x) { var k = x.theme || x.name || ''; return COLOURS[parseInt(C.hash(k), 36) % COLOURS.length]; }
 
   // ---------- the screen ----------
@@ -68,7 +78,7 @@
       html += '<div class="empty"><svg width="88" height="72" viewBox="0 0 88 72" aria-hidden="true"><rect x="8" y="30" width="72" height="4" rx="1" fill="var(--muted)"/><rect x="8" y="62" width="72" height="4" rx="1" fill="var(--muted)"/>' +
         '<rect x="14" y="14" width="18" height="16" rx="2" fill="var(--blue)"/><rect x="36" y="20" width="24" height="10" rx="2" fill="var(--yellow)"/><rect x="18" y="44" width="30" height="18" rx="2" fill="var(--red)"/><rect x="54" y="50" width="14" height="12" rx="2" fill="var(--green)"/></svg>' +
         '<h2>Your bookcases go here</h2><p>Add each bookcase with its shelf heights, and Brickyard fits your built sets onto them, so you know where everything goes before you unpack.</p>' +
-        '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div>' + jumps(sorted) + '</div>';
+        '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div>' + units() + jumps(sorted) + '</div>';
     } else {
       // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
       var placed = sorted.placed.filter(S.hasSize).length, total = placed + sorted.waiting.length + sorted.noSize.length;
@@ -84,6 +94,7 @@
       // A choice for Fit, off unless it's ticked: a set goes beside one of its own theme before anywhere else, which
       // can spread the sets over more shelves. Kept on this device with the other settings.
       if (fitting) html += '<label class="check" id="fit-themes-row"><input type="checkbox" id="fit-themes"' + (app.pref('fitThemes') ? ' checked' : '') + '> Keep themes together</label>';
+      html += units();
       if (placed) html += '<p class="note">Tap a set to move it, turn it side-on or fix its size.</p>';
       // On a screen wider than a phone the bookcases stand in a row, all drawn at one scale (shared, below).
       var scale = window.innerWidth > 600 ? shared(all) : 0;
@@ -144,6 +155,14 @@
       pick(function (e) { return !!e.dataset.act && e.dataset.act !== 'jump'; }) || pick(function (e) { return !!e.dataset.act; }) || document.querySelector('#shelves h1');
   }
 
+  // Which unit sizes are shown and typed in, on this device: cm or inches, the same setting as Show sizes in inches
+  // in My sets' menu. Sizes are kept in cm either way, so switching changes nothing kept.
+  function units() {
+    var u = S.unit();
+    return '<div class="units" role="group" aria-labelledby="units-l"><span id="units-l">Sizes in</span><div class="seg two-seg">' +
+      [['cm', 'cm'], ['in', 'inches']].map(function (o) { return '<button type="button" data-act="unit" data-k="' + o[0] + '" aria-pressed="' + (u === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+  }
+
   // The ways down to the two lists under the bookcases, as words to tap under the count: "87 not on a shelf yet",
   // "58 need a size". With 300 sets and three bookcases, Needs a size and its two buttons (Copy these for Claude,
   // Open sizes from Claude) were a dozen screens down, and nothing at the top said they were there. A list with
@@ -183,12 +202,12 @@
     var most = function (f) { return cm(Math.max.apply(null, all.map(f))); }, one = all.length === 1;
     if (room.length) {
       var need = S.shelfNeeded(room.map(function (r) { return r.x; }), all, S.CLEAR);
-      bits.push(is(room.length, 'needs', 'need') + ' more shelf: about ' + (need < 100 ? Math.ceil(need / 5) * 5 + ' cm' : (need < 1000 ? (Math.round(need / 10) / 10) : Math.round(need / 100)) + ' m') + '.');
+      bits.push(is(room.length, 'needs', 'need') + ' more shelf: about ' + about(need) + '.');
     }
-    if (tall) bits.push(is(tall, 'is', 'are') + ' taller than your ' + (hs.length === 1 ? 'shelf' : 'tallest shelf') + ' (' + cm(Math.max.apply(null, hs)) + ' cm).');
-    if (clear) bits.push(is(clear, 'needs a shelf ' + cm(S.CLEAR) + ' cm taller than it is', 'need a shelf ' + cm(S.CLEAR) + ' cm taller than they are') + '.');
-    if (deep) bits.push(is(deep, 'is', 'are') + ' deeper than your ' + (one ? 'bookcase' : 'deepest bookcase') + ' (' + most(function (c) { return c.d; }) + ' cm).');
-    if (wide) bits.push(is(wide, 'is', 'are') + ' wider than your ' + (one ? 'bookcase' : 'widest bookcase') + ' (' + most(function (c) { return c.w; }) + ' cm).');
+    if (tall) bits.push(is(tall, 'is', 'are') + ' taller than your ' + (hs.length === 1 ? 'shelf' : 'tallest shelf') + ' (' + len(Math.max.apply(null, hs)) + ').');
+    if (clear) bits.push(is(clear, 'needs a shelf ' + len(S.CLEAR) + ' taller than it is', 'need a shelf ' + len(S.CLEAR) + ' taller than they are') + '.');
+    if (deep) bits.push(is(deep, 'is', 'are') + ' deeper than your ' + (one ? 'bookcase' : 'deepest bookcase') + ' (' + most(function (c) { return c.d; }) + ' ' + S.unit() + ').');
+    if (wide) bits.push(is(wide, 'is', 'are') + ' wider than your ' + (one ? 'bookcase' : 'widest bookcase') + ' (' + most(function (c) { return c.w; }) + ' ' + S.unit() + ').');
     if (big) bits.push(is(big, 'is', 'are') + ' too big some other way.');
     // One set that doesn't fit says why on its own row; the line is for adding several up.
     return rows.length - of('').length > 1 ? '<p class="note" id="need-line">' + esc(bits.join(' ')) + '</p>' : '';
@@ -258,7 +277,7 @@
     c.levels.forEach(function (l, li) {
       parts.push('<rect x="' + T + '" y="' + y + '" width="' + c.w + '" height="' + l.h + '" class="sv-back" data-level="' + esc(c.id) + ':' + li + '"/>');
       var x0 = T, full = S.overfull(c, l, ids), tall = 0, out = 0, row = [];
-      if (full) over.push('Shelf ' + (li + 1) + ' is overfull: ' + cm(S.used(l, ids)) + ' cm of sets on a ' + cm(c.w) + ' cm shelf.');
+      if (full) over.push('Shelf ' + (li + 1) + ' is overfull: ' + len(S.used(l, ids)) + ' of sets on a ' + len(c.w) + ' shelf.');
       l.sets.forEach(function (p) {
         var x = ids[p.id]; if (!x) return;
         if (!onShelf(x)) gone.push(x);
@@ -272,12 +291,12 @@
       });
       // The shelf's number and height, top right, on a tag of its own that's drawn after every set: a tall set at
       // that end of the shelf used to run through the words. A set standing under the tag starts its name below it.
-      var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + cm(l.h) + ' cm', tw = (text.length * 1.28 + 1.6) * k;
+      var bad = full || tall || out, text = (bad ? '! ' : '') + (li + 1) + ' · ' + len(l.h), tw = (text.length * 1.28 + 1.6) * k;
       // On a bookcase drawn so small that the label would be wider than its shelf, the number alone (the height
       // is in what a screen reader is told, and in the bookcase's sheet).
       if (tw > c.w - 0.8) { text = (bad ? '! ' : '') + (li + 1); tw = (text.length * 1.28 + 1.6) * k; }
       var tag = { x: T + c.w - 0.4 - tw, y: y + 0.4, w: tw, h: 3.7 * k };
-      var says = ['Shelf ' + (li + 1), cm(l.h) + ' cm', row.length ? plural(row.length, 'set') : 'empty', full ? 'overfull' : '', tall ? (tall === 1 ? 'a set too tall' : tall + ' sets too tall') : '', out ? (out === 1 ? 'a set too deep' : out + ' sets too deep') : ''].filter(Boolean).join(', ');
+      var says = ['Shelf ' + (li + 1), len(l.h), row.length ? plural(row.length, 'set') : 'empty', full ? 'overfull' : '', tall ? (tall === 1 ? 'a set too tall' : tall + ' sets too tall') : '', out ? (out === 1 ? 'a set too deep' : out + ' sets too deep') : ''].filter(Boolean).join(', ');
       tags.push('<g role="img" aria-label="' + esc(says) + '"><rect x="' + tag.x.toFixed(2) + '" y="' + tag.y + '" width="' + tw.toFixed(2) + '" height="' + +tag.h.toFixed(2) + '" rx="' + +(1.85 * k).toFixed(2) + '" class="sv-tag' + (bad ? ' bad' : '') + '"/>' +
         '<text x="' + +(T + c.w - 0.4 - 0.8 * k).toFixed(2) + '" y="' + +(y + 0.4 + 2.7 * k).toFixed(2) + '" font-size="' + +(2.6 * k).toFixed(2) + '" class="sv-h' + (bad ? ' bad' : '') + '" text-anchor="end">' + text + '</text></g>');
       row.forEach(function (r, i) {
@@ -323,9 +342,9 @@
       : gone.length.toLocaleString() + ' sets here aren’t built now: ' + (more ? names.join(', ') + ' and ' + more.toLocaleString() + ' more.' : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + '.');
     // Up to three sets too tall are named with their heights; more than that are counted (their shelves have the "!").
     var highSays = !high.length ? '' : high.length > 3 ? high.length.toLocaleString() + ' sets are too tall for their shelves. Move them to taller shelves.'
-      : high.map(function (o) { return nameOf(o.x) + ' (' + cm(o.x.size.h) + ' cm) is too tall for shelf ' + (o.li + 1) + ' (' + cm(o.h) + ' cm).'; }).join(' ') + (high.length === 1 ? ' Move it to a taller shelf.' : ' Move them to taller shelves.');
+      : high.map(function (o) { return nameOf(o.x) + ' (' + len(o.x.size.h) + ') is too tall for shelf ' + (o.li + 1) + ' (' + len(o.h) + ').'; }).join(' ') + (high.length === 1 ? ' Move it to a taller shelf.' : ' Move them to taller shelves.');
     return '<section class="case"' + (scale ? ' style="--cw:' + Math.round(W * scale) + 'px"' : '') + '>' +
-      '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + cm(c.d) + ' cm inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(drawn, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
+      '<div class="case-hd"><div><h2>' + esc(c.name) + '</h2><div class="m">' + esc([c.room, cm(c.w) + ' × ' + len(c.d) + ' inside', plural(c.levels.length, 'shelf').replace('shelfs', 'shelves'), plural(drawn, 'set')].filter(Boolean).join(' · ')) + '</div></div>' +
       '<button class="btn sm quiet" type="button" data-case="' + esc(c.id) + '" aria-label="Edit ' + esc(c.name) + '">Edit</button></div>' +
       (over.length ? '<p class="flag bad"><span>' + esc(over.join(' ')) + ' Move a set off, or turn one side-on.</span></p>' : '') +
       (high.length ? '<p class="flag bad"><span>' + esc(highSays) + '</span></p>' : '') +
@@ -338,10 +357,10 @@
   // after it was placed. (An overfull shelf and a set too tall were flagged; this wasn't.) Whichever way round it
   // stands, it's the side that runs front to back that counts, and when the other way round would do the line says so.
   function deepSays(c, deep) {
-    if (deep.length > 2) return deep.length.toLocaleString() + ' sets are too deep for this bookcase (' + cm(c.d) + ' cm deep). Move them to a deeper one.';
+    if (deep.length > 2) return deep.length.toLocaleString() + ' sets are too deep for this bookcase (' + len(c.d) + ' deep). Move them to a deeper one.';
     return deep.map(function (o) {
       var other = S.footprint(o.x, !o.turn);
-      return nameOf(o.x) + ' is ' + cm(o.f.deep) + ' cm deep ' + (o.turn ? 'side-on' : 'facing out') + '; this bookcase is ' + cm(c.d) + ' cm deep. ' +
+      return nameOf(o.x) + ' is ' + len(o.f.deep) + ' deep ' + (o.turn ? 'side-on' : 'facing out') + '; this bookcase is ' + len(c.d) + ' deep. ' +
         (other.deep <= c.d ? (o.turn ? 'Turn it to face out.' : 'Turn it side-on.') : 'Move it to a deeper one.');
     }).join(' ');
   }
@@ -411,6 +430,7 @@
     if (a.dataset.case) return caseSheet(caseOf(a.dataset.case));
     var act = a.dataset.act;
     if (act === 'add-case') caseSheet(null);
+    if (act === 'unit' && a.dataset.k !== S.unit()) app.setUnit(a.dataset.k);
     if (act === 'jump') jump(a.dataset.k);
     if (act === 'fill') fillAll();
     if (act === 'apply') applyPlaces();
@@ -502,11 +522,11 @@
   // Why a set can't stand the way that was asked for on a shelf where it does fit the other way round.
   function wayWhy(c, li, x, ids, turn) {
     var f = S.footprint(x, turn), l = c.levels[li], way = turn ? 'Side-on' : 'Facing out';
-    if (f.deep > c.d) return way + ' it’s ' + cm(f.deep) + ' cm deep; the shelf is ' + cm(c.d) + '.';
-    if (f.along > c.w) return way + ' it’s ' + cm(f.along) + ' cm wide; the shelf is ' + cm(c.w) + '.';
+    if (f.deep > c.d) return way + ' it’s ' + len(f.deep) + ' deep; the shelf is ' + cm(c.d) + '.';
+    if (f.along > c.w) return way + ' it’s ' + len(f.along) + ' wide; the shelf is ' + cm(c.w) + '.';
     var others = l.sets.filter(function (p) { return p.id !== x.id && ids[p.id] && S.hasSize(ids[p.id]); }).length;
     var left = Math.max(0, Math.round((c.w - S.used(l, ids, x.id) - (others ? S.GAP : 0)) * 10) / 10);
-    return way + ' it needs ' + cm(f.along) + ' cm; ' + cm(left) + (left === 1 ? ' is left.' : ' are left.');
+    return way + ' it needs ' + len(f.along) + '; ' + cm(left) + (left === 1 && S.unit() === 'cm' ? ' is left.' : ' are left.');
   }
 
   // One set: its size, where it stands, and moving it.
@@ -520,8 +540,8 @@
         // A shelf that is only short of room can be chosen, and says by how much it would be over: after Fit every
         // shelf is full, and each was greyed out, so a set couldn't be moved by hand at all. One too short, too
         // shallow or too narrow for the set stays greyed out.
-        var says = !f.why || here ? '' : f.short ? 'full, ' + cm(f.short.over) + ' cm over with this' : f.why.replace(/ \(.*\)/, '').toLowerCase();
-        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here && !f.short ? ' disabled' : '') + '>' + esc(c.name) + ' · shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (says ? ' · ' + esc(says) : '') + '</option>';
+        var says = !f.why || here ? '' : f.short ? 'full, ' + len(f.short.over) + ' over with this' : f.why.replace(/ \(.*\)/, '').toLowerCase();
+        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here && !f.short ? ' disabled' : '') + '>' + esc(c.name) + ' · shelf ' + (li + 1) + ' (' + len(l.h) + ')' + (says ? ' · ' + esc(says) : '') + '</option>';
       }).join('') + '</optgroup>';
     }).join('');
     var level = at ? caseOf(at.c).levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
@@ -530,14 +550,14 @@
     // For a set that fits nowhere, the reason its row in the list gives; then whatever Save couldn't do.
     // One that only Fit leaves out (it keeps S.CLEAR cm above a set) can still be stood on a shelf from here.
     var stuck = !at && all.length && S.hasSize(x) ? S.whyNot(all, x, ids, S.CLEAR) : '';
-    if (stuck && !S.whyNot(all, x, ids)) stuck += '. Fit keeps ' + cm(S.CLEAR) + ' cm clear above a set; you can still choose a shelf here.';
+    if (stuck && !S.whyNot(all, x, ids)) stuck += '. Fit keeps ' + len(S.CLEAR) + ' clear above a set; you can still choose a shelf here.';
     else if (stuck && S.reason(all, x, ids, S.CLEAR).kind === 'room') stuck += '. You can still choose a full shelf here: it will show as overfull until a set comes off.';
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(nameOf(x)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (which ? '<p class="note" id="z-which" style="margin-top:0">' + esc(which) + '</p>' : '') +
       '<div class="three">' +
-      '<label class="field"><span>Width, cm</span><input id="z-w" inputmode="decimal" value="' + esc(z.w || '') + '"></label>' +
-      '<label class="field"><span>Depth, cm</span><input id="z-d" inputmode="decimal" value="' + esc(z.d || '') + '"></label>' +
-      '<label class="field"><span>Height, cm</span><input id="z-h" inputmode="decimal" value="' + esc(z.h || '') + '"></label></div>' +
+      '<label class="field"><span>Width, ' + app.unitWord() + '</span><input id="z-w" autocomplete="off"' + app.lenAttrs(z.w) + '></label>' +
+      '<label class="field"><span>Depth, ' + app.unitWord() + '</span><input id="z-d" autocomplete="off"' + app.lenAttrs(z.d) + '></label>' +
+      '<label class="field"><span>Height, ' + app.unitWord() + '</span><input id="z-h" autocomplete="off"' + app.lenAttrs(z.h) + '></label></div>' +
       (all.length ? '<label class="field"><span>Where it stands</span><select id="z-where">' + opts + '</select></label>' : '') +
       (at ? '<label class="check"><input type="checkbox" id="z-turn"' + (at.turn ? ' checked' : '') + '> Stand it side-on (takes its depth along the shelf)</label>' : '') +
       '<p class="note warn" id="z-msg" role="status">' + esc(stuck) + '</p>' +
@@ -572,7 +592,7 @@
     // went again on Save.
     function save(by) {
       refuse('');
-      // cm unless they say inches; what can't be read is turned down by app.lengths, which says which box.
+      // In the unit shown unless they say otherwise; what can't be read is turned down by app.lengths, which says which box.
       var z = app.lengths([['z-w', 'Width'], ['z-d', 'Depth'], ['z-h', 'Height']]);
       if (!z) return;
       var w = z.v['z-w'], d = z.v['z-d'], h = z.v['z-h'];
@@ -632,7 +652,7 @@
       var nth = to ? c2.levels[to.l].sets.findIndex(function (q) { return q.id === id; }) : -1;
       var over = to ? Math.round((S.used(c2.levels[to.l], ids2) - c2.w) * 10) / 10 : 0;
       var said = back ? nameOf(y) + ' is back'
-        : to && (!cur || cur.c !== to.c || cur.l !== to.l) ? nameOf(y) + ' is on ' + shelfName(c2, to.l) + (to.turn ? ', side-on' : '') + (over > 0 ? ', which is now ' + cm(over) + ' cm over' : '')
+        : to && (!cur || cur.c !== to.c || cur.l !== to.l) ? nameOf(y) + ' is on ' + shelfName(c2, to.l) + (to.turn ? ', side-on' : '') + (over > 0 ? ', which is now ' + len(over) + ' over' : '')
         : cur && !to ? 'Off the shelves'
         : to && !to.turn !== !cur.turn ? (to.turn ? 'Turned side-on' : 'Turned to face out')
         : to && nth !== spot ? (nth < spot ? 'Moved left' : 'Moved right')
@@ -663,7 +683,7 @@
   function caseSheet(c) {
     var isNew = !c, preset = isNew ? PRESETS[0] : null;
     var v = c ? { name: c.name, room: c.room || '', w: c.w, d: c.d } : { name: preset.name, room: '', w: preset.w, d: preset.d };
-    var ids = byId(), rows = (c ? c.levels.map(function (l) { return l.h; }) : preset.levels).map(function (h, i) { return { from: c ? i : -1, v: cm(h) }; });
+    var ids = byId(), rows = (c ? c.levels.map(function (l) { return l.h; }) : preset.levels).map(function (h, i) { return { from: c ? i : -1, v: cm(h), cm: h }; });
     var holds = function (r) { return r.from < 0 ? 0 : c.levels[r.from].sets.filter(function (p) { return ids[p.id]; }).length; };
     var onIt = c ? Object.keys(S.placements([c])).filter(function (id) { return ids[id]; }).length : 0;
     var rooms = {}; sets().forEach(function (x) { if (x.room) rooms[x.room] = 1; }); cases().forEach(function (k) { if (k.room) rooms[k.room] = 1; });
@@ -673,11 +693,11 @@
       }).join('') + '</div></div>' : '') +
       '<div class="two"><label class="field"><span>Name</span><input id="k-name" value="' + esc(v.name) + '" placeholder="e.g. Office Billy"></label>' +
       '<label class="field"><span>Room</span><input id="k-room" list="k-rooms" value="' + esc(v.room) + '" placeholder="e.g. Office"><datalist id="k-rooms">' + Object.keys(rooms).sort(C.natural).map(function (r) { return '<option value="' + esc(r) + '">'; }).join('') + '</datalist></label></div>' +
-      '<div class="two"><label class="field"><span>Width inside, cm</span><input id="k-w" inputmode="decimal" value="' + esc(v.w) + '"></label>' +
-      '<label class="field"><span>Depth inside, cm</span><input id="k-d" inputmode="decimal" value="' + esc(v.d) + '"></label></div>' +
-      '<div class="field" role="group" aria-labelledby="k-levels-l"><span class="lbl" id="k-levels-l">Height of each shelf, top shelf first (cm)</span><ol class="levels" id="k-levels"></ol>' +
+      '<div class="two"><label class="field"><span>Width inside, ' + app.unitWord() + '</span><input id="k-w" autocomplete="off"' + app.lenAttrs(v.w) + '></label>' +
+      '<label class="field"><span>Depth inside, ' + app.unitWord() + '</span><input id="k-d" autocomplete="off"' + app.lenAttrs(v.d) + '></label></div>' +
+      '<div class="field" role="group" aria-labelledby="k-levels-l"><span class="lbl" id="k-levels-l">Height of each shelf, top shelf first (' + app.unitWord() + ')</span><ol class="levels" id="k-levels"></ol>' +
       '<div><button class="btn sm quiet" type="button" id="k-add">Add a shelf</button></div></div>' +
-      '<p class="note">The height is the clear space above each shelf, up to the one above it. <span id="k-note">' + esc(isNew ? preset.note : MEASURE) + '</span></p>' +
+      '<p class="note">The height is the clear space above each shelf, up to the one above it. <span id="k-note">' + esc(isNew ? (typeof preset.note === 'function' ? preset.note() : preset.note) : MEASURE) + '</span></p>' +
       (onIt ? '<div><button class="btn sm quiet" type="button" id="k-clear">Take every set off</button></div>' : '') +
       '</div><div class="ft">' + (isNew ? '<span></span>' : '<button class="btn danger" type="button" id="k-del">Remove</button>') + '<button class="btn" type="button" id="k-save">' + (isNew ? 'Add bookcase' : 'Save') + '</button></div>',
       function () { return dirty(); });
@@ -692,10 +712,20 @@
     }
     // The rows as the sheet has them. What's typed lives in the boxes, so it's read back before the rows change.
     function read() { rows.forEach(function (r, i) { if ($('k-h' + i)) r.v = $('k-h' + i).value; }); }
+    // A shelf's box: as it was filled (app.lenAttrs, which remembers the height kept, so one shown to the nearest
+    // eighth of an inch isn't moved by Save) with whatever has been typed in it since.
+    function boxAttrs(r) { return app.lenAttrs(r.cm).replace(/ value="[^"]*"/, ' value="' + esc(r.v) + '"'); }
+    // A box filled again from a preset, the same way.
+    function fill(el, v) {
+      var d = document.createElement('div'); d.innerHTML = '<input' + app.lenAttrs(v) + '>';
+      var f = d.firstChild;
+      ['data-cm', 'data-shown'].forEach(function (a) { if (f.hasAttribute(a)) el.setAttribute(a, f.getAttribute(a)); else el.removeAttribute(a); });
+      el.value = f.getAttribute('value');
+    }
     function draw() {
       $('k-levels').innerHTML = rows.map(function (r, i) {
         var n = holds(r);
-        return '<li><span class="n" aria-hidden="true">' + (i + 1) + '</span><input id="k-h' + i + '" inputmode="decimal" autocomplete="off" aria-label="Height of shelf ' + (i + 1) + ', cm" value="' + esc(r.v) + '">' +
+        return '<li><span class="n" aria-hidden="true">' + (i + 1) + '</span><input id="k-h' + i + '" autocomplete="off" aria-label="Height of shelf ' + (i + 1) + ', ' + app.unitWord() + '"' + boxAttrs(r) + '>' +
           '<span class="on">' + (n ? plural(n, 'set') : '') + '</span>' +
           '<button class="btn sm quiet" type="button" data-rm="' + i + '" aria-label="Remove shelf ' + (i + 1) + '"' + (rows.length === 1 ? ' disabled' : '') + '>Remove</button></li>';
       }).join('');
@@ -709,7 +739,8 @@
     $('k-add').onclick = function () {
       read();
       // A new shelf starts at the height of the one above it: most are the same.
-      rows.push({ from: -1, v: rows.length ? rows[rows.length - 1].v : '' }); draw();
+      var above = rows[rows.length - 1];
+      rows.push({ from: -1, v: above ? above.v : '', cm: above && above.cm && above.v.trim() === cm(above.cm) ? above.cm : 0 }); draw();
       var box = $('k-h' + (rows.length - 1)); box.focus(); box.select();
     };
     $('k-levels').onclick = function (e) {
@@ -722,9 +753,9 @@
       var b = e.target.closest('button'); if (!b) return;
       var p = PRESETS[+b.dataset.k];
       this.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y === b); });
-      $('k-name').value = p.name; $('k-w').value = p.w; $('k-d').value = p.d;
-      rows = (p.levels.length ? p.levels : ['']).map(function (h) { return { from: -1, v: String(h) }; }); draw();
-      $('k-note').textContent = p.note;
+      $('k-name').value = p.name; fill($('k-w'), p.w); fill($('k-d'), p.d);
+      rows = (p.levels.length ? p.levels : ['']).map(function (h) { return { from: -1, v: h ? cm(h) : '', cm: h }; }); draw();
+      $('k-note').textContent = typeof p.note === 'function' ? p.note() : p.note;
       was = now();
       if (p.k === 'custom') $('k-name').focus();
     };
@@ -777,12 +808,12 @@
         }
       }
       read();
-      // Every size is cm unless it says inches, and one that can't be read keeps the sheet open (app.lengths).
+      // Every size is in the unit shown unless it says otherwise, and one that can't be read keeps the sheet open (app.lengths).
       var boxes = [['k-w', 'Width'], ['k-d', 'Depth']].concat(rows.map(function (r, i) { return ['k-h' + i, 'Shelf ' + (i + 1)]; }));
       var z = app.lengths(boxes); if (!z) return;
       var blank = boxes.filter(function (b) { return !z.v[b[0]]; })[0];
       if (blank) {
-        if (blank[0] === 'k-w' || blank[0] === 'k-d') app.wrong(['k-w', 'k-d'].map($).filter(function (b) { return !z.v[b.id]; }), 'Give the width and depth inside, in cm.');
+        if (blank[0] === 'k-w' || blank[0] === 'k-d') app.wrong(['k-w', 'k-d'].map($).filter(function (b) { return !z.v[b.id]; }), 'Give the width and depth inside, in ' + app.unitWord() + '.');
         else app.wrong($(blank[0]), 'Give ' + blank[1].toLowerCase() + ' a height, or remove it.');
         return;
       }

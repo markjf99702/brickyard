@@ -4605,6 +4605,71 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Sizes in inches, for a tape measure in inches: Sizes in, under the planner's buttons, or Show sizes in inches in My
+// sets' menu, the same setting, kept on the device. Then the planner and the size boxes show inches to the nearest
+// eighth, a plain number or a fraction typed in a box is inches, and cm has to say so. Sizes are still kept in cm,
+// and a box left as it was filled keeps the size it had (shown to the eighth, it would move a little otherwise).
+{
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Bonsai Tree', 20, 15, 18), b: set('b', 'Typewriter', 32, 10, 12) },
+    cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }, { h: 30, sets: [] }] } } });
+  const toastSays = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t && !t.hidden ? t.querySelector('span').textContent : null; });
+  const kase = id => p.evaluate(id => { const k = window.BrickCore.shelves(window.brickyard.doc())[id]; return [k.w, k.d, k.levels.map(l => l.h)]; }, id);
+  const pressed = () => p.$$eval('.units button', bs => bs.map(b => b.textContent + ':' + b.getAttribute('aria-pressed')));
+  await p.goto(base + '#shelves');
+  const units = p.getByRole('group', { name: 'Sizes in' });
+  assert.deepEqual([await pressed(), await p.textContent('.case-hd .m')], [['cm:true', 'inches:false'], '76 × 26 cm inside · 2 shelves · 1 set'], 'cm to start with');
+  await units.getByRole('button', { name: 'inches' }).click();
+  assert.deepEqual([await pressed(), await p.textContent('.case-hd .m'), await p.$$eval('.sv-h', ts => ts.map(t => t.textContent)), await p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.prefs')).unit), await p.evaluate(() => document.activeElement.textContent)],
+    [['cm:false', 'inches:true'], '29⅞ × 10¼ in inside · 2 shelves · 1 set', ['1 · 12⅝ in', '2 · 11¾ in'], 'in', 'inches'], 'the planner in inches, to the eighth; the setting is kept, and the button keeps the focus');
+  assert.deepEqual(await p.$$eval('#sv-waiting ~ .list .m', ms => ms.map(m => m.textContent)), ['12⅝ × 3⅞ × 4¾ in'], 'a set’s size in the list too');
+  // A bookcase's sheet: labels, boxes and the keyboard for a fraction; one shelf changed leaves the rest as kept.
+  await p.click('[data-case="k"]');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('.sheet .field > span, .sheet .lbl')].map(e => e.textContent).filter(t => /inch|cm/.test(t))), ['Width inside, inches', 'Depth inside, inches', 'Height of each shelf, top shelf first (inches)']);
+  assert.deepEqual(await p.evaluate(() => ['k-w', 'k-d', 'k-h0', 'k-h1'].map(id => { const e = document.getElementById(id); return e.value + '|' + e.inputMode + '|' + e.placeholder; })), ['29⅞|text|12 5/8', '10¼|text|12 5/8', '12⅝|text|12 5/8', '11¾|text|12 5/8'], 'filled in inches, with a keyboard that has the space and the slash');
+  assert.equal(await p.getAttribute('#k-h0', 'aria-label'), 'Height of shelf 1, inches');
+  await p.fill('#k-h1', '13 1/2');
+  await p.click('#k-save');
+  assert.deepEqual([await kase('k'), await toastSays()], [[76, 26, [32, 34.3]], 'Saved'], 'the shelf typed is read as inches, and the boxes left alone keep their cm');
+  // A new bookcase from a preset, shown in inches, kept as the preset has it in cm; a box can still be given in cm.
+  await p.click('[data-act="add-case"]');
+  assert.deepEqual([await p.inputValue('#k-w'), await p.inputValue('#k-d'), await p.inputValue('#k-h0'), await p.textContent('#k-note')], ['29⅞', '10¼', '11¾', 'Billy shelves move: these are six even spaces of about 11¾ in. Measure yours.']);
+  await p.click('#k-preset [data-k="2"]');
+  assert.deepEqual([await p.inputValue('#k-w'), await p.inputValue('#k-d'), await p.inputValue('#k-h0')], ['13', '15⅜', '13'], 'Kallax in inches');
+  await p.fill('#k-name', 'Kallax hall');
+  await p.click('#k-add');
+  assert.equal(await p.inputValue('#k-h4'), '13', 'a new shelf starts at the height above it');
+  await p.fill('#k-w', '32 cm');
+  await p.click('#k-save');
+  const kal = await p.evaluate(() => Object.values(window.BrickCore.shelves(window.brickyard.doc())).find(k => k.name === 'Kallax hall').id);
+  assert.deepEqual([await kase(kal), await toastSays()], [[32, 39, [33, 33, 33, 33, 33]], 'Added Kallax hall. Read as cm: 12⅝ in'], 'kept in cm as the preset has it; cm said so, and the message says what was read as cm');
+  // A set's sheet in the planner: one size changed, the others kept; what can't be read says how to give it.
+  await p.click('.sv-set[data-set="a"]');
+  assert.deepEqual(await p.evaluate(() => ['z-w', 'z-d', 'z-h'].map(id => document.getElementById(id).closest('label').querySelector('span').textContent + ' ' + document.getElementById(id).value)), ['Width, inches 7⅞', 'Depth, inches 5⅞', 'Height, inches 7⅛'], 'its size in inches');
+  await p.fill('#z-h', '7 1/4');
+  await p.click('#z-save');
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.a.size), await toastSays()], [{ w: 20, d: 15, h: 18.4 }, 'Saved'], 'width and depth as they were, to the 0.1 cm');
+  await p.click('.sv-set[data-set="a"]');
+  await p.fill('#z-w', 'wide');
+  await p.click('#z-save');
+  assert.deepEqual(await p.locator('.sheet .err').allTextContents(), ['Width: “wide” isn’t a length Brickyard can read. Type inches (12 5/8), or cm with cm after the number.']);
+  await discard(p);
+  // My sets: the same setting in the menu, and the set's sheet in inches. Off again, everything is in cm.
+  await p.goto(base + '#catalog');
+  await p.click('.item[data-id="b"]');
+  assert.deepEqual(await p.evaluate(() => ['e-w', 'e-d', 'e-h'].map(id => document.getElementById(id).closest('label').querySelector('span').textContent + ' ' + document.getElementById(id).value)), ['Width, inches 12⅝', 'Depth, inches 3⅞', 'Height, inches 4¾']);
+  await p.fill('#e-d', '4');
+  await p.click('#e-save');
+  assert.deepEqual(await p.evaluate(() => window.brickyard.doc().sets.b.size), { w: 32, d: 10.2, h: 12 }, 'the width shown as 12⅝ stays 32 cm');
+  await p.click('#menu-btn');
+  assert.equal(await p.isChecked('#m-inch'), true, 'the menu has the same setting, on');
+  await p.getByRole('checkbox', { name: /Show sizes in inches/ }).uncheck();
+  await p.click('[data-close]');
+  await p.goto(base + '#shelves');
+  assert.deepEqual([await pressed(), (await p.textContent('.case-hd .m')).slice(0, 18)], [['cm:true', 'inches:false'], '76 × 26 cm inside '], 'back in cm');
+  await c.close();
+}
+
 // Fit keeps 1 cm clear above a set. One that only a shelf of its own height could take is left, says what it needs on
 // its row, and can still be stood there by hand: its sheet says so and offers the shelf.
 {

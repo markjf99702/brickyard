@@ -13,6 +13,23 @@
 
   function hasSize(x) { return !!(x && x.size && x.size.w && x.size.d && x.size.h); }
 
+  // Sizes are kept in cm whatever they're shown in. The planner, the sheets and the messages here show them in the
+  // unit chosen on that device (setUnit: 'cm', or 'in' for inches), which is cm until it's changed. In inches a size
+  // is given to the nearest eighth, the way a tape measure reads ("12⅝"): an eighth of an inch is 0.32 cm, and a
+  // size typed in inches is kept to 0.1 cm, so one typed to the eighth comes back as it was typed.
+  var UNIT = 'cm', EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+  function setUnit(u) { UNIT = u === 'in' ? 'in' : 'cm'; return UNIT; }
+  function unit() { return UNIT; }
+  function inches(cm) {
+    var e = Math.round(cm / 2.54 * 8);
+    if (cm > 0 && e < 1) e = 1; // a size is never shown as nothing
+    var whole = Math.floor(e / 8), part = EIGHTHS[e % 8];
+    return (whole || !part ? String(whole) : '') + part;
+  }
+  // A length as a number in the unit shown ("32.1", or "12⅝"), and with the unit after it ("32.1 cm", "12⅝ in").
+  function num(cm) { return UNIT === 'in' ? inches(cm) : String(Math.round(cm * 10) / 10); }
+  function len(cm) { return num(cm) + ' ' + UNIT; }
+
   // How much shelf a set takes standing one way: {along, deep, h}.
   function footprint(x, turn) {
     var z = x.size;
@@ -48,8 +65,8 @@
   function fits(c, li, x, byId, preferTurn, clear) {
     if (!hasSize(x)) return { why: 'It needs a size' };
     var level = c.levels[li];
-    if (x.size.h > level.h) return { why: 'Too tall (' + x.size.h + ' cm, the shelf has ' + level.h + ')' };
-    if (clear && tenths(x.size.h) + tenths(clear) > tenths(level.h)) return { why: 'Too tall with ' + clear + ' cm clear above it (' + x.size.h + ' cm, the shelf has ' + level.h + ')', near: true };
+    if (x.size.h > level.h) return { why: 'Too tall (' + len(x.size.h) + ', the shelf has ' + num(level.h) + ')' };
+    if (clear && tenths(x.size.h) + tenths(clear) > tenths(level.h)) return { why: 'Too tall with ' + len(clear) + ' clear above it (' + len(x.size.h) + ', the shelf has ' + num(level.h) + ')', near: true };
     var u = used(level, byId, x.id), others = level.sets.filter(function (p) { return p.id !== x.id && byId[p.id] && hasSize(byId[p.id]); }).length;
     var room = tenths(c.w) - tenths(u) - (others ? tenths(GAP) : 0); // in tenths of a cm
     var ways = preferTurn ? [true, false] : [false, true], deep = 0, wide = 0;
@@ -61,9 +78,9 @@
       return { turn: ways[i] };
     }
     var least = Math.min(x.size.w, x.size.d);
-    if (deep === 2) return { why: 'Too deep (' + least + ' cm, the shelf is ' + c.d + ')' };
-    if (wide === 2) return { why: 'Too wide (' + least + ' cm, the shelf is ' + c.w + ')' };
-    if (deep && wide) return { why: 'Too big (' + x.size.w + ' × ' + x.size.d + ' cm, the shelf is ' + c.w + ' × ' + c.d + ')' };
+    if (deep === 2) return { why: 'Too deep (' + len(least) + ', the shelf is ' + num(c.d) + ')' };
+    if (wide === 2) return { why: 'Too wide (' + len(least) + ', the shelf is ' + num(c.w) + ')' };
+    if (deep && wide) return { why: 'Too big (' + num(x.size.w) + ' × ' + len(x.size.d) + ', the shelf is ' + num(c.w) + ' × ' + num(c.d) + ')' };
     var way = ways.filter(function (t) { var g = footprint(x, t); return g.deep <= c.d && g.along <= c.w; })[0];
     return { why: 'Not enough room left on this shelf', short: { turn: way, over: (tenths(footprint(x, way).along) - room) / 10 } };
   }
@@ -89,7 +106,7 @@
     }
     // Only the space above it is in the way (by hand it would stand on a shelf here): say what it needs, whatever
     // is wrong with the other shelves. "Too big for every shelf" was said of a 29.5 cm set that a 30 cm shelf takes.
-    var needs = function () { return { kind: 'clear', why: x.size.h + ' cm tall: needs ' + (tenths(x.size.h) + tenths(clear)) / 10 + ' cm of space' }; };
+    var needs = function () { return { kind: 'clear', why: len(x.size.h) + ' tall: needs ' + len((tenths(x.size.h) + tenths(clear)) / 10) + ' of space' }; };
     var hand = near ? reason(cases, x, byId) : null;
     if (hand && !hand.why) return needs();
     var all = function (re) { return why.every(function (w) { return re.test(w); }); };
@@ -97,19 +114,19 @@
     var least = Math.min(x.size.w, x.size.d);
     if (why.some(function (w) { return /room/.test(w); })) return { why: 'No room left on a shelf it fits', kind: 'room' };
     if (all(/deep/)) {
-      return { kind: 'deep', why: least + ' cm deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + most(function (c) { return c.d; }) + ' cm' + (one ? ' deep' : '') };
+      return { kind: 'deep', why: len(least) + ' deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + len(most(function (c) { return c.d; })) + (one ? ' deep' : '') };
     }
     if (all(/tall/)) {
       // Unless the shelf that is tall enough but for that couldn't take it by hand either (too deep, too wide):
       // then that is what's wrong, and a taller shelf there wouldn't help.
       if (near) return hand.kind === 'room' ? needs() : hand;
       var hs = [].concat.apply([], cases.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
-      return { kind: 'tall', why: x.size.h + ' cm tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + Math.max.apply(null, hs) + ' cm' + (hs.length === 1 ? ' tall' : '') };
+      return { kind: 'tall', why: len(x.size.h) + ' tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + len(Math.max.apply(null, hs)) + (hs.length === 1 ? ' tall' : '') };
     }
     if (all(/wide/)) {
-      return { kind: 'wide', why: least + ' cm wide' + (x.size.w > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'widest bookcase is ') + most(function (c) { return c.w; }) + ' cm' + (one ? ' wide' : '') };
+      return { kind: 'wide', why: len(least) + ' wide' + (x.size.w > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'widest bookcase is ') + len(most(function (c) { return c.w; })) + (one ? ' wide' : '') };
     }
-    if (all(/deep|wide|big/)) return { kind: 'big', why: 'At ' + x.size.w + ' × ' + x.size.d + ' cm, too big for ' + (one ? 'your bookcase' : 'every bookcase') };
+    if (all(/deep|wide|big/)) return { kind: 'big', why: 'At ' + num(x.size.w) + ' × ' + len(x.size.d) + ', too big for ' + (one ? 'your bookcase' : 'every bookcase') };
     if (all(/deep|tall/)) return { kind: 'big', why: 'Too tall or too deep for every shelf' };
     return { kind: 'big', why: 'Too big for every shelf' };
   }
@@ -270,11 +287,11 @@
   // a row and ask, they never stop a size being added.
   function sizeDoubt(z, x) {
     var sides = [[z.w, 'wide'], [z.d, 'deep'], [z.h, 'tall']].sort(function (a, b) { return a[0] - b[0]; }), least = sides[0], most = sides[2];
-    if (least[0] < 1.5) return 'Only ' + least[0] + ' cm ' + least[1] + '?';
-    if (most[0] > 150) return most[0] + ' cm ' + most[1] + '?';
+    if (least[0] < 1.5) return 'Only ' + len(least[0]) + ' ' + least[1] + '?';
+    if (most[0] > 150) return len(most[0]) + ' ' + most[1] + '?';
     var pieces = x && x.pieces > 0 ? x.pieces : 0, each = pieces ? z.w * z.d * z.h / pieces : 0;
-    if (pieces && each < 1) return least[0] + ' cm ' + least[1] + ' for ' + pieces.toLocaleString('en') + ' pieces?';
-    if (pieces && each > 80) return most[0] + ' cm ' + most[1] + ' for ' + pieces.toLocaleString('en') + (pieces === 1 ? ' piece?' : ' pieces?');
+    if (pieces && each < 1) return len(least[0]) + ' ' + least[1] + ' for ' + pieces.toLocaleString('en') + ' pieces?';
+    if (pieces && each > 80) return len(most[0]) + ' ' + most[1] + ' for ' + pieces.toLocaleString('en') + (pieces === 1 ? ' piece?' : ' pieces?');
     if (hasSize(x)) {
       var far = function (a, b) { return a > b * 1.5 || a < b * 0.5; }, o = x.size;
       if (far(z.h, o.h) || far(Math.min(z.w, z.d), Math.min(o.w, o.d)) || far(Math.max(z.w, z.d), Math.max(o.w, o.d))) return 'Very different from the size it has now.';
@@ -347,7 +364,7 @@
     });
   }
 
-  var api = { GAP: GAP, CLEAR: CLEAR, ON_SHELVES: ON_SHELVES, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort,
+  var api = { GAP: GAP, CLEAR: CLEAR, ON_SHELVES: ON_SHELVES, setUnit: setUnit, unit: unit, inches: inches, num: num, len: len, hasSize: hasSize, footprint: footprint, used: used, overfull: overfull, fits: fits, whyNot: whyNot, reason: reason, shelfNeeded: shelfNeeded, placements: placements, sort: sort,
     fill: fill, takeOff: takeOff, cleanSizes: cleanSizes, sizeDoubt: sizeDoubt, sizesText: sizesText, isSizesLink: isSizesLink, parseSizes: parseSizes };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.ShelfCore = api;
 })(this);

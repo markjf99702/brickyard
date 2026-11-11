@@ -1,7 +1,7 @@
 // Brickyard: the home screen and the catalog of sets.
 (function () {
   'use strict';
-  var C = window.BrickCore;
+  var C = window.BrickCore, S = window.ShelfCore;
   var KEY = 'brickyard.v1', PREFS = 'brickyard.prefs', TOOK = 'brickyard.took';
   var SITE = 'https://brickyard.junkdrawer.works/';
   var FRAMED = window.top !== window; // the Artifact copy: no downloads
@@ -23,6 +23,10 @@
   // side of the screen.
   var show = 'all';
   if ('show' in prefs) { delete prefs.show; write(PREFS, prefs); }
+  // The unit sizes are shown and typed in on this device (prefs.unit: 'cm', or 'in' for inches). They're kept in
+  // cm whichever it is, so changing it changes nothing kept.
+  S.setUnit(prefs.unit);
+  function setUnit(u) { prefs.unit = S.setUnit(u); savePrefs(); refresh(); }
   function save() {
     // Held, so the "Added" or "Saved" that follows in the same tap doesn't cover it: it's the only sign the change
     // will be gone after a reload. The preview copy has no backup download, but it can copy everything as a link.
@@ -396,7 +400,7 @@
     }
     var held = C.shelves(DOC), cases = Object.keys(held).map(function (k) { return held[k]; }).filter(function (c) { return !c.del; });
     // As the planner counts them: only the sets it can draw (a set on a shelf with no size isn't).
-    var S = window.ShelfCore, sorted = S.sort(C.live(DOC), cases), on = sorted.placed.filter(S.hasSize).length;
+    var sorted = S.sort(C.live(DOC), cases), on = sorted.placed.filter(S.hasSize).length;
     // And of how many, as the planner's own count has it ("3 of 5 sets on shelves"): the rest are waiting for a
     // shelf, or need a size first. The card said only what was done.
     var total = on + sorted.waiting.length + sorted.noSize.length;
@@ -893,25 +897,37 @@
     box.removeAttribute('aria-invalid'); box.removeAttribute('aria-describedby');
   }
 
-  // The lengths typed in a sheet's size boxes, each given as [the box's id, what to call it]. They're cm unless
-  // they say inches (C.readLength). One that can't be read is marked and takes the focus, a line under it says
-  // which box and what would do (wrong), and this is null: the sheet stays open. Otherwise { v: { id: cm }, note }, where note
-  // says what was read as inches ("Read as inches: 32.1 cm"), to go in the message that says it's saved.
+  // The lengths typed in a sheet's size boxes, each given as [the box's id, what to call it]. A plain number is in
+  // the unit this device shows sizes in (cm, or inches: S.unit), and either can be given by saying so
+  // (C.readLength). One that can't be read is marked and takes the focus, a line under it says which box and what
+  // would do (wrong), and this is null: the sheet stays open. Otherwise { v: { id: cm }, note }, where note says
+  // what was read in the other unit ("Read as inches: 32.1 cm", "Read as cm: 12⅝ in"), to go in the message that
+  // says it's saved. A box still showing the size it was filled with (lenAttrs) gives that size as it's kept: in
+  // inches it's shown to the nearest eighth, and reading that back would move it a little.
   function lengths(boxes) {
-    var v = {}, inch = [];
+    var v = {}, other = [], unit = S.unit();
     for (var i = 0; i < boxes.length; i++) {
-      var el = $(boxes[i][0]), r = C.readLength(el.value);
+      var el = $(boxes[i][0]), shown = el.getAttribute('data-shown'), kept = shown != null && el.value.trim() === shown;
+      var r = kept ? { cm: +el.getAttribute('data-cm') } : C.readLength(el.value, unit);
       if (r.bad) {
-        wrong(el, boxes[i][1] + ': ' + (r.bad === 'big' ? '“' + el.value.trim() + '” is more than Brickyard keeps (500 cm).'
-          : '“' + el.value.trim() + '” isn’t a length Brickyard can read. Type cm, or inches with in or " after the number.'));
+        wrong(el, boxes[i][1] + ': ' + (r.bad === 'big' ? '“' + el.value.trim() + '” is more than Brickyard keeps (' + (unit === 'in' ? 'about 196 in' : '500 cm') + ').'
+          : '“' + el.value.trim() + '” isn’t a length Brickyard can read. ' + (unit === 'in' ? 'Type inches (12 5/8), or cm with cm after the number.' : 'Type cm, or inches with in or " after the number.')));
         return null;
       }
       right(el);
       v[boxes[i][0]] = r.cm;
-      if (r.inch) inch.push([boxes[i][1].toLowerCase(), r.cm + ' cm']);
+      if (!kept && r.cm && !!r.inch !== (unit === 'in')) other.push([boxes[i][1].toLowerCase(), r.inch ? r.cm + ' cm' : S.len(r.cm)]);
     }
-    return { v: v, note: !inch.length ? '' : 'Read as inches: ' + (inch.length === 1 ? inch[0][1] : inch.map(function (x) { return x.join(' '); }).join(', ')) };
+    return { v: v, note: !other.length ? '' : (unit === 'in' ? 'Read as cm: ' : 'Read as inches: ') + (other.length === 1 ? other[0][1] : other.map(function (x) { return x.join(' '); }).join(', ')) };
   }
+  // What a size box is filled with: the size kept (cm) in the unit shown, remembered on the box (lengths), and in
+  // inches a keyboard with the space and the slash a fraction needs, and an example while it's empty.
+  function lenAttrs(cm) {
+    var shown = cm ? S.num(cm) : '';
+    return ' value="' + esc(shown) + '"' + (cm ? ' data-cm="' + cm + '" data-shown="' + esc(shown) + '"' : '') + (S.unit() === 'in' ? ' inputmode="text" placeholder="12 5/8"' : ' inputmode="decimal"');
+  }
+  // What a size box's label calls its unit.
+  function unitWord() { return S.unit() === 'in' ? 'inches' : 'cm'; }
 
   function field(label, inner) { return '<label class="field"><span>' + label + '</span>' + inner + '</label>'; }
   function input(id, val, extra) { return '<input id="' + id + '" value="' + esc(val == null ? '' : val) + '" autocomplete="off"' + (extra || '') + '>'; }
@@ -925,6 +941,7 @@
     // Enter in one of the sheet's one-line boxes saves (the boxes are in a form, so the browser still lets Enter
     // choose a suggestion from a box's list first); on a phone the keyboard's key says Done.
     var box = function (id, val, extra) { return input(id, val, ' enterkeyhint="done"' + (extra || '')); };
+    var sizeBox = function (id, cm) { return '<input id="' + id + '" autocomplete="off" enterkeyhint="done"' + lenAttrs(cm) + '>'; };
     // Each box, with the part of the set it's for (the three sizes are one part, `size`).
     var BOXES = { 'e-num': 'num', 'e-year': 'year', 'e-name': 'name', 'e-pieces': 'pieces', 'e-theme': 'theme', 'e-room': 'room', 'e-spot': 'spot', 'e-box': 'box', 'e-missing': 'missing',
       'e-instr': 'instr', 'e-w': 'size', 'e-d': 'size', 'e-h': 'size', 'e-tags': 'tags', 'e-notes': 'notes' };
@@ -955,7 +972,7 @@
       '<p class="out" id="e-lego-p"' + (C.instructionsUrl(x.num) ? '' : ' hidden') + '><a id="e-lego" target="_blank" rel="noopener noreferrer" href="' + esc(C.instructionsUrl(x.num)) + '">Instructions at LEGO<span aria-hidden="true"> ↗</span><span class="vh"> (opens in a new tab)</span></a></p>' +
       // Each box has its own label: a placeholder is gone once the box holds a number, leaving a bare "50 8 16".
       '<div class="field" role="group" aria-labelledby="e-size"><span class="lbl" id="e-size">Size when built (for the shelf planner)</span><div class="three">' +
-      field('Width, cm', box('e-w', z.w || '', ' inputmode="decimal"')) + field('Depth, cm', box('e-d', z.d || '', ' inputmode="decimal"')) + field('Height, cm', box('e-h', z.h || '', ' inputmode="decimal"')) + '</div></div>' +
+      field('Width, ' + unitWord(), sizeBox('e-w', z.w)) + field('Depth, ' + unitWord(), sizeBox('e-d', z.d)) + field('Height, ' + unitWord(), sizeBox('e-h', z.h)) + '</div></div>' +
       field('Tags', box('e-tags', (x.tags || []).join(', '), ' placeholder="e.g. On display, Christmas" aria-describedby="e-tags-n"')) +
       '<p class="note hint" id="e-tags-n">A comma between tags. They show on the set’s row, and search finds them.</p>' + tagPick(x) +
       field('Notes', '<textarea id="e-notes">' + esc(x.notes) + '</textarea>') +
@@ -1039,7 +1056,7 @@
       var btn = $('e-save');
       var raw = $('e-num').value.trim(), num = C.setNum(raw);
       if (raw && !num) { wrong($('e-num'), 'That set number doesn’t look right. It’s usually 4 or 5 digits.'); return; }
-      // The sizes are cm unless they say inches; '14 1/8"' used to be saved as 14 cm.
+      // The sizes are in the unit shown unless they say otherwise; '14 1/8"' used to be saved as 14 cm.
       var z = lengths([['e-w', 'Width'], ['e-d', 'Depth'], ['e-h', 'Height']]);
       if (!z) return;
       // Save changes the parts of the set this sheet changed, and leaves the rest as the set is kept now. The sheet
@@ -1522,7 +1539,7 @@
   // Sizes go to the shelf planner's Add sizes (js/shelves.js), and a model into Build from your box (js/build.js),
   // opened.
   function takeSizes(doc) {
-    var tally = {}, z = window.ShelfCore.cleanSizes(doc, tally);
+    var tally = {}, z = S.cleanSizes(doc, tally);
     if (!z || !window.BrickyardShelves) throw new Error('empty');
     closeSheet(function () { location.hash = '#shelves'; window.BrickyardShelves.reviewSizes(z, tally.dropped); });
   }
@@ -2066,6 +2083,7 @@
       (gone ? '<li><button type="button" id="m-gone"><span>Recently removed (' + gone.toLocaleString() + ')<small>Put back a set removed on this device in the last 30 days</small></span></button></li>' : '') +
       // A copy on a phone's home screen has no browser menu to print from. Not in the preview, which is a frame.
       (FRAMED || !C.live(DOC).length ? '' : '<li><button type="button" id="m-print"><span>Print this list<small>What My sets is showing now: search for a box first to print its packing list</small></span></button></li>') +
+      '<li><label><input type="checkbox" id="m-inch"' + (S.unit() === 'in' ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show sizes in inches<small>Bookcases and set sizes, for the shelf planner, are shown in inches, and a number typed in a size box is inches (12 5/8). Brickyard keeps them in cm.</small></span></label></li>' +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'
         : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.' + (storageKept ? ' This browser has agreed not to clear Brickyard’s storage by itself.' : '')) + '</p></div>');
@@ -2083,6 +2101,7 @@
     // Once the sheet is off the screen and its place in history is gone: printing holds the page still meanwhile.
     if ($('m-print')) $('m-print').onclick = function () { closeSheet(function () { setTimeout(function () { window.print(); }, 50); }); };
     if ($('m-pics')) $('m-pics').onchange = function () { prefs.pics = this.checked; savePrefs(); renderCatalog(); };
+    $('m-inch').onchange = function () { setUnit(this.checked ? 'in' : 'cm'); };
   }
 
   // Show the catalog as it is now on whichever screen is open, without moving the page. A sheet keeps its own
@@ -2190,6 +2209,8 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
+    // The unit sizes are shown in on this device, for the planner's own switch; and a size box's filling (lenAttrs).
+    setUnit: setUnit, lenAttrs: lenAttrs, unitWord: unitWord,
     toast: toast, toastAfter: toastAfter, lostBuilder: lostBuilder, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, linkOf: linkOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));

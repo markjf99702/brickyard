@@ -90,6 +90,19 @@ eq(C.cleanSet({ name: 'x', state: 'on fire', year: 1800, pieces: -4, size: { w: 
   eq(['12 5/8', '5/8', 'tall', '32 mm', '1e2', '32 x 40', '32, 40', '-5', '12 5/0"', '10 in 5', '1 2 3', '32 cm.', '"', 'in'].map(len), Array(14).fill('unread'), 'anything else with letters or a slash is turned down');
   eq(['501', '3200', '200 in', "20'"].map(len), ['big', 'big', 'big', 'big'], 'and so is more than 500 cm');
   eq([C.readLength('500'), C.readLength('0"'), C.readLength(true), C.readLength({})], [{ cm: 500 }, { cm: 0 }, { cm: 0 }, { cm: 0 }], 'the edges');
+  // A fraction may be one character, as the page shows inches (12⅝), and still has to say it's inches in cm.
+  eq(['12⅝"', '12 ⅝ in', '⅞"', '12⅝', '12 5⁄8"'].map(len), ['32.1 from inches', '32.1 from inches', '2.2 from inches', 'unread', '32.1 from inches'], 'one-character fractions');
+}
+// On a device that shows sizes in inches, a plain number in a size box is inches, a fraction needs no mark, and cm
+// has to say so; the rest reads as it does in cm.
+{
+  const len = v => { const r = C.readLength(v, 'in'); return r.bad ? r.bad : r.inch ? r.cm + ' from inches' : r.cm + ' cm'; };
+  eq(['12', '12.5', '12,5', '12 5/8', '12-5/8', '12⅝', '5/8', '⅝', '12 5/8"', '1\' 2', '1 ft', '29 7/8'].map(len),
+    ['30.5 from inches', '31.8 from inches', '31.8 from inches', '32.1 from inches', '32.1 from inches', '32.1 from inches', '1.6 from inches', '1.6 from inches', '32.1 from inches', '35.6 from inches', '30.5 from inches', '75.9 from inches'], 'plain numbers and fractions are inches');
+  eq(['32 cm', '32cm', '32,5 cm'].map(len), ['32 cm', '32 cm', '32.5 cm'], 'cm says so');
+  eq(['tall', '12 5/0', '32 mm', '200', '196.9', '196.8'].map(len), ['unread', 'unread', 'unread', 'big', 'big', '499.9 from inches'], 'what can’t be read, and more than 500 cm');
+  eq([C.readLength('', 'in'), C.readLength('0', 'in')], [{ cm: 0 }, { cm: 0 }], 'empty is no size');
+  eq(C.readLength('12 5/8', 'cm'), { bad: 'unread' }, 'and in cm a bare fraction is still turned down');
 }
 eq(C.cleanSet({ year: 2020 }), null, 'needs a number or a name');
 eq(C.cleanSet({ name: 'x', instr: false }).instr, false, 'no instructions is kept');

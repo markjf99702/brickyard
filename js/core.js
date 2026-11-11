@@ -35,15 +35,20 @@
     return Math.min(500, Math.round(x * 10) / 10);
   }
 
-  // A length someone typed into a box, in cm: { cm } (0 for an empty box), with inch: true when it was given in
-  // inches and worked out, or { bad } when it can't be read ('unread') or is over the 500 cm kept ('big'). A plain
-  // number is cm, with a point or a comma ("32,5"), and comes out as measure gives it. Inches have to say so: in,
-  // inch, inches or " after the number, which may be a decimal, a fraction or both (12.5", 5/8 in, 12 5/8"), with
-  // feet in front if there are any (1' 2", 2 ft 6 in, 6 ft). Anything else with a letter or a slash in it is
-  // turned down, not guessed at: measure reads '12 5/8"' as 12 and "10 in" as 10, which saved inches as cm
-  // without a word. measure itself is left as it is, because cleanSet and the cataloger's script must agree.
-  function readLength(v) {
-    var t = s(v, 40).toLowerCase().replace(/[\u201c\u201d\u2033]|''|[\u2018\u2019\u2032]{2}/g, '"').replace(/[\u2018\u2019\u2032]/g, "'").replace(/(\d),(\d)/g, '$1.$2');
+  // A length someone typed into a box, in cm: { cm } (0 for an empty box), with inch: true when it was read as
+  // inches and worked out, or { bad } when it can't be read ('unread') or is over the 500 cm kept ('big'). `unit`
+  // is what a plain number is: cm unless it's 'in' (the device shows sizes in inches). A plain number in cm, with a
+  // point or a comma ("32,5"), comes out as measure gives it. In cm, inches have to say so: in, inch, inches or "
+  // after the number, which may be a decimal, a fraction or both (12.5", 5/8 in, 12 5/8"), with feet in front if
+  // there are any (1' 2", 2 ft 6 in, 6 ft). In inches the mark can be left off (12 5/8), and cm has to say so
+  // (32 cm). A fraction may be one character (12⅝, as the page shows inches). Anything else with a letter or a slash
+  // in it is turned down, not guessed at: measure reads '12 5/8"' as 12 and "10 in" as 10, which saved inches as
+  // cm without a word. measure itself is left as it is, because cleanSet and the cataloger's script must agree.
+  var FRACTIONS = { '¼': '1/4', '½': '1/2', '¾': '3/4', '⅛': '1/8', '⅜': '3/8', '⅝': '5/8', '⅞': '7/8', '⅓': '1/3', '⅔': '2/3', '⅕': '1/5', '⅖': '2/5', '⅗': '3/5', '⅘': '4/5', '⅙': '1/6', '⅚': '5/6' };
+  function readLength(v, unit) {
+    var inch = unit === 'in';
+    var t = s(v, 40).toLowerCase().replace(/[\u201c\u201d\u2033]|''|[\u2018\u2019\u2032]{2}/g, '"').replace(/[\u2018\u2019\u2032]/g, "'").replace(/(\d),(\d)/g, '$1.$2')
+      .replace(/\u2044/g, '/').replace(/(\d?)\s*([¼½¾⅛⅜⅝⅞⅓⅔⅕⅖⅗⅘⅙⅚])/g, function (all, d, f) { return (d ? d + ' ' : '') + FRACTIONS[f]; });
     var done = function (x, inch) {
       if (!isFinite(x) || x > 500) return { bad: 'big' };
       var o = { cm: x <= 0 ? 0 : Math.round(x * 10) / 10 };
@@ -51,13 +56,13 @@
       return o;
     };
     if (!t) return { cm: 0 };
-    var m = /^(\d+\.?\d*|\.\d+)\s*(?:cm)?$/.exec(t);
+    var m = /^(\d+\.?\d*|\.\d+)\s*cm$/.exec(t) || (!inch && /^(\d+\.?\d*|\.\d+)$/.exec(t));
     if (m) return done(parseFloat(m[1]));
     var inches = 0, feet = /^(\d+\.?\d*|\.\d+)\s*(?:'|ft\.?|foot|feet)\s*/.exec(t), rest = feet ? t.slice(feet[0].length) : t;
     if (feet) inches = parseFloat(feet[1]) * 12;
     if (rest) {
       m = /^(?:(\d+\.?\d*|\.\d+)|(?:(\d+)[ -])?(\d+)\/(\d+))\s*("|in\.?|inch|inches)?$/.exec(rest);
-      if (!m || (!m[5] && !feet) || (m[3] && !+m[4])) return { bad: 'unread' };
+      if (!m || (!m[5] && !feet && !inch) || (m[3] && !+m[4])) return { bad: 'unread' };
       inches += m[1] ? parseFloat(m[1]) : (+m[2] || 0) + m[3] / m[4];
     }
     return done(inches * 2.54, true);
