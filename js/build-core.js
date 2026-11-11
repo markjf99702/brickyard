@@ -217,6 +217,70 @@
     return { ok: !problems.length, problems: problems, notes: notes, used: used, short: short, steps: steps, pieces: count, size: size };
   }
 
+  // A piece in words, its size before its name as it's said: "white 2x2 brick", "yellow 2x4 slope 45".
+  function pieceWords(name, colour) {
+    var m = /^(.*?) (\d+x\d+(?:x[\d⅓⅔]+)?)(.*)$/.exec(name);
+    return (colour ? String(colour).toLowerCase() + ' ' : '') + (m ? m[2] + ' ' + m[1].toLowerCase() + m[3] : String(name).toLowerCase());
+  }
+  // More than one of a piece, where its name takes an s without getting in the way ("white 1x4 bricks"); '' where it
+  // doesn't ("1x2 brick with grille", "2x4 slope 45").
+  function piecesWords(name, colour) {
+    var m = /^([A-Za-z ]+) (\d+x\d+(?:x[\d⅓⅔]+)?)$/.exec(name);
+    return m ? (colour ? String(colour).toLowerCase() + ' ' : '') + m[2] + ' ' + m[1].toLowerCase() + (/(ch|s|x)$/.test(m[1]) ? 'es' : 's') : '';
+  }
+
+  // Where each piece goes, in words, for building without the picture (it can't be drawn, or can't be seen): how
+  // high, what it sits on, where on the model's footprint counted in studs from its front left corner, and which
+  // way it's turned. "Brick 1x4, Dark Blue: 1 plate up, on the green 6x12 plate, 2 studs in from the left, at the
+  // back, running left to right". One text for each of the model's parts, in their order ('' for a part the
+  // builder doesn't know). colourName gives a colour's name from its code.
+  var SIDE = { 0: 'back', 90: 'right', 180: 'front', 270: 'left' };
+  function whereTexts(model, shapes, colourName) {
+    var name = function (c) { return colourName ? colourName(c) : 'colour ' + c; };
+    var ok = [];
+    model.parts.forEach(function (q, i) {
+      var sh = Object.prototype.hasOwnProperty.call(shapes, q[0]) ? shapes[q[0]] : null;
+      if (sh) ok.push({ i: i, p: q[0], c: q[1], x: q[2], y: q[3], z: q[4], r: q[5], s: q[6], sh: sh, cells: placed(sh, { x: q[2], z: q[4], r: q[5] }), size: turnSize(sh, q[5]) });
+    });
+    var x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y0 = Infinity, studAt = {}, socketAt = {};
+    ok.forEach(function (q) {
+      x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x + q.size.w); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z + q.size.d); y0 = Math.min(y0, q.y);
+      q.cells.top.forEach(function (c) { var k = c[0] + ',' + (q.y + q.sh.h) + ',' + c[1]; (studAt[k] = studAt[k] || []).push(q); });
+      q.cells.bot.forEach(function (c) { var k = c[0] + ',' + q.y + ',' + c[1]; (socketAt[k] = socketAt[k] || []).push(q); });
+    });
+    var studs = function (n) { return n + (n === 1 ? ' stud' : ' studs'); };
+    // The pieces a piece joins, said as few words as tell them: one by its name, several of a kind counted.
+    var said = function (list) {
+      var kinds = {};
+      list.forEach(function (o) { kinds[o.p + '/' + o.c] = o; });
+      var keys = Object.keys(kinds), one = kinds[keys[0]];
+      if (list.length === 1) return 'the ' + pieceWords(one.sh.n, name(one.c));
+      if (keys.length === 1 && piecesWords(one.sh.n, name(one.c))) return list.length + ' ' + piecesWords(one.sh.n, name(one.c));
+      if (list.length === 2 && keys.length === 2) return 'the ' + pieceWords(one.sh.n, name(one.c)) + ' and the ' + pieceWords(kinds[keys[1]].sh.n, name(kinds[keys[1]].c));
+      return list.length + ' pieces';
+    };
+    var uniq = function (list) { return list.filter(function (o, n) { return list.indexOf(o) === n; }).sort(function (a, b) { return a.i - b.i; }); };
+    var out = model.parts.map(function () { return ''; });
+    ok.forEach(function (q) {
+      var bits = [], up = q.y - y0, bricks = Math.floor(up / 3), plates = up % 3;
+      if (up) bits.push([bricks ? bricks + (bricks === 1 ? ' brick' : ' bricks') : '', plates ? plates + (plates === 1 ? ' plate' : ' plates') : ''].filter(Boolean).join(' and ') + ' up');
+      // What's under it that it goes onto (built by then), or, with nothing under, what it's pushed up into.
+      var onto = uniq([].concat.apply([], q.cells.bot.map(function (c) { return (studAt[c[0] + ',' + q.y + ',' + c[1]] || []).filter(function (o) { return o.s <= q.s; }); })));
+      var into = uniq([].concat.apply([], q.cells.top.map(function (c) { return (socketAt[c[0] + ',' + (q.y + q.sh.h) + ',' + c[1]] || []).filter(function (o) { return o.s < q.s; }); })));
+      if (onto.length) bits.push('on ' + said(onto));
+      else if (into.length) bits.push('under ' + said(into) + ', pushed on from underneath');
+      else if (!up) bits.push('on the table');
+      var left = q.x - x0, right = x1 - (q.x + q.size.w), front = z1 - (q.z + q.size.d), back = q.z - z0;
+      bits.push(!left && !right ? 'the full width' : !left ? 'at the left edge' : !right ? 'at the right edge' : studs(left) + ' in from the left');
+      bits.push(!front && !back ? 'front to back' : !front ? 'at the front' : !back ? 'at the back' : studs(front) + ' back from the front');
+      if (q.sh.k === 'slope' || q.sh.k === 'curve') bits.push('high side at the ' + SIDE[q.r]);
+      else if (q.sh.k === 'inv') bits.push('full side at the ' + SIDE[q.r]);
+      else if (q.size.w !== q.size.d && (left || right) && (front || back)) bits.push(q.size.w > q.size.d ? 'running left to right' : 'running front to back');
+      out[q.i] = q.sh.n + ', ' + name(q.c) + ': ' + bits.join(', ');
+    });
+    return out;
+  }
+
   // Studs to centimetres: a stud is 8 mm, a plate 3.2 mm.
   function sizeCm(size) { return { w: size.w * 0.8, d: size.d * 0.8, h: Math.round(size.h * 0.32 * 10) / 10 }; }
 
@@ -272,7 +336,7 @@
     });
   }
 
-  var api = { useAliases: useAliases, canon: canon, turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, check: check, sizeCm: sizeCm,
+  var api = { useAliases: useAliases, canon: canon, turnSize: turnSize, turnCell: turnCell, placed: placed, cleanModel: cleanModel, poolOf: poolOf, check: check, sizeCm: sizeCm, pieceWords: pieceWords, whereTexts: whereTexts,
     modelText: modelText, isModelLink: isModelLink, parseModel: parseModel };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BuildCore = api;
 })(this);

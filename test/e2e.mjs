@@ -3233,6 +3233,39 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// Under a step's pieces, "Where they go" says in words where each one goes (a piece's place was only in the
+// picture). It's folded away, stays open once opened, and is open from the start where there is no picture.
+{
+  const { c, p } = await withSets({ sets: {} });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForSelector('#model-view:not([hidden])');
+  assert.equal(await p.locator('details.where').count(), 0, 'nothing to place on the finished picture');
+  await p.click('#step-next');
+  const where = () => p.$eval('details.where', d => [d.open, d.querySelector('summary').textContent, [...d.querySelectorAll('li')].map(l => l.textContent)]);
+  assert.deepEqual(await where(), [false, 'Where they go', ['Plate 6x12, Bright Green: on the table, the full width, front to back']], 'step 1: folded, one line');
+  assert.ok((await p.locator('details.where summary').boundingBox()).height >= 44, 'its heading is 44 px to tap');
+  await p.tap('details.where summary');
+  assert.equal(await p.isVisible('details.where li'), true);
+  await p.click('#step-next');
+  const two = await where();
+  assert.deepEqual([two[0], two[2].length, two[2][0]], [true, 7, 'Brick 1x4, Bright Light Yellow: 1 plate up, on the bright green 6x12 plate, 2 studs in from the left, 1 stud back from the front, running left to right'],
+    'step 2: still open, a line for each of its seven pieces');
+  assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'and nothing runs off the side');
+  await p.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+  assert.equal(await p.locator('details.where').count(), 0, 'none at Done');
+  await c.close();
+  // No 3D in this browser: the list is open, since it's all there is to build from.
+  const no = await withSets({ sets: {} });
+  await no.p.addInitScript(() => { const real = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (kind, ...a) { return /webgl/.test(kind) ? null : real.call(this, kind, ...a); }; });
+  await no.p.goto(base + '#model-x-cottage');
+  await no.p.reload(); // the page starts again, without WebGL this time
+  await no.p.waitForSelector('#model-view:not([hidden])');
+  assert.match(await no.p.textContent('#stage-hint'), /can’t show 3D here/);
+  await no.p.click('#step-next');
+  assert.deepEqual([await no.p.$eval('details.where', d => d.open), await no.p.isHidden('#stage-keys')], [true, true], 'with no picture, Where they go is open, and there are no turn and zoom buttons');
+  await no.c.close();
+}
+
 // The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
 // is one step (it jumped to the end), a tap or a swipe that starts on the track leaves the step alone, and
 // dragging the knob still works. A screen reader hears the step, not a bare number one behind.

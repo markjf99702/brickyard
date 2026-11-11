@@ -432,6 +432,16 @@ ul.need li { display: flex; gap: 10px; align-items: center; line-height: 1.25; }
 ul.need i { flex: none; width: 30px; height: 20px; border-radius: 4px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), 0 0 0 1px rgba(0, 0, 0, .15); }
 ul.need small { display: block; color: var(--muted); font-size: 13px; }
 ul.need li.short small::after { content: ' · short'; color: var(--red-text); font-weight: 600; }
+/* Where each of a step's pieces goes, in words, folded away under the pieces to find. */
+details.where { margin-top: 8px; border-top: 1px solid var(--line); }
+details.where summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 15px; color: var(--muted); list-style: none; }
+details.where summary::-webkit-details-marker { display: none; }
+details.where summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 4px 0 2px; }
+details.where[open] summary::before { transform: rotate(45deg); }
+details.where summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
+details.where .note { margin: 0 0 8px; }
+details.where ul { margin: 0; padding: 0 0 4px 18px; display: grid; gap: 6px; font-size: 15px; line-height: 1.35; }
+@media (prefers-reduced-motion: reduce) { details.where summary::before { transition: none; } }
 
 /* ---------- shelf planner ---------- */
 /* Under the planner's count: the ways down to the two lists below the bookcases, as words to tap, 44 px tall. A

@@ -187,6 +187,31 @@ const res = B.check(cottage, shapes, pool);
 eq(res.problems, [], 'cottage has no problems');
 eq(res.pieces, cottage.parts.length, 'cottage pieces counted');
 
+// Where each piece goes, in words (for building without the picture): how high, what it's on, where on the
+// model's footprint in studs from its front left corner, and which way it's turned.
+{
+  const colour = c => (colors[String(c)] || ['Colour ' + c])[0], where = B.whereTexts(cottage, shapes, colour);
+  eq(where.length, cottage.parts.length, 'a line for every piece of the cottage');
+  eq([0, 1, 6, 8, 14, 23, 25, 33].map(i => where[i]), [
+    'Plate 6x12, Bright Green: on the table, the full width, front to back',
+    'Brick 1x4, Bright Light Yellow: 1 plate up, on the bright green 6x12 plate, 2 studs in from the left, 1 stud back from the front, running left to right',
+    'Brick 1x2, Dark Blue: 1 plate up, on the bright green 6x12 plate, 2 studs in from the left, 2 studs back from the front, running front to back',
+    'Brick 1x4, Bright Light Yellow: 1 brick and 1 plate up, on 3 pieces, 2 studs in from the left, 1 stud back from the front, running front to back',
+    'Window 1x2x2, White: 1 brick and 1 plate up, on 2 bright light yellow 1x4 bricks, 5 studs in from the left, 4 studs back from the front, running left to right',
+    'Slope 45 2x4, Yellow: 3 bricks and 1 plate up, on the bright light yellow 1x4 brick and the dark blue 1x2 brick, 2 studs in from the left, 1 stud back from the front, high side at the back',
+    'Slope 45 2x4, Yellow: 3 bricks and 1 plate up, on 3 pieces, 2 studs in from the left, 3 studs back from the front, high side at the front',
+    'Brick 2x2, Green: 2 bricks and 1 plate up, on the reddish brown 1x1 round brick, at the right edge, at the back',
+  ], 'where the cottage’s pieces go');
+  // Pushed on from underneath, an inverted slope, a piece the builder doesn't know, and a model written off the table.
+  const odd = M([['3001', 4, 0, 33, 0, 0, 1], ['3003', 1, 0, 30, 0, 0, 2], ['3660b', 15, 2, 36, 0, 90, 3], ['zz9', 1, 0, 39, 0, 0, 3]]);
+  eq(B.whereTexts(odd, shapes, colour), [
+    'Brick 2x4, Red: 1 brick up, the full width, front to back',
+    'Brick 2x2, Blue: under the red 2x4 brick, pushed on from underneath, at the left edge, front to back',
+    'Inverted slope 45 2x2, White: 2 bricks up, on the red 2x4 brick, at the right edge, front to back, full side at the right',
+    ''], 'from underneath, an inverted slope, and a piece the builder can’t draw');
+  eq([B.pieceWords('Brick 2x2', 'White'), B.pieceWords('Slope 45 2x4', 'Yellow'), B.pieceWords('Brick 1x2 with grille', 'Red')], ['white 2x2 brick', 'yellow 2x4 slope 45', 'red 1x2 brick with grille'], 'a piece in words');
+}
+
 // Links round-trip.
 (async () => {
   const doc = JSON.stringify({ brickyard: 1, model: cottage });

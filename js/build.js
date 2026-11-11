@@ -157,14 +157,14 @@ function colorOf(c) { const x = colors[String(c)]; return x ? { name: x[0], hex:
 function partName(p) { return shapes[p] ? shapes[p].n : 'Part ' + p; }
 // A piece in a sentence: "a white 2x2 brick", "an orange 1x4 arch".
 function aPiece(q) {
-  const m = /^(.*?) (\d+x\d+(?:x[\d⅓⅔]+)?)(.*)$/.exec(partName(q[0]));
-  const t = colorOf(q[1]).name.toLowerCase() + ' ' + (m ? m[2] + ' ' + m[1].toLowerCase() + m[3] : partName(q[0]).toLowerCase());
+  const t = B.pieceWords(partName(q[0]), colorOf(q[1]).name);
   return (/^[aeiou]/.test(t) ? 'an ' : 'a ') + t;
 }
 function listed(a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0] || ''; }
 
 // ---------- screens ----------
-let current = null; // { id, model, res, steps, at }
+let current = null; // { id, model, res, steps, at, where: each part's place in words }
+let whereOpen = false; // "Where they go" has been opened, and stays open at the next step
 
 const route = orSay(async () => {
   const h = location.hash;
@@ -349,7 +349,7 @@ const openModel = orSay(async id => {
   if (!model) { toast('That model isn’t saved on this device. Open Claude’s link to it here.', 'long'); location.replace('#build'); return; }
   const { pool, sets, lots, any } = await currentPool();
   const res = B.check(model, shapes, any ? pool : null);
-  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots };
+  current = { id, model, res, steps: res.steps, at: 0, pool: any ? pool : null, sets, lots, where: B.whereTexts(model, shapes, c => colorOf(c).name) };
   $('build-title').textContent = model.name;
   document.title = model.name + ' · Brickyard';
   app.heading();
@@ -488,7 +488,13 @@ function showStep(k, animate = true) {
       const [p, c] = k2.split('/'), col = colorOf(c);
       return '<li' + (shortKeys.has(k2) ? ' class="short"' : '') + '><i style="background:' + col.hex + (col.alpha ? ';opacity:.6' : '') + '"></i><span><b>' + groups[k2] + '×</b> ' +
         esc(partName(p)) + '<small>' + esc(col.name) + (under[k2] && note.parts.length < here.length ? ' · ' + (under[k2] < groups[k2] ? under[k2] + ' ' : '') + 'from underneath' : '') + '</small></span></li>';
-    }).join('') + '</ul>' + (note ? '<p class="note under">' + (here.length === 1 ? 'This one goes on from underneath.' : note.parts.length === here.length ? 'These go on from underneath.' : note.parts.length + ' of these ' + (note.parts.length === 1 ? 'goes' : 'go') + ' on from underneath.') + '</p>' : '');
+    }).join('') + '</ul>' + (note ? '<p class="note under">' + (here.length === 1 ? 'This one goes on from underneath.' : note.parts.length === here.length ? 'These go on from underneath.' : note.parts.length + ' of these ' + (note.parts.length === 1 ? 'goes' : 'go') + ' on from underneath.') + '</p>' : '') +
+    // Where each of them goes, in words (B.whereTexts): folded away under the list, and open where there is no
+    // picture to build from. Once opened it stays open from step to step.
+    '<details class="where"' + (whereOpen || !renderer ? ' open' : '') + '><summary>Where they go</summary><p class="note">Counted in studs from the model’s front left corner, as the picture first shows it. “Up” is above the table.</p><ul>' +
+    here.map(({ i }) => '<li>' + esc(current.where[i]).replace(/^([^:]+):/, '<b>$1</b>:') + '</li>').join('') + '</ul></details>';
+  const fold = $('step-parts').querySelector('details.where');
+  if (fold) fold.ontoggle = () => { whereOpen = fold.open; };
   showUpTo(step, animate && !done);
   follow(animate);
   // Finishing (Next from the last step, not the slider) turns the model round once.
