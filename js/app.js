@@ -410,7 +410,7 @@
 
     if (!all.length) {
       $('list-wrap').innerHTML = '<div class="empty"><svg width="80" height="60" viewBox="0 0 88 72" aria-hidden="true"><rect x="14" y="30" width="60" height="34" rx="4" fill="var(--red)"/><rect x="21" y="22" width="14" height="9" rx="2" fill="var(--red)"/><rect x="53" y="22" width="14" height="9" rx="2" fill="var(--red)"/></svg>' +
-        '<h2>No sets yet</h2><p>Send Claude photos of your boxes or built models and open the link it gives you. Or add a set by its number.</p>' +
+        '<h2>No sets yet</h2><p>Send Claude photos of your boxes or built models and open the link it gives you. Or add one yourself.</p>' +
         '<div class="acts"><button class="btn quiet" type="button" data-act="claude">How to add from photos</button><button class="btn" type="button" data-act="add">+ Add a set</button></div></div>';
       $('sum').textContent = '';
       return;
