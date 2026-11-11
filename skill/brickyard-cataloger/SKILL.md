@@ -76,4 +76,6 @@ Brickyard's shelf planner needs each built set's size, and its **Copy these for 
 4. The Brickyard link, as a link, copied character for character from the script's output.
 5. The file as the fallback (**Open a file** in Brickyard's menu).
 
+If they use Brickyard from the home screen of an iPhone or iPad, tell them to copy the link and paste it there (**Add from photos** › **Paste**), not tap it: a link tapped in another app opens in their browser, which keeps its own sets.
+
 Don't claim you've added or moved sets in their catalog. They do that when they open the link and tap **Add**. Opening the same link twice is safe: Brickyard says so and unticks what's already there.

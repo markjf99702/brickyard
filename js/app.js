@@ -1234,15 +1234,41 @@
   }
 
   // ---------- adding from Claude ----------
+  // Brickyard opened from an iPhone's or iPad's home screen keeps its own catalog, apart from the browser's: a link
+  // tapped in another app opens in the browser, with none of the sets there, and the sets added from it never
+  // reach the home-screen Brickyard. So there the link is copied and pasted in, not tapped. APP is Brickyard
+  // running from that home screen (navigator.standalone is only ever true there); IOS is an iPhone or iPad at all
+  // (an iPad can say it's a Mac, but has a touch screen).
+  var APP = navigator.standalone === true;
+  var IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   function claudeSheet() {
+    var box = '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>';
+    var steps = function (third) {
+      return '<div class="how"><b>With Claude</b><ol><li>Take photos of your set boxes, the instruction books, or the built models. The set number on a box is the best thing to get in the picture.</li>' +
+        '<li>Send them to Claude and say where they are (a room and shelf, or a moving box number).</li><li>' + third + '</li></ol></div>';
+    };
+    // From the home screen the paste box comes first, with a button that pastes and opens in one tap.
     openSheet('<div class="hd"><h2 id="sheetTitle">Add from photos</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
-      '<div class="how"><b>With Claude</b><ol><li>Take photos of your set boxes, the instruction books, or the built models. The set number on a box is the best thing to get in the picture.</li>' +
-      '<li>Send them to Claude and say where they are (a room and shelf, or a moving box number).</li><li>Claude sends back a Brickyard link. Open it, check the list, and tap <b>Add</b>.</li></ol></div>' +
-      '<p class="note">Claude gives you a file too, in case the link is too long. Open it, or paste the link or file text here:</p>' +
-      '<textarea class="paste" id="paste" placeholder="Paste a Brickyard link or file" aria-label="Paste a Brickyard link or file"></textarea>' +
+      (APP ? '<div class="paste-top"><span class="lbl" id="paste-lbl">Claude’s link</span><button class="btn sm quiet" type="button" id="p-paste">Paste</button></div>' + box +
+        steps('Claude sends back a Brickyard link. Copy the link and paste it here: a link tapped in another app opens in your browser, which keeps its own sets.') +
+        '<p class="note">Claude gives you a file too, in case the link is too long: <b>Open a file</b> opens it.</p>'
+        : steps('Claude sends back a Brickyard link. Open it, check the list, and tap <b>Add</b>.') +
+        '<p class="note">Claude gives you a file too, in case the link is too long. Open it, or paste the link or file text here:</p>' + box) +
       '</div><div class="ft"><button class="btn quiet" type="button" id="p-file">Open a file</button><button class="btn" type="button" id="p-go">Open</button></div>');
+    var open = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file', true); };
     $('p-file').onclick = function () { $('file').click(); };
-    $('p-go').onclick = function () { takePasted($('paste'), 'That doesn’t look like sets from Claude or a Brickyard file', true); };
+    $('p-go').onclick = open;
+    // Paste: what was copied goes in the box and is opened. A browser that won't hand it over (or a "Don't allow")
+    // leaves the box ready for a paste by hand.
+    if ($('p-paste')) $('p-paste').onclick = function () {
+      var byHand = function () { $('paste').focus(); toast('Hold your finger on the box and tap Paste, then Open.'); };
+      if (!navigator.clipboard || !navigator.clipboard.readText) { byHand(); return; }
+      navigator.clipboard.readText().then(function (text) {
+        if (!$('paste')) return;
+        if (!String(text || '').trim()) { $('paste').focus(); toast('Nothing is copied yet. Copy Claude’s link first.'); return; }
+        $('paste').value = text; open();
+      }, byHand);
+    };
   }
   // What's in a sheet's paste box, read as whatever it is. Open a model (js/build.js) and Sizes from Claude
   // (js/shelves.js) use it too, so every paste box takes every kind of Brickyard link or file.
@@ -1272,13 +1298,13 @@
   // screen that kind belongs to, wherever it was opened from: sets pasted into Open a model are reviewed, and
   // added, in My sets. from is where it came from, 'link' or 'file', for the words on the sheet; plain is what
   // to say when it isn't anything of Brickyard's.
-  function takeIncoming(p, from, plain) {
+  function takeIncoming(p, from, plain, link) {
     return p.then(function (r) {
       if (r.kind === 'sizes') takeSizes(r.doc);
       else if (r.kind === 'model') takeModel(r.doc);
       else if (r.kind === 'loose') onScreen('#build', function () { looseSheet(r.lot); });
       else if (r.kind === 'catalog') onScreen('#catalog', function () { catalogSheet(r.doc, from); });
-      else onScreen('#catalog', function () { reviewSheet(r.batch); });
+      else onScreen('#catalog', function () { reviewSheet(r.batch, link); });
     }).catch(function (e) { unread(e, plain || 'That doesn’t look like sets from Claude or a Brickyard file'); });
   }
   // Opens a sheet on the screen it belongs to. Already there, it takes the place of any sheet that's open. From
@@ -1313,7 +1339,7 @@
     var to = h.charAt(1) === 'l' ? '#build' : '#catalog'; // loose pieces belong to Build from your box
     try { history.replaceState(null, '', location.pathname + location.search + to); } catch (e) { location.hash = to; }
     route();
-    takeIncoming(C.parseIncoming(h), 'link');
+    takeIncoming(C.parseIncoming(h), 'link', '', SITE + h);
     return true;
   }
   $('file').addEventListener('change', function () {
@@ -1322,7 +1348,7 @@
     f.text().then(function (t) { takeIncoming(C.parseIncoming(t), 'file'); });
   });
 
-  function reviewSheet(batch) {
+  function reviewSheet(batch, link) {
     // A set that's in the list a second time is marked, and stays ticked: there may really be two, and only the
     // person looking at the shelf knows.
     var again = C.repeats(batch.sets);
@@ -1402,6 +1428,10 @@
     rows.forEach(function (r) { r.on = usual(r); r.changes = !!change(r); });
     openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nb ? ' · ' + nb + ' added before' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
+      // A link tapped on an iPhone or iPad opens in the browser. With no sets here, theirs may be in the Brickyard on
+      // the home screen, which keeps its own: say so, quietly, and hand the link over to paste in there.
+      (link && IOS && !APP && !C.live(DOC).length ? '<p class="note" id="rv-app">Are your sets in the Brickyard on your home screen? This is your browser, which keeps its own sets. Copy the link and paste it into <b>Add from photos</b> there.' +
+        (navigator.clipboard && navigator.clipboard.writeText ? ' <button class="rv-alt" type="button" id="rv-copy">Copy the link</button>' : '') + '</p>' : '') +
       (seenAt || nb ? '<p class="flag"><span>You opened this link before. ' + (nb ? 'The sets you added from it then are unticked, and so are any others you already have.' : 'Sets you already have are unticked.') + '</span></p>' : '') +
       '<div class="bulk" role="group" aria-labelledby="rv-all"><span class="lbl" id="rv-all">Put them all in</span><div class="two">' + field('Room', input('rv-room', batch.room, ' list="dl-room"')) + field('Shelf or spot', input('rv-spot', batch.spot, ' list="dl-spot"')) + '</div>' +
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
@@ -1449,6 +1479,10 @@
       var li = e.target.closest('li'); if (!li) return;
       var r = rows[+li.dataset.i];
       r.on = e.target.checked; r.touched = true; draw(r, +li.dataset.i); count();
+    };
+    if ($('rv-copy')) $('rv-copy').onclick = function () {
+      navigator.clipboard.writeText(link).then(function () { toast('Copied. Open Brickyard from your home screen, then Add from photos and Paste.', 'long'); },
+        function () { toast('Couldn’t copy it here. Copy the link where Claude sent it.'); });
     };
     $('rv').onclick = function (e) {
       var b = e.target.closest('[data-copy]');

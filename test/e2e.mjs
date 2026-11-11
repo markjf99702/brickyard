@@ -1472,6 +1472,84 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// On an iPhone or iPad, Brickyard opened from the home screen keeps its own sets, apart from the browser's, and a link
+// tapped in another app opens in the browser: the sets added from it never reached the Brickyard on the home screen.
+// From the home screen (navigator.standalone), Add from photos puts the paste box first with a Paste button, and
+// says to copy the link and paste it. In the browser there, with no sets yet, the review says where the sets may be
+// and copies the link to take across. Anywhere else, both are as they were.
+{
+  const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const batch = { brickyard: 1, batch: { name: 'Hall shelf', sets: [{ num: '21318', name: 'Tree House' }, { num: '10311', name: 'Orchid' }] } };
+  const hash = '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url');
+  const phone = async (more = {}) => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, serviceWorkers: 'block', userAgent: UA, ...more });
+    await c.route('https://cdn.rebrickable.com/**', r => r.fulfill({ status: 404 }));
+    // "?app" in the address stands for having been opened from the home screen.
+    await c.addInitScript(() => { if (location.search === '?app') Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true }); });
+    const p = await c.newPage();
+    p.on('pageerror', e => problems.push(e.message));
+    return { c, p };
+  };
+  const sheet = p => p.evaluate(() => {
+    const how = document.querySelector('.sheet .how'), box = document.getElementById('paste');
+    return [!!(box.compareDocumentPosition(how) & Node.DOCUMENT_POSITION_FOLLOWING), !!document.getElementById('p-paste'), how.querySelector('li:nth-child(3)').textContent];
+  });
+  const says = async p => { await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden); return p.textContent('.toast span'); };
+  // From the home screen: the box first, Paste, and the third step says to paste.
+  const app = await phone({ permissions: ['clipboard-read', 'clipboard-write'] });
+  await app.p.goto(base + '?app#catalog');
+  await app.p.click('.empty [data-act="claude"]');
+  assert.deepEqual(await sheet(app.p), [true, true, 'Claude sends back a Brickyard link. Copy the link and paste it here: a link tapped in another app opens in your browser, which keeps its own sets.'], 'Add from photos, from the home screen');
+  assert.ok((await app.p.locator('#p-paste').boundingBox()).height >= 44, 'Paste is a finger tall');
+  // Paste with nothing copied says so; with Claude's message copied, one tap opens the review.
+  await app.p.evaluate(() => navigator.clipboard.writeText(' '));
+  await app.p.click('#p-paste');
+  assert.equal(await says(app.p), 'Nothing is copied yet. Copy Claude’s link first.');
+  await app.p.evaluate(t => navigator.clipboard.writeText(t), 'Here it is: https://brickyard.junkdrawer.works/' + hash + ' Open it and tap Add.');
+  await app.p.click('#p-paste');
+  await app.p.waitForSelector('#rv-add');
+  assert.deepEqual([await app.p.locator('#rv li').count(), await app.p.locator('#rv-app').count()], [2, 0], 'Paste opens the review, with no line about the home screen: this is it');
+  await app.p.click('#rv-add');
+  assert.equal(await app.p.evaluate(() => Object.values(window.brickyard.doc().sets).length), 2, 'and the sets are added here');
+  await app.c.close();
+  // A browser that won't hand over what was copied leaves the box ready for a paste by hand.
+  const shut = await phone();
+  await shut.p.goto(base + '?app#catalog');
+  await shut.p.click('.empty [data-act="claude"]');
+  await shut.p.click('#p-paste');
+  assert.deepEqual([await says(shut.p), await shut.p.evaluate(() => document.activeElement.id)], ['Hold your finger on the box and tap Paste, then Open.', 'paste']);
+  await shut.c.close();
+  // In the browser on the same phone: Add from photos is as it was, and a link opened with no sets here says where
+  // they may be, and copies the link to paste in there.
+  const web = await phone({ permissions: ['clipboard-read', 'clipboard-write'] });
+  await web.p.goto(base + '#catalog');
+  await web.p.click('.empty [data-act="claude"]');
+  assert.deepEqual(await sheet(web.p), [false, false, 'Claude sends back a Brickyard link. Open it, check the list, and tap Add.'], 'Add from photos, in the browser');
+  await web.p.goto('about:blank');
+  await web.p.goto(base + hash);
+  await web.p.waitForSelector('#rv-add');
+  assert.equal(await web.p.textContent('#rv-app'), 'Are your sets in the Brickyard on your home screen? This is your browser, which keeps its own sets. Copy the link and paste it into Add from photos there. Copy the link');
+  assert.ok((await web.p.locator('#rv-copy').boundingBox()).height >= 44, 'Copy the link is a finger tall');
+  await web.p.click('#rv-copy');
+  assert.deepEqual([await says(web.p), await web.p.evaluate(() => navigator.clipboard.readText())], ['Copied. Open Brickyard from your home screen, then Add from photos and Paste.', 'https://brickyard.junkdrawer.works/' + hash]);
+  // With sets here already this is where they are, and it says nothing; nor does any other kind of device.
+  await web.p.click('#rv-add');
+  await web.p.goto('about:blank');
+  await web.p.goto(base + hash);
+  await web.p.waitForSelector('#rv-add');
+  assert.equal(await web.p.locator('#rv-app').count(), 0, 'no line once there are sets in this browser');
+  await web.c.close();
+  const other = await withSets({ sets: {} });
+  await other.p.goto(base + hash);
+  await other.p.waitForSelector('#rv-add');
+  assert.equal(await other.p.locator('#rv-app').count(), 0, 'and none on a device that isn’t an iPhone or iPad');
+  await other.p.click('[data-close]');
+  await other.p.waitForFunction(() => !document.querySelector('.scrim'));
+  await other.p.click('.empty [data-act="claude"]');
+  assert.deepEqual((await sheet(other.p)).slice(0, 2), [false, false], 'where Add from photos is as it was');
+  await other.c.close();
+}
+
 // Copy everything as a link warns when the link is long enough to be cut off on the way (over 8,000 characters).
 {
   const few = { a: { id: 'a', t: 1, num: '10698-1', name: 'Large Creative Brick Box' } }, lots = {};
