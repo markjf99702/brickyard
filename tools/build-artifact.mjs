@@ -8,10 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = f => readFile(join(root, f), 'utf8');
+// The page is cut and its files changed at exact pieces of text. One that isn't there stops the build: index.html's
+// indentation or an import line had only to change for this to write a broken copy and print its size as if all
+// were well.
+const at = (text, mark, where) => { const i = text.indexOf(mark); if (i < 0) throw new Error(`build-artifact: ${where} no longer has ${JSON.stringify(mark)}; nothing was written`); return i; };
+const swap = (text, from, to, where) => text.slice(0, at(text, from, where)) + to + text.slice(at(text, from, where) + from.length);
 const html = await read('index.html');
 const font = (await readFile(join(root, 'fonts/rubik.woff2'))).toString('base64');
-const css = (await read('css/app.css')).replace("url('../fonts/rubik.woff2')", `url(data:font/woff2;base64,${font})`);
-const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('  <script src="js/core.js">'));
+const css = swap(await read('css/app.css'), "url('../fonts/rubik.woff2')", `url(data:font/woff2;base64,${font})`, 'css/app.css');
+const body = html.slice(at(html, '<body>', 'index.html') + 6, at(html, '  <script src="js/core.js">', 'index.html'));
 const example = JSON.parse(await read('test/fixtures/sample.json'));
 example.name = 'Example sets';
 const script = s => s.replace(/<\/script/gi, '<\\/script');
@@ -20,9 +25,8 @@ const files = ['parts/shapes.json', 'parts/colors.json', 'parts/index.json', 'pa
 for (const n of Object.keys(JSON.parse(await read('parts/index.json')))) files.push('parts/sets/' + n + '.json');
 const data = {};
 for (const f of files) data[f] = JSON.parse(await read(f));
-const build = (await read('js/build.js'))
-  .replace("from './vendor/three.module.js'", "from 'three'")
-  .replace("from './vendor/OrbitControls.js'", `from '${THREE}examples/jsm/controls/OrbitControls.js'`);
+const build = swap(swap(await read('js/build.js'), "from './vendor/three.module.js'", "from 'three'", 'js/build.js'),
+  "from './vendor/OrbitControls.js'", `from '${THREE}examples/jsm/controls/OrbitControls.js'`, 'js/build.js');
 const out = `<title>Brickyard</title>
 <style>
 ${css}</style>

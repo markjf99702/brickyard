@@ -4492,4 +4492,22 @@ const all = createHash('sha1');
 for (const f of shell) all.update(createHash('sha1').update(await readFile(join(root, f.endsWith('/') ? f + 'index.html' : f))).digest());
 const files = all.digest('hex').slice(0, 8);
 assert.equal(sw.match(/const FILES = '([0-9a-f]*)'/)?.[1], files, `a file sw.js keeps for offline has changed: set FILES in sw.js to '${files}'`);
+
+// And SHELL is the whole of what the page asks its own address for: a file left out of it is missing offline, and
+// nothing said so. (A new set joins the builder by adding parts/sets/NUM-1.json and its count to parts/index.json;
+// its parts list has to be kept for offline too.) Everything index.html names in a src or an href, every file
+// js/build.js imports and the files those import, the builder's parts files, and the parts list of each set in
+// parts/index.json.
+const wanted = new Set(['parts/shapes.json', 'parts/colors.json', 'parts/index.json', 'parts/aliases.json']);
+for (const m of (await readFile(join(root, 'index.html'), 'utf8')).matchAll(/\s(?:src|href)="([^"#]+)"/g)) if (!/^[a-z]+:/.test(m[1])) wanted.add(m[1]);
+const follow = async file => {
+  for (const m of (await readFile(join(root, file), 'utf8')).matchAll(/\b(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+    const to = new URL(m[1], 'http://x/' + file).pathname.slice(1);
+    if (!wanted.has(to)) { wanted.add(to); await follow(to); }
+  }
+};
+await follow('js/build.js');
+for (const num of Object.keys(JSON.parse(await readFile(join(root, 'parts/index.json'), 'utf8')))) wanted.add('parts/sets/' + num + '.json');
+assert.ok(wanted.size >= 17 && wanted.has('js/vendor/three.core.js') && wanted.has('fonts/rubik.woff2') && wanted.has('parts/sets/10698-1.json'), 'the check found the files to look for: ' + [...wanted].join(', '));
+assert.deepEqual([...wanted].filter(f => !shell.includes(f)), [], 'files the page asks for that sw.js doesn’t keep for offline: add them to SHELL in sw.js, and bump CACHE');
 console.log('all good');
