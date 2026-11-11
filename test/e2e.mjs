@@ -2008,7 +2008,7 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual(hits, ['z-right:itself', 'z-save:itself', 'z-cat:itself'], 'a tap in the middle of each of the sheet’s buttons lands on that button');
   const r = await p.locator('#z-right').boundingBox();
   await p.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2);
-  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  await p.waitForFunction(() => !document.getElementById('z-left').disabled);
   assert.deepEqual([await on(), await p.locator('.sv-set').count()], ['b+a+d', 3], 'a real tap on Move right moves the set right, and every set is still on its shelf');
   await c.close();
 }
@@ -2320,8 +2320,18 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   const open = async () => { await p.locator('.sv-set[data-set="th"]').click(); await p.waitForSelector('#z-save'); };
   const save = async (act, button) => { await open(); if (act) await act(); await p.click(button || '#z-save'); await closed(); return [(await says()).join('|'), await on()]; };
   assert.deepEqual(await save(), ['Saved|', 'Office Billy: a+th+b / '], 'nothing changed');
-  assert.deepEqual(await save(null, '#z-right'), ['Moved right|', 'Office Billy: a+b+th / ']);
-  assert.deepEqual(await save(null, '#z-left'), ['Moved left|', 'Office Billy: a+th+b / ']);
+  // Move left and Move right keep the sheet open, so they can be tapped more than once. The focus stays on the
+  // button, or goes to the other one at the end of the shelf, and closing gives it back to the set in the drawing.
+  const moved = async button => { await p.click(button); return [(await says()).join('|'), await on(), await p.locator('.sheet').count(), await p.evaluate(() => document.activeElement.id)]; };
+  await open();
+  assert.deepEqual(await moved('#z-right'), ['Moved right|', 'Office Billy: a+b+th / ', 1, 'z-left'], 'Move right keeps the sheet open; at the end of the shelf the focus goes to Move left');
+  assert.deepEqual(await moved('#z-left'), ['Moved left|', 'Office Billy: a+th+b / ', 1, 'z-left'], 'and it can be tapped again');
+  assert.deepEqual(await moved('#z-left'), ['Moved left|', 'Office Billy: th+a+b / ', 1, 'z-right']);
+  assert.deepEqual([await p.evaluate(() => document.getAnimations().length), await p.evaluate(() => [document.getElementById('z-left').disabled, document.getElementById('z-right').disabled])], [0, [true, false]], 'the sheet doesn’t slide up again, and shows where the set stands now');
+  assert.deepEqual(await moved('#z-right'), ['Moved right|', 'Office Billy: a+th+b / ', 1, 'z-right']);
+  await p.click('[data-close]');
+  await closed();
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.set), 'th', 'closed without a question, with the focus back on the set in the drawing');
   assert.deepEqual(await save(() => p.check('#z-turn')), ['Turned side-on|', 'Office Billy: a+th(side-on)+b / ']);
   assert.deepEqual(await save(() => p.uncheck('#z-turn')), ['Turned to face out|', 'Office Billy: a+th+b / ']);
   assert.deepEqual(await save(() => p.selectOption('#z-where', 'k:1')), ['Tree House is on Office Billy, shelf 2|', 'Office Billy: a+b / th'], 'a new shelf is named');
@@ -4458,7 +4468,9 @@ await page.click('[data-close]');
   await p.click('.sv-set[data-set="bs"]');
   await p.fill('#z-h', '30');
   await p.click('#z-right');
-  assert.deepEqual([await p.locator('.sheet').count(), await row(), await p.evaluate(() => window.brickyard.doc().sets.bs.size.h)], [0, 'lb bs bq*', 30], 'Move right moves the set and keeps the height typed');
+  assert.deepEqual([await p.locator('.sheet').count(), await row(), await p.evaluate(() => window.brickyard.doc().sets.bs.size.h), await p.inputValue('#z-h')], [1, 'lb bs bq*', 30, '30'], 'Move right moves the set and keeps the height typed');
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
   await p.click('.sv-set[data-set="bs"]');
   await p.fill('#z-h', 'tall');
   await p.click('#z-left');

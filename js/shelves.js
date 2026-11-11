@@ -587,7 +587,8 @@
       if (back) app.putBack('sets', y);
       else if (JSON.stringify(y.size || null) !== JSON.stringify(live.size || null)) app.putSet(y);
       next.forEach(function (k, n) { if (JSON.stringify(k.levels) !== JSON.stringify(list[n].levels)) put(k); });
-      app.closeSheet(); render();
+      if (!by) app.closeSheet();
+      render();
       // What became of it, in a message: the sheet used to close without a word unless a size was read as inches,
       // and a set turned side-on differs in the drawing only by a dashed edge. A new shelf first (and side-on,
       // when that's the only way it fits there), or off the shelves; else the turn; else the move along the shelf.
@@ -600,6 +601,18 @@
         : to && !to.turn !== !cur.turn ? (to.turn ? 'Turned side-on' : 'Turned to face out')
         : to && nth !== spot ? (nth < spot ? 'Moved left' : 'Moved right')
         : 'Saved';
+      // Move left and Move right keep the sheet open, so a set can go two or three places along without opening it
+      // each time (it closed at every tap). It's drawn again as the set stands now, without sliding up again; the
+      // focus stays on the button, or goes to the other one at the end of the shelf; and closing it still gives
+      // the focus back to the set in the drawing.
+      if (by) {
+        var opener = app.lastFocus();
+        setSheet(id); app.lastFocus(opener);
+        var sheet = document.querySelector('.sheet'), b = $(by < 0 ? 'z-left' : 'z-right');
+        if (sheet) sheet.style.animation = 'none';
+        if (b && b.disabled) b = $(by < 0 ? 'z-right' : 'z-left');
+        if (b && !b.disabled) b.focus();
+      }
       toast(said + (z.note ? '. ' + z.note : ''));
     }
     if ($('z-left')) { $('z-left').onclick = function () { save(-1); }; $('z-right').onclick = function () { save(1); }; }
