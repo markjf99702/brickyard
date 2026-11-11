@@ -69,7 +69,9 @@ async function open(viewport, deviceScaleFactor, hash = '', seed = true) {
     catch { route.fulfill({ status: 404 }); }
   });
   const page = await ctx.newPage();
-  if (seed) await page.addInitScript(c => localStorage.setItem('brickyard.v1', JSON.stringify(c)), seed === true ? catalog : seed);
+  // With a backup just downloaded, so the home screen is drawn without its line about one being due (the sample
+  // sets are dated weeks back).
+  if (seed) await page.addInitScript(c => { localStorage.setItem('brickyard.v1', JSON.stringify(c)); localStorage.setItem('brickyard.backup', JSON.stringify({ t: Date.now() })); }, seed === true ? catalog : seed);
   await page.goto(base + hash);
   await page.evaluate(() => document.fonts.ready);
   await settled(page);
