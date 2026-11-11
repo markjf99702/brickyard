@@ -122,6 +122,7 @@ a { color: var(--blue); }
 .room p { margin: 0; color: var(--muted); font-size: 15px; }
 .room .stat { margin-top: 6px; font-weight: 600; color: var(--ink); font-size: 14px; }
 .room .stat span { display: inline-block; }
+.room .stat.more { margin-top: 2px; font-weight: 500; color: var(--muted); }
 .room.soon { cursor: default; box-shadow: none; background: transparent; border-style: dashed; }
 @media (hover: hover) { .room.soon:hover { border-color: var(--line); } }
 .room.soon:active { background: transparent; }

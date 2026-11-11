@@ -474,6 +474,48 @@ await page.click('.chip[data-f="all"]');
   await c.close();
 }
 
+// While any set is in a moving box, My sets has a Not packed chip after All, with the number still to pack, and
+// the home screen's card says how many are packed, in how many boxes, and how many are left. Both go when no set
+// has a box.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', box: '3' }, b: { id: 'b', t: 1, num: '10311-1', name: 'Orchid', state: 'built', box: 'Box 03' },
+    d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart', box: '12' }, e: { id: 'e', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' },
+    f: { id: 'f', t: 1, num: '10280-1', name: 'Flower Bouquet', state: 'sealed' } } });
+  const card = () => p.evaluate(() => { const el = document.getElementById('home-pack'); return el.hidden ? null : el.textContent; });
+  const chips = () => p.$$eval('.chip', cs => cs.map(c => c.textContent));
+  assert.equal(await card(), '3 packed in 2 boxes · 2 to pack', 'the home card counts what is packed');
+  await p.goto(base + '#catalog');
+  assert.deepEqual(await chips(), ['All5', 'Not packed2', 'Built3', 'Taken apart1', 'Sealed1'], 'Not packed is the second chip');
+  assert.equal(await p.getAttribute('.chip[data-f="unpacked"]', 'aria-label'), 'Not packed, 2 sets');
+  await p.click('.chip[data-f="unpacked"]');
+  assert.deepEqual([await p.locator('#list-wrap .item .t').allTextContents(), await p.textContent('#sum')], [['Bonsai Tree', 'Flower Bouquet'], '2 of 5 sets'], 'it shows the sets with no box');
+  // Packing one of them takes it off the list, and the count goes down.
+  await p.click('.item[data-id="f"]');
+  await p.fill('#e-box', '12');
+  await p.click('#e-save');
+  assert.deepEqual([await p.locator('#list-wrap .item .t').allTextContents(), await chips()], [['Bonsai Tree'], ['All5', 'Not packed1', 'Built3', 'Taken apart1', 'Sealed1']]);
+  // The last one packed: the chip stays while it's the one in force, and says so.
+  await p.click('.item[data-id="e"]');
+  await p.fill('#e-box', '12');
+  await p.click('#e-save');
+  assert.deepEqual([await p.textContent('#list-wrap'), (await chips())[1]], ['Nothing under Not packed. Show all your sets', 'Not packed0']);
+  await p.click('[data-act="all"]');
+  assert.deepEqual(await chips(), ['All5', 'Built3', 'Taken apart1', 'Sealed1'], 'with every set packed there is no chip');
+  await p.goto(base);
+  assert.equal(await card(), '5 packed in 2 boxes · none left to pack');
+  // Every box unpacked: no chip and no line, and a Not packed filter left on is lifted.
+  await p.goto(base + '#catalog');
+  await p.evaluate(() => { const b = window.brickyard, d = b.doc(); Object.keys(d.sets).forEach(id => { const x = Object.assign({}, d.sets[id]); if (id !== 'a') delete x.box; b.putSet(x); }); b.refresh(); });
+  await p.click('.chip[data-f="unpacked"]');
+  assert.equal(await p.locator('#list-wrap .item').count(), 4);
+  await p.evaluate(() => { const b = window.brickyard, x = Object.assign({}, b.doc().sets.a); delete x.box; b.putSet(x); b.refresh(); });
+  assert.deepEqual([await chips(), await p.locator('#list-wrap .item').count()], [['All5', 'Built3', 'Taken apart1', 'Sealed1'], 5], 'with nothing packed the chip and its filter go');
+  await p.goto(base);
+  assert.equal(await card(), null, 'and so does the line on the home card');
+  await c.close();
+}
+
 // Save says what happened to a moving box when a set went into one or came out of one: it said "Saved", the word
 // for a typo put right, when the last set came out of a box and when a box got its third.
 {

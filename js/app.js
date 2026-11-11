@@ -306,6 +306,10 @@
   function renderHome() {
     var t = C.totals(C.live(DOC));
     $('home-stat').textContent = t.sets ? plural(t.sets, 'set') + (t.pieces ? ' · ' + plural(t.pieces, 'piece') : '') : 'No sets yet. Start here.';
+    // While any set is in a moving box: how many are packed, in how many boxes, and how many are still to pack.
+    var pk = C.packing(DOC);
+    $('home-pack').hidden = !pk.packed;
+    $('home-pack').textContent = pk.packed ? pk.packed.toLocaleString() + ' packed in ' + plural(pk.boxes, 'box').replace(/boxs$/, 'boxes') + ' · ' + (pk.toPack ? pk.toPack.toLocaleString() + ' to pack' : 'none left to pack') : '';
     if (listed) buildStat(listed);
     else if (!asking) {
       asking = true;
@@ -326,12 +330,13 @@
   }
 
   var FILTERS = [
-    ['all', 'All'], ['built', 'Built'], ['partial', 'Partly built'], ['apart', 'Taken apart'], ['sealed', 'Sealed'],
+    ['all', 'All'], ['unpacked', 'Not packed'], ['built', 'Built'], ['partial', 'Partly built'], ['apart', 'Taken apart'], ['sealed', 'Sealed'],
     ['missing', 'Missing pieces'], ['check', 'To check'],
   ];
   function passes(x) {
     var f = show;
     if (f === 'all') return true;
+    if (f === 'unpacked') return !x.box;
     if (f === 'missing') return !!x.missing;
     if (f === 'check') return !!x.check;
     return x.state === f;
@@ -378,11 +383,15 @@
     $('cat-tools').hidden = !all.length;
     // With no sets yet the empty state has the same two buttons, so the row at the bottom would only repeat them.
     document.querySelector('#catalog .fab-row').hidden = !all.length;
+    // While any set is in a moving box, a chip for the ones that aren't, straight after All: "what's left to pack?"
+    // was the last group of Group by Moving box, three screens down. It goes when no set has a box, and the filter
+    // with it.
+    var pk = C.packing(DOC);
+    t.unpacked = pk.packed ? pk.toPack : 0;
+    if (show === 'unpacked' && !pk.packed) show = 'all';
     var chips = $('chips');
-    chips.innerHTML = FILTERS.filter(function (f) {
-      return f[0] === 'all' || f[0] === show || (f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : t[f[0]]);
-    }).map(function (f) {
-      var n = f[0] === 'all' ? t.sets : f[0] === 'missing' ? t.missing : f[0] === 'check' ? t.check : (t[f[0]] || 0);
+    chips.innerHTML = FILTERS.filter(function (f) { return f[0] === 'all' || f[0] === show || t[f[0]]; }).map(function (f) {
+      var n = f[0] === 'all' ? t.sets : (t[f[0]] || 0);
       // Its name for a screen reader is "Built, 7 sets": the label and the count run together read as "Built7".
       return '<button class="chip" type="button" data-f="' + f[0] + '" aria-pressed="' + (show === f[0]) + '" aria-label="' + esc(f[1]) + ', ' + plural(n, 'set') + '">' + esc(f[1]) + '<span class="n">' + n + '</span></button>';
     }).join('');
