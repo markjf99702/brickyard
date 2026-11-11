@@ -306,6 +306,28 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   }
   eq([C.inBox(sets[2], '3'), C.inBox(sets[3], '3'), C.inBox(sets[4], 'kitchen 2')], [true, false, true], 'inBox matches a label the way boxes are grouped');
 }
+
+// Moving boxes: how the packing stands, and what a set going into or out of a box did to the boxes.
+{
+  const doc = C.cleanDoc({ sets: {
+    a: { id: 'a', t: 1, num: '10334', name: 'Retro Radio', box: '3' }, b: { id: 'b', t: 1, num: '10311', name: 'Orchid', box: 'Box 03' },
+    c: { id: 'c', t: 1, num: '21327', name: 'Typewriter', box: '12' }, d: { id: 'd', t: 1, num: '10281', name: 'Bonsai Tree' },
+    e: { id: 'e', t: 2, del: 1 } },
+  loose: { l: { id: 'l', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] }, m: { id: 'm', t: 1, name: 'Blue tub', box: '#3', parts: [['3001', 1, 5]] } } });
+  eq(C.packing(doc), { packed: 3, toPack: 1, boxes: 2, all: 3 }, 'three sets packed in two boxes, one to pack, and a third box of loose pieces');
+  eq(C.packing(C.emptyDoc()), { packed: 0, toPack: 0, boxes: 0, all: 0 }, 'nothing packed in an empty catalog');
+  eq([C.sameBox('3', 'box 03'), C.sameBox('3', '#3'), C.sameBox('3', '13'), C.sameBox('', '')], [true, true, false, false], 'one box under several spellings');
+  eq([C.boxHolds(doc, 'box 3').sets.map(x => x.id), C.boxHolds(doc, '3').lots.map(x => x.id)], [['a', 'b'], ['m']], 'what a box holds');
+  eq([C.boxNews(doc, '', ''), C.boxNews(doc, '3', 'Box 03'), C.boxNews(doc, 'Hall', 'hall')], ['', '', ''], 'no news when the set stayed where it was');
+  eq(C.boxNews(doc, '', '3'), 'Box 3 holds 2 sets now.', 'into a box');
+  eq(C.boxNews(doc, '', '12'), 'Box 12 holds 1 set now.', 'the first set in a box');
+  eq(C.boxNews(doc, '3', ''), '2 sets still in Box 3.', 'out of a box with sets left in it');
+  eq(C.boxNews(doc, '7', ''), 'Box 7 is empty now.', 'the last set out of a box');
+  eq(C.boxNews(doc, '20', ''), 'Only loose pieces are left in Box 20.', 'a box left with loose pieces is not called empty');
+  eq(C.boxNews(doc, 'Box 7', '#12'), 'Box 12 holds 1 set now. Box 7 is empty now.', 'from one box to another');
+  eq(C.boxNews(C.cleanDoc({ sets: { d: { id: 'd', t: 1, name: 'Bonsai Tree' } } }), '7', ''), 'That was the last moving box.', 'nothing packed anywhere any more');
+  eq(C.boxNews(C.cleanDoc({ sets: { d: { id: 'd', t: 1, name: 'Bonsai Tree' } }, loose: { l: { id: 'l', t: 1, box: '20', parts: [['3001', 4, 10]] } } }), '7', ''), 'Box 7 is empty now.', 'a box of loose pieces is still a box packed');
+}
 // "Box 5", "box #5" and "#5" typed as a label are all box 5: shown as "Box 5", never "Box Box 5", and found by
 // "box 5". Only showing and searching changes; the label is kept as typed.
 eq(['Box 5', 'box #5', '#5', '# 5', 'Box5', 'BOX 5', '5', 'Box Kitchen 2', 'Kitchen 2', 'Boxes', 'Box', '#', ''].map(C.boxName),

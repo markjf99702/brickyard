@@ -338,6 +338,44 @@
   function bareBox(t) { var u = t.replace(/^box(?:\s+|(?=[#\d]))/i, '').replace(/^#\s*/, ''); return u || t; }
   function boxName(b) { return bareBox(s(b, 40)); }
 
+  // Two labels for one moving box: "3", "03", "Box 3" and "#3" are the same box, the way boxes are grouped.
+  function sameBox(a, b) { return !!a && !!b && natural(boxName(a), boxName(b)) === 0; }
+  // What a moving box holds: its sets and its lots of loose pieces.
+  function boxHolds(doc, box) {
+    var inIt = function (x) { return sameBox(x.box, box); };
+    return { sets: live(doc).filter(inIt), lots: liveLots(doc).filter(inIt) };
+  }
+  // How the packing stands: how many sets are in a moving box (`packed`) and how many aren't (`toPack`), how many
+  // boxes hold sets (`boxes`), and how many hold anything, loose pieces too (`all`).
+  function packing(doc) {
+    var sets = live(doc), packed = sets.filter(function (x) { return x.box; });
+    var count = function (list) {
+      var seen = [];
+      list.forEach(function (x) { if (x.box && !seen.some(function (b) { return sameBox(b, x.box); })) seen.push(x.box); });
+      return seen.length;
+    };
+    return { packed: packed.length, toPack: sets.length - packed.length, boxes: count(packed), all: count(packed.concat(liveLots(doc))) };
+  }
+  function count(n, w) { return n.toLocaleString() + ' ' + w + (n === 1 ? '' : 's'); }
+  // What happened to the moving boxes when a set went from box `was` to box `now` (either may be empty), for the
+  // message that says it's saved; `doc` is the catalog after the change. "Box 4 holds 3 sets now." for the box it
+  // went into; for the one it left, "2 sets still in Box 3.", "Box 12 is empty now.", or, when nothing is packed
+  // anywhere any more, "That was the last moving box." Nothing when the set stayed where it was.
+  function boxNews(doc, was, now) {
+    was = s(was, 40); now = s(now, 40);
+    if ((!was && !now) || sameBox(was, now)) return '';
+    // A box is called what the first thing in it calls it: a set that had it as "03" came out of Box 3.
+    var out = [], called = function (h, box) { return 'Box ' + boxName((h.sets[0] || h.lots[0] || { box: box }).box); };
+    if (now) { var into = boxHolds(doc, now); out.push(called(into, now) + ' holds ' + count(into.sets.length, 'set') + ' now.'); }
+    if (was) {
+      var left = boxHolds(doc, was);
+      out.push(left.sets.length ? count(left.sets.length, 'set') + ' still in ' + called(left, was) + '.'
+        : left.lots.length ? 'Only loose pieces are left in ' + called(left, was) + '.'
+        : !packing(doc).all ? 'That was the last moving box.' : called(left, was) + ' is empty now.');
+    }
+    return out.join(' ');
+  }
+
   function where(x) {
     var place = [x.room, x.spot].filter(Boolean).join(' › ');
     if (x.box) place = (place ? place + ' · ' : '') + 'Box ' + boxName(x.box);
@@ -539,7 +577,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
-    hash: hash, boxName: boxName, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);

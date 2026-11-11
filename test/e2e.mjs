@@ -474,6 +474,37 @@ await page.click('.chip[data-f="all"]');
   await c.close();
 }
 
+// Save says what happened to a moving box when a set went into one or came out of one: it said "Saved", the word
+// for a typo put right, when the last set came out of a box and when a box got its third.
+{
+  const { c, p } = await withSets({ sets: {
+    a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', box: '3' }, b: { id: 'b', t: 1, num: '10311-1', name: 'Orchid', state: 'built', box: '3' },
+    d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart', box: 'Box 12' }, e: { id: 'e', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' } } });
+  await p.goto(base + '#catalog');
+  const save = async (id, box, more) => {
+    await p.click(`.item[data-id="${id}"]`);
+    await p.fill('#e-box', box);
+    if (more) await more();
+    await p.click('#e-save');
+    return p.textContent('.toast');
+  };
+  assert.equal(await save('e', '3'), 'Saved. Box 3 holds 3 sets now.', 'into a box');
+  assert.equal(await save('e', '03'), 'Saved', 'the same box written another way is no news');
+  assert.equal(await save('e', ''), 'Saved. 2 sets still in Box 3.', 'out of a box that still holds some');
+  assert.equal(await save('d', '3'), 'Saved. Box 3 holds 3 sets now. Box 12 is empty now.', 'from one box to another, the last one out of the first');
+  assert.equal(await save('d', '', () => p.fill('#e-w', '11"')), 'Saved. 2 sets still in Box 3. Read as inches: 27.9 cm', 'with what was read as inches after it');
+  assert.equal(await save('a', '9'), 'Saved. Box 9 holds 1 set now. 1 set still in Box 3.');
+  assert.equal(await save('a', ''), 'Saved. Box 9 is empty now.', 'the last set out of a box, with another box still packed');
+  assert.equal(await save('b', ''), 'Saved. That was the last moving box.', 'the last set out of the last box');
+  // A set added by hand into a box says so too.
+  await p.click('#add-btn');
+  await p.fill('#e-num', '21318');
+  await p.fill('#e-box', '4');
+  await p.click('#e-save');
+  assert.equal(await p.textContent('.toast'), 'Added Set 21318. Box 4 holds 1 set now.');
+  await c.close();
+}
+
 // A set's sheet from the keyboard. Enter in a one-line box saves (it did nothing: on a phone the keyboard had to be
 // put away to reach Save), Enter in Missing pieces or Notes is still a new line, and Enter on a tick-box or a State
 // button doesn't save. The picture at the top follows the number as soon as it's changed. A set renumbered to one
@@ -489,7 +520,7 @@ await page.click('.chip[data-f="all"]');
   assert.deepEqual(await p.$$eval('#e-form input:not([type="checkbox"])', els => [els.length, els.every(e => e.enterKeyHint === 'done')]), [12, true], 'the keyboard’s Enter key says Done');
   await p.fill('#e-box', '7');
   await p.press('#e-box', 'Enter');
-  assert.deepEqual([await sheets(), (await kept('r')).box, await p.textContent('.toast')], [0, '7', 'Saved'], 'Enter in Moving box saves and closes');
+  assert.deepEqual([await sheets(), (await kept('r')).box, await p.textContent('.toast')], [0, '7', 'Saved. Box 7 holds 2 sets now.'], 'Enter in Moving box saves and closes');
   await p.click('.item:has-text("Retro Radio")');
   await p.click('#e-missing');
   await p.keyboard.type('the dial');
@@ -2748,7 +2779,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await p.click('.item[data-id="b"]');
   await p.fill('#e-box', '7');
   await p.click('#e-save');
-  assert.deepEqual([await checks(), await p.textContent('.toast'), (await kept('b')).check, (await kept('b')).box], ['2', 'Saved', 'or is it 10281?', '7'], 'a change to its box keeps the mark');
+  assert.deepEqual([await checks(), await p.textContent('.toast'), (await kept('b')).check, (await kept('b')).box], ['2', 'Saved. Box 7 holds 1 set now.', 'or is it 10281?', '7'], 'a change to its box keeps the mark');
   // Its number changed.
   await p.click('.item[data-id="a"]');
   assert.equal(await p.isHidden('#e-still'), true, 'no line under Name as the sheet opens');

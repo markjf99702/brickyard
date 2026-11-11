@@ -921,9 +921,14 @@
       var same = !isNew && !gone && sameSet(y, kept);
       if (gone) putBack('sets', y); else if (!same) putSet(y);
       if (!same) save();
-      if (isNew) { renderCatalog(); added(y, z.note); return; }
+      // "Saved" was all it said, for a typo put right and for the last set out of a moving box alike. When the set
+      // went into a box or came out of one, the message says what that did to the box (C.boxNews): how many it holds
+      // now, how many are still in it, or that it's empty.
+      var news = C.boxNews(DOC, isNew || gone ? '' : kept.box, y.box);
+      if (isNew) { renderCatalog(); added(y, [news, z.note].filter(Boolean).join(' ')); return; }
       closeSheet(); renderCatalog();
-      toast((gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (righted ? '. No longer marked to check.' : '') + (z.note ? (righted ? ' ' : '. ') + z.note : ''));
+      var more = [righted ? 'No longer marked to check.' : '', news, z.note].filter(Boolean).join(' ');
+      toast((gone ? 'Saved, and ' + (y.name || 'Set ' + C.shortNum(y.num)) + ' is back' : 'Saved') + (more ? '. ' + more : ''));
     };
   }
   // A set added by hand is shown, and named: the message was the bare word "Added", and with 300 sets grouped by
