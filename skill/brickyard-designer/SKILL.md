@@ -1,6 +1,6 @@
 ---
 name: brickyard-designer
-description: Design a new LEGO model from only the pieces someone owns, check it can really be built, and hand it to Brickyard as a link with 3D step-by-step instructions. Use this when someone pastes "My Brickyard pieces" from Brickyard, asks for a model built from their own bricks or their Large Creative Brick Box, or mentions Brickyard's "Build from your box".
+description: Design a new LEGO model from only the pieces someone owns, check it can really be built, and hand it to Brickyard as a link with 3D step-by-step instructions. Use this when someone pastes "My Brickyard pieces" from Brickyard, asks for a model built from their own bricks or their Large Creative Brick Box, or mentions Brickyard's "Build from your box". Also use it when they list or count loose LEGO pieces (a tub, a bag) to add to Brickyard.
 ---
 
 # Brickyard designer
@@ -69,6 +69,26 @@ python3 scripts/check_model.py lighthouse.json --layers --out OUTDIR
 - `--force` writes the file and prints the link for a model that failed, to look at what's wrong in Brickyard. That one is never for handing over.
 
 Write the model's JSON and the outputs to a scratch or outputs folder, never into the skill's folder or a repo.
+
+## Loose pieces they list themselves
+
+Loose pieces are bricks that aren't a set: a tub, a bag. Stud Finder, their tray scanner, sends its own counts to Brickyard. When they tell you what's in a tub instead ("12 red 2x4 bricks and 7 white 2x4 plates in the blue tub") and want it in **Your pieces**, write the list as JSON and run the script:
+
+```json
+{"name": "Blue tub", "box": "14",
+ "parts": [["3001", 4, 12], ["3020", "white", 7], ["2780", 0, 40, "Technic Pin with Friction"]]}
+```
+
+```sh
+python3 scripts/make_loose.py tub.json --out OUTDIR
+```
+
+- A row is `[part, colour, count]`: LDraw part number, LDraw colour number (or the colour's name as `data/colors.json` has it), how many. Add the part's name as a fourth item for a piece that isn't in `data/shapes.json`: Brickyard keeps it and shows the name, though the builder can't use it yet.
+- `name` is what they call it. The script makes the lot's id from the name, so a recount sent under the same name **replaces** the lot in Brickyard instead of adding a second one. Use the same name every time, and don't put a count or a date in it. `box` is the moving box it's packed in, if they said.
+- The script prints `DROPPED:` for every row it leaves out, with why, and a `NOTE:` for a piece listed twice (the counts are added up) and for each piece the builder can't draw yet. Fix the rows you can; tell them about the rest. With no row it can read it writes nothing.
+- It writes `NAME.brickyard-loose.json` and prints a link starting `https://brickyard.junkdrawer.works/#l2z`. Hand over the link and the file, the total, and anything left out. Opening it shows every kind of piece with its colour and count to check before it's added.
+
+Only list a part you can name with confidence. "A handful of small grey bits" isn't a row: say you left it out.
 
 ## 4. Hand it over
 

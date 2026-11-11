@@ -60,7 +60,7 @@ Built sizes in cm for sets already in Brickyard: `w` across the front, `d` front
 
 ## A lot of loose pieces
 
-Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scanner) makes these; so can anything that can count parts.
+Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scanner) makes these; so can anything that can count parts. For a list written by hand, the designer skill's `make_loose.py` makes the file and the link: it reads the rows as Brickyard does, prints each one it leaves out with the reason, and gives the lot an `id` made from its name, so a recount sent under the same name replaces the lot.
 
 ```json
 {"brickyard": 1, "loose": {

@@ -506,6 +506,69 @@ print(json.dumps(cm.read_pieces(sys.argv[2])))`, script, f], { encoding: 'utf8' 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // Loose pieces listed by hand: make_loose.py, in the designer skill, reads a list the way the page does (cleanLot in
+  // js/core.js), names every row it leaves out, and gives the lot an id from its name, so a recount under the same
+  // name replaces the lot (a list from Claude had no id: "Blue tub" sent again with 14 bricks for 12 made a second
+  // Blue tub, and both were counted).
+  if (py) {
+    const os = require('os'), cmod = { exports: {} };
+    new Function('module', fs.readFileSync(path.join(root, 'js/core.js'), 'utf8'))(cmod);
+    const C = cmod.exports, loose = path.join(root, 'skill/brickyard-designer/scripts/make_loose.py');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'brickyard-loose-'));
+    const run = (lot, more = []) => {
+      const f = path.join(dir, 'in.json'); fs.writeFileSync(f, typeof lot === 'string' ? lot : JSON.stringify(lot));
+      const r = require('child_process').spawnSync('python3', ['-B', loose, f, '--out', path.join(dir, 'out')].concat(more), { encoding: 'utf8' });
+      return [r.status, r.stdout, r.stderr];
+    };
+    const untimed = l => { const o = Object.assign({}, l); delete o.t; return o; };
+    // The same lots through both, id given: rows that fit, rows that don't, the same piece twice, text for numbers.
+    const lots = [
+      { id: 'a1', name: '  Blue   tub ', box: ' 14 ', note: 'from the\r\n\r\n\r\n\r\nattic  shelf', parts: [['3001', 4, 12], ['3020', 15, 7], ['2780', 0, 40, 'Technic Pin with Friction'], ['3001', 4, 2]] },
+      { id: 'a2', name: 'Odd rows', parts: [['3001', 4, 0], ['3001', -1, 3], ['30 01', 4, 3], ['3001', 4.5, 3], ['3001', '4', '1,200 or so'], ['3023B', 15, 2.5], [3003, 1.0, 6.0], ['3004', 4, true], ['3005', '04', ' 7'], 'nope', null, ['3006'], ['3007', 4, 1e9], ['3008', 100000, 1], ['3009', '99999', 1, 5], ['x'.repeat(25), 4, 1], ['3010', 4, 'many']] },
+      { id: 'a3', name: 'x'.repeat(90), box: 'b'.repeat(50), parts: [['3001', 4, 99999], ['3001', 4, 99999], ['3002', 1, 1, 'n'.repeat(70)]] },
+      { id: 'a4', parts: [['3001', 4, 1]] },
+      { id: 'a5', name: 'Nothing', parts: [['3001', 4, 0], 'x'] },
+    ];
+    const both = JSON.parse(execFileSync('python3', ['-B', '-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(path.dirname(loose))})
+import make_loose
+print(json.dumps([make_loose.clean_lot(x) for x in json.load(sys.stdin)]))`], { input: JSON.stringify(lots), encoding: 'utf8' }));
+    lots.forEach((x, i) => eq(both[i], C.cleanLot(x) && untimed(C.cleanLot(x)), 'make_loose.py cleans a lot as the page does: ' + (x.name || 'no name').trim().slice(0, 12)));
+    check(both[1] && both[1].parts.length >= 6 && both[4] === null, 'and those lots had rows to keep and a lot with none');
+
+    // The script: a file and a checked link that hold what the page reads, unchanged.
+    const tub = { name: 'Blue tub', box: '14', parts: [['3001', 4, 12], ['3020.dat', 'White', 7], ['2780', 0, 40, 'Technic Pin with Friction'], ['3023', 'dark bluish gray', 3], ['3001', 'purple-ish', 5], ['3004', 4, 0], 'nope', ['3001', 4, 2]] };
+    const first = run(tub), link = (/\n(https:\/\/brickyard\.junkdrawer\.works\/#l2z[A-Za-z0-9_-]+)\n/.exec(first[1]) || [])[1] || '';
+    check(first[0] === 0 && link, 'script: loose pieces make a checked link' + (first[0] === 0 ? '' : '\n    ' + (first[1] + first[2]).trim()));
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'out/blue-tub.brickyard-loose.json'), 'utf8'));
+    eq(file.loose.parts, [['2780', 0, 40, 'Technic Pin with Friction'], ['3001', 4, 14], ['3020', 15, 7], ['3023', 72, 3]], 'script: the rows it can read, a colour’s name as its number, the same piece added up');
+    eq(untimed(C.cleanLot(file.loose)), file.loose, 'and the page reads the file as it is written');
+    const body = link.slice(link.indexOf('#') + 4, -7);
+    eq(link.slice(-7), C.linkCheck('l2z' + body), 'script: the link carries the check the page works out');
+    eq(JSON.parse(zlib.inflateRawSync(Buffer.from(body, 'base64url')).toString()), file, 'and holds what the file holds');
+    check(/^DROPPED: row 5 \["3001", "purple-ish", 5\]: the colour isn’t an LDraw colour number or a colour’s name in colors\.json \(4 is red\)$/m.test(first[1]) &&
+      /^DROPPED: row 6 \["3004", 4, 0\]: the count isn’t a whole number of 1 or more$/m.test(first[1]) && /^DROPPED: row 7 "nope": a row is \[part, colour, count\]$/m.test(first[1]) &&
+      /^3 rows were left out \(above\)\./m.test(first[1]), 'script: every row left out is named, with why\n' + first[1]);
+    check(/^NOTE: row 8: 3001\/4 is listed more than once; the counts were added up \(12 \+ 2 = 14\)\.$/m.test(first[1]), 'script: a piece listed twice is added up, and it says so');
+    check(/^Blue tub: 64 pieces of 4 kinds, in box 14\. The builder can use 24 of them\.$/m.test(first[1]) && /^NOTE: 2780\/0 ×40 \(Technic Pin with Friction\) isn’t a piece the builder can draw yet\./m.test(first[1]), 'script: the count, and what the builder can’t draw yet\n' + first[1]);
+    // A recount under the same name, however it's written, is the same lot: the page replaces it.
+    const again = run({ name: ' blue  TUB', parts: [['3001', 4, 14]] }), recount = JSON.parse(fs.readFileSync(path.join(dir, 'out/blue-tub.brickyard-loose.json'), 'utf8'));
+    check(again[0] === 0 && /^n[0-9a-z]{7}$/.test(file.loose.id) && recount.loose.id === file.loose.id, 'script: a recount under the same name has the same id (' + file.loose.id + ', ' + recount.loose.id + ')');
+    check(/its id \(n[0-9a-z]{7}\) comes from the name “blue TUB”\. Send a recount under the same name and Brickyard replaces it\./.test(again[1]), 'and says where the id comes from');
+    const merged = C.mergeDocs(C.cleanDoc({ catalog: { loose: { [file.loose.id]: Object.assign({ t: 1 }, file.loose) } } }), C.cleanDoc({ catalog: { loose: { [recount.loose.id]: Object.assign({ t: 2 }, recount.loose) } } }));
+    eq(C.liveLots(merged).map(l => [l.name, C.lotTotals(l).pieces]), [['blue TUB', 14]], 'so the catalog keeps one Blue tub, the recount');
+    check(JSON.parse(fs.readFileSync(path.join(dir, 'out/blue-tub.brickyard-loose.json'), 'utf8')).loose.id !== (run({ name: 'Red tub', parts: [['3001', 4, 14]] }), JSON.parse(fs.readFileSync(path.join(dir, 'out/red-tub.brickyard-loose.json'), 'utf8')).loose.id), 'another name is another lot');
+    eq((run({ id: 'sf123', name: 'Blue tub', parts: [['3001', 4, 1]] }), JSON.parse(fs.readFileSync(path.join(dir, 'out/blue-tub.brickyard-loose.json'), 'utf8')).loose.id), 'sf123', 'an id in the file is kept');
+    // The wrapped form is read too; nothing to read writes nothing and exits 1; no name says so.
+    check(run({ brickyard: 1, loose: { name: 'Wrapped', parts: [['3001', 4, 1]] } })[0] === 0 && fs.existsSync(path.join(dir, 'out/wrapped.brickyard-loose.json')), 'script: the wrapped form is read too');
+    const empty = run({ name: 'Empty', parts: [['3001', 'red-ish', 1]] });
+    check(empty[0] === 1 && /^DROPPED: row 1/m.test(empty[1]) && /NOT READY: no row could be read/.test(empty[1]) && !fs.existsSync(path.join(dir, 'out/empty.brickyard-loose.json')), 'script: a list with nothing it can read writes nothing');
+    check(/NOTE: no "name" given/.test(run({ parts: [['3001', 4, 1]] })[1]), 'script: a list with no name says to give one');
+    check(run('not json')[0] !== 0 && run({ name: 'x' })[0] !== 0, 'script: something that isn’t a list of pieces is turned down');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();
