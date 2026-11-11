@@ -72,6 +72,13 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   // With another bookcase that can't take it for some other reason, it still says what it needs.
   const bow = set('bow', 40, 16, 29.5), billy = { id: 'b', name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }] }, cube = { id: 'c', name: 'Kallax', w: 33, d: 39, levels: [{ h: 33, sets: [] }] };
   eq(S.reason([billy, cube], bow, ids([bow]), S.CLEAR), { kind: 'clear', why: '29.5 cm tall: needs 30.5 cm of space' }, 'only the space above is in the way, whatever is wrong with the other bookcase');
+  // A shelf that is tall enough but for the space above, and too shallow as well: the row doesn't say a taller shelf
+  // would do. One that is only full does.
+  const fat = set('fat', 40, 30, 29.5), shallow = { id: 's', name: 'Shallow', w: 76, d: 26, levels: [{ h: 30, sets: [] }, { h: 20, sets: [] }] };
+  eq(S.reason([shallow], fat, ids([fat]), S.CLEAR), S.reason([shallow], fat, ids([fat])), 'too deep as well as short of space above: it says what is wrong by hand too');
+  eq(S.reason([shallow], fat, ids([fat]), S.CLEAR).kind, 'big', 'which is not the space above');
+  const filler = set('filler', 70, 20, 20), fullOne = { id: 'f', name: 'Full', w: 76, d: 26, levels: [{ h: 30, sets: [{ id: 'filler' }] }] };
+  eq(S.reason([fullOne], bow, ids([bow, filler]), S.CLEAR).kind, 'clear', 'a full shelf with no space above it anyway still says the space above');
   const held = { id: 'k', name: 'One', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'snug' }] }] };
   eq(S.fill([held], all).cases[0].levels[0].sets.map(p => p.id), ['snug', 'low'], 'a set already on a shelf its own height stays there');
 }

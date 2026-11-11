@@ -85,7 +85,8 @@
     // Only the space above it is in the way (by hand it would stand on a shelf here): say what it needs, whatever
     // is wrong with the other shelves. "Too big for every shelf" was said of a 29.5 cm set that a 30 cm shelf takes.
     var needs = function () { return { kind: 'clear', why: x.size.h + ' cm tall: needs ' + (tenths(x.size.h) + tenths(clear)) / 10 + ' cm of space' }; };
-    if (near && !reason(cases, x, byId).why) return needs();
+    var hand = near ? reason(cases, x, byId) : null;
+    if (hand && !hand.why) return needs();
     var all = function (re) { return why.every(function (w) { return re.test(w); }); };
     var most = function (of) { return Math.max.apply(null, cases.map(of)); }, one = cases.length === 1;
     var least = Math.min(x.size.w, x.size.d);
@@ -94,7 +95,9 @@
       return { kind: 'deep', why: least + ' cm deep' + (x.size.d > least ? ' even side-on' : '') + '; your ' + (one ? 'bookcase is ' : 'deepest bookcase is ') + most(function (c) { return c.d; }) + ' cm' + (one ? ' deep' : '') };
     }
     if (all(/tall/)) {
-      if (near) return needs();
+      // Unless the shelf that is tall enough but for that couldn't take it by hand either (too deep, too wide):
+      // then that is what's wrong, and a taller shelf there wouldn't help.
+      if (near) return hand.kind === 'room' ? needs() : hand;
       var hs = [].concat.apply([], cases.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
       return { kind: 'tall', why: x.size.h + ' cm tall; your ' + (hs.length === 1 ? 'shelf is ' : 'tallest shelf is ') + Math.max.apply(null, hs) + ' cm' + (hs.length === 1 ? ' tall' : '') };
     }
