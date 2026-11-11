@@ -75,7 +75,7 @@ It's a static site: plain HTML, CSS and JavaScript, with no build step.
 ```sh
 npx serve .                   # or any static file server, then open the printed address
 npm test                      # unit tests, then uses it in Chromium through the real page (needs Playwright)
-node tools/screenshots.mjs    # redraws docs/*.png and og.png (PICS=folder of thumbnails for set pictures)
+node tools/screenshots.mjs    # redraws docs/*.png and og.png (fetches the sample sets' pictures into tools/pics once; PICS=none for plain bricks)
 node tools/make-icons.mjs     # redraws the PNG icons from icon.svg
 node tools/copy-skill-data.mjs  # copies parts/ into the designer skill's data/, after parts/ changes
 ```

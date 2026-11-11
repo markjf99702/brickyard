@@ -1,11 +1,14 @@
 // Renders the README screenshots (docs/*.png) and the link preview (og.png):  node tools/screenshots.mjs
-// Uses the sample sets in test/fixtures/sample.json. Set pictures come from Rebrickable; the sandbox's browser
-// can't reach it, so point PICS at a folder of thumbnails named NUM.s.jpg and NUM.l.jpg (curl them first),
-// or leave it unset to show the plain brick instead.
+// Uses the sample sets in test/fixtures/sample.json. Set pictures come from Rebrickable, which a sandbox's browser
+// can't always reach, so the page is handed them from a folder of thumbnails named NUM.s.jpg and NUM.l.jpg. Left
+// to itself the tool keeps that folder in tools/pics (not in git) and fetches the sample sets' pictures into it with
+// curl the first time; if one can't be had it stops, where it used to draw every set as a plain brick and leave
+// five changed pictures behind. PICS=folder uses a folder of your own as it is; PICS=none draws the plain brick
+// on purpose.
 import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, rename, rm } from 'node:fs/promises';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +17,38 @@ let pw;
 try { pw = require('playwright'); } catch { pw = require(join(execSync('npm root -g').toString().trim(), 'playwright')); }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
+
+// The sample batch, as a stored catalog.
+const C = { exports: {} };
+new Function('module', await readFile(join(root, 'js/core.js'), 'utf8'))(C);
+const sample = C.exports.cleanBatch(JSON.parse(await readFile(join(root, 'test/fixtures/sample.json'), 'utf8')));
+const sets = {};
+sample.sets.forEach((x, i) => { const id = 's' + i; sets[id] = Object.assign({ id, t: 1790000000000 + i, added: '2026-10-0' + (1 + (i % 4)) }, x); });
+const catalog = { brickyard: 1, catalog: { sets, seen: {} } };
+
+// The folder of set pictures (see the top). Each picture is fetched to a name of its own first, so one that
+// stopped halfway is never taken for a picture the next time.
+const PICS = process.env.PICS === 'none' ? '' : process.env.PICS || join(root, 'tools/pics');
+if (!process.env.PICS) {
+  await mkdir(PICS, { recursive: true });
+  for (const x of sample.sets) for (const [size, end] of [['250x250p', '.s.jpg'], ['1000x800p', '.l.jpg']]) {
+    const file = join(PICS, x.num + end), url = `https://cdn.rebrickable.com/media/thumbs/sets/${x.num}.jpg/${size}.jpg`;
+    if (await readFile(file).then(() => true, () => false)) continue;
+    try {
+      execFileSync('curl', ['-fsSL', '--max-time', '60', '-o', file + '.part', url], { stdio: ['ignore', 'ignore', 'pipe'] });
+      // A JPEG, or a PNG: Rebrickable sends some sets' pictures as PNG under the .jpg name.
+      const head = (await readFile(file + '.part')).subarray(0, 2).toString('hex');
+      if (head !== 'ffd8' && head !== '8950') throw new Error('what came back isn’t a picture');
+      await rename(file + '.part', file);
+    } catch (e) {
+      await rm(file + '.part', { force: true });
+      console.error(`Couldn’t fetch the picture of set ${x.num} (${url}):\n  ${String(e.stderr || e.message).trim()}\n` +
+        'Nothing was drawn. Check the connection and run it again, or run with PICS=none to draw every set as a plain brick.');
+      process.exit(1);
+    }
+  }
+}
+
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   let body;
@@ -25,20 +60,12 @@ const base = `http://localhost:${server.address().port}/`;
 const browser = await pw.chromium.launch();
 await mkdir(join(root, 'docs'), { recursive: true });
 
-// The sample batch, as a stored catalog.
-const C = { exports: {} };
-new Function('module', await readFile(join(root, 'js/core.js'), 'utf8'))(C);
-const sample = C.exports.cleanBatch(JSON.parse(await readFile(join(root, 'test/fixtures/sample.json'), 'utf8')));
-const sets = {};
-sample.sets.forEach((x, i) => { const id = 's' + i; sets[id] = Object.assign({ id, t: 1790000000000 + i, added: '2026-10-0' + (1 + (i % 4)) }, x); });
-const catalog = { brickyard: 1, catalog: { sets, seen: {} } };
-
 async function open(viewport, deviceScaleFactor, hash = '', seed = true) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor, hasTouch: true, serviceWorkers: 'block' });
   await ctx.route('https://cdn.rebrickable.com/**', async route => {
     const m = /sets\/([^/]+)\.jpg\/(\d+)x/.exec(route.request().url());
-    if (!process.env.PICS || !m) return route.fulfill({ status: 404 });
-    try { route.fulfill({ body: await readFile(join(process.env.PICS, m[1] + (m[2] === '250' ? '.s.jpg' : '.l.jpg'))), contentType: 'image/jpeg' }); }
+    if (!PICS || !m) return route.fulfill({ status: 404 });
+    try { route.fulfill({ body: await readFile(join(PICS, m[1] + (m[2] === '250' ? '.s.jpg' : '.l.jpg'))), contentType: 'image/jpeg' }); }
     catch { route.fulfill({ status: 404 }); }
   });
   const page = await ctx.newPage();
