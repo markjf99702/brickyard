@@ -1976,6 +1976,10 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
     // With no bookcase the words are under Add a bookcase.
     await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); d.cases.k = { id: 'k', t: Date.now(), del: 1 }; delete d.sets.one.size; d.sets.one.t = Date.now(); window.brickyard.takeDoc(d); });
     assert.deepEqual([await p.locator('.empty .jump').count(), (await jumps()).map(j => j[0])], [1, ['40 not on a shelf yet↓', '1 needs a size↓']]);
+    // Over the words there, the shelf drawing from the home screen's card (it was words only, where My sets has its brick).
+    assert.deepEqual(await p.evaluate(() => { const svg = document.querySelector('#shelves-body .empty > svg'), home = document.querySelector('#go-shelves svg'), r = svg.getBoundingClientRect();
+      return [svg.innerHTML === home.innerHTML.replace(/>\s+</g, '><').trim(), svg.getAttribute('aria-hidden'), svg.nextElementSibling.textContent, r.width > 60 && r.left >= 0 && r.right <= innerWidth && r.bottom <= document.querySelector('.empty h2').getBoundingClientRect().top]; }),
+      [true, 'true', 'Your bookcases go here', true]);
     await p.click('.jump [data-k="nosize"]');
     // The last thing on the page comes as far up as the page goes: on the screen, under the bar.
     assert.deepEqual([(await landed()).slice(0, 2), await p.$eval('#sv-nosize', h => { const r = h.getBoundingClientRect(); return r.top >= document.querySelector('#shelves .bar').getBoundingClientRect().bottom && r.bottom <= innerHeight; })], [['H2', 'Needs a size, 1 set'], true]);

@@ -65,7 +65,10 @@
     var all = cases(), ids = byId(), sorted = S.sort(sets(), all);
     var html = '';
     if (!all.length) {
-      html += '<div class="empty"><h2>Your bookcases go here</h2><p>Add each bookcase with its shelf heights, and Brickyard fits your built sets onto them, tallest first, so you know where everything goes before you unpack.</p>' +
+      // Over the words, the drawing the home screen's Shelf planner card has, as My sets' empty state has its brick.
+      html += '<div class="empty"><svg width="88" height="72" viewBox="0 0 88 72" aria-hidden="true"><rect x="8" y="30" width="72" height="4" rx="1" fill="var(--muted)"/><rect x="8" y="62" width="72" height="4" rx="1" fill="var(--muted)"/>' +
+        '<rect x="14" y="14" width="18" height="16" rx="2" fill="var(--blue)"/><rect x="36" y="20" width="24" height="10" rx="2" fill="var(--yellow)"/><rect x="18" y="44" width="30" height="18" rx="2" fill="var(--red)"/><rect x="54" y="50" width="14" height="12" rx="2" fill="var(--green)"/></svg>' +
+        '<h2>Your bookcases go here</h2><p>Add each bookcase with its shelf heights, and Brickyard fits your built sets onto them, tallest first, so you know where everything goes before you unpack.</p>' +
         '<div class="acts"><button class="btn" type="button" data-act="add-case">Add a bookcase</button></div>' + jumps(sorted) + '</div>';
     } else {
       // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
