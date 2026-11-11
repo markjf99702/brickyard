@@ -355,6 +355,9 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   eq(C.boxList(doc, 'Box 3'), 'Box 3 · 2 sets · 5 loose pieces\n10311 Orchid\n10334 Retro Radio\nBlue tub · 5 loose pieces', 'a box’s list as text, by name');
   eq(C.boxList(C.cleanDoc({ sets: { a: { id: 'a', t: 1, name: 'Castle', state: 'apart', box: 'Attic' }, b: { id: 'b', t: 1, num: '21318', state: 'built', box: 'attic' } } }), 'attic'), 'Box attic · 2 sets\n21318 · Built\nCastle · Taken apart', 'with each set’s state, and a set with only a name or only a number');
   eq(C.boxList(doc, '20'), 'Box 20 · 10 loose pieces\nRed bag · 10 loose pieces', 'a box of only loose pieces');
+  eq(C.missingList([{ id: 'a', num: '60337-1', name: 'Express Passenger Train', missing: 'one dark grey 1x2 plate' }, { id: 'b', num: '21327-1', name: 'Typewriter', missing: ' the dial,\n\none foot; ' }, { id: 'c', name: 'Orchid' }, { id: 'd', name: 'Castle', missing: 'a flag' }, { id: 'e', num: '10281-2', missing: 'a leaf' }]),
+    '10281-2: a leaf\nCastle: a flag\n60337 Express Passenger Train: one dark grey 1x2 plate\n21327 Typewriter: the dial, one foot', 'what is missing as text: a line a set, by name, its lines run into one, and only the sets with something missing');
+  eq(C.missingList([{ id: 'c', name: 'Orchid' }]), '', 'nothing missing, nothing listed');
   eq(C.boxNews(doc, '', '3'), 'Box 3 holds 2 sets now.', 'into a box');
   eq(C.boxNews(doc, '', '12'), 'Box 12 holds 1 set now.', 'the first set in a box');
   eq(C.boxNews(doc, '3', ''), '2 sets still in Box 3.', 'out of a box with sets left in it');

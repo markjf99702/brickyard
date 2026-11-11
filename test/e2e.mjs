@@ -2533,6 +2533,38 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// With the Missing pieces filter on, Copy this list puts what's missing on the clipboard, a line a set, for an order
+// of replacement pieces: the sets the list is showing, so a search narrows it. Under any other filter there's no
+// such button. Where the browser won't copy, the text is shown to copy by hand.
+{
+  const sets = { e: { id: 'e', t: 1, num: '60337-1', name: 'Express Passenger Train', state: 'built', room: 'Office', missing: 'one dark grey 1x2 plate' }, t: { id: 't', t: 1, num: '21327-1', name: 'Typewriter', state: 'built', room: 'Den', missing: 'the dial\none foot' }, o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' } };
+  const { c, p } = await withSets({ sets }, { permissions: ['clipboard-read', 'clipboard-write'] });
+  const says = () => p.textContent('.toast:not([hidden]) span').catch(() => '');
+  await p.goto(base + '#catalog');
+  assert.equal(await p.locator('[data-act="missing"]').count(), 0, 'no Copy this list on the whole list');
+  await p.click('.chip[data-f="missing"]');
+  assert.deepEqual([await p.textContent('[data-act="missing"]'), await p.$eval('[data-act="missing"]', b => b.getBoundingClientRect().height >= 44)], ['Copy this list', true]);
+  await p.click('[data-act="missing"]');
+  await until(async () => (await says()) !== '', 3000, 'Copy this list said nothing');
+  assert.deepEqual([await says(), await p.evaluate(() => navigator.clipboard.readText())], ['Copied what’s missing from 2 sets', '60337 Express Passenger Train: one dark grey 1x2 plate\n21327 Typewriter: the dial, one foot']);
+  await p.fill('#q', 'typewriter');
+  await p.click('[data-act="missing"]');
+  await until(async () => (await says()) === 'Copied what’s missing from 1 set', 3000, 'a search narrows what is copied');
+  assert.equal(await p.evaluate(() => navigator.clipboard.readText()), '21327 Typewriter: the dial, one foot');
+  await p.fill('#q', 'zzz');
+  assert.equal(await p.locator('[data-act="missing"]').count(), 0, 'nothing found, nothing to copy');
+  await p.fill('#q', '');
+  // The browser refuses: the list is shown instead, selected.
+  await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('no')); });
+  await p.click('[data-act="missing"]');
+  await p.waitForSelector('#bx-text');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.inputValue('#bx-text')], ['Missing pieces', '60337 Express Passenger Train: one dark grey 1x2 plate\n21327 Typewriter: the dial, one foot']);
+  await p.click('[data-close]');
+  await p.click('.chip[data-f="built"]');
+  assert.equal(await p.locator('[data-act="missing"]').count(), 0, 'and none under Built');
+  await c.close();
+}
+
 // A set with a number has a link in its sheet to LEGO's own page of building instructions for that number, opened in
 // a new tab without saying where from. It follows the number as it's typed, and a set with no number has none.
 // Nothing is asked of LEGO until it's tapped (the check at the end that no request left the site covers that).

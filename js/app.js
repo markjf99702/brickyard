@@ -530,7 +530,10 @@
     // "box 7" with no box labelled 7 is searched as words (C.matches); what it found says so, since a set in box 17
     // with a 7 in its number is among them.
     var noBox = bs && !bs.label ? '<p class="note" id="no-box">No moving box is labelled ' + esc(noLabel(q)) + '. These match the words.</p>' : '';
-    $('list-wrap').innerHTML = noBox + boxLine + groups.map(function (g) {
+    // Under Missing pieces, a quiet button that copies what the rows say, for an order (copyMissing).
+    lacking = show === 'missing' ? shown.slice() : [];
+    var copyLine = lacking.length ? '<p class="boxline"><button class="btn sm quiet" type="button" data-act="missing">Copy this list</button></p>' : '';
+    $('list-wrap').innerHTML = noBox + boxLine + copyLine + groups.map(function (g) {
       // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
       // A moving box's heading is a button that opens the box's sheet (boxSheet): its sets, and what can be done
       // with the box as a whole. `raw` is the box's label as its first set has it; Not packed has none.
@@ -579,6 +582,14 @@
     return out;
   }
 
+  // Copy this list, under Missing pieces: what's missing from the sets the list is showing (the search counts), a
+  // line a set (C.missingList), for an order of replacement pieces.
+  var lacking = [];
+  function copyMissing() {
+    var n = lacking.length;
+    copyText(C.missingList(lacking), 'Missing pieces', 'Copy this for an order of replacement pieces.', 'Copied what’s missing from ' + (n === 1 ? '1 set' : n.toLocaleString() + ' sets'));
+  }
+
   // What was typed after "box", up to the first space: the label no box has.
   function noLabel(q) { var m = /(?:^|\s)box\s*#?\s*(\S+)/i.exec(q); return m ? m[1] : ''; }
 
@@ -618,6 +629,7 @@
     var bx = e.target.closest('[data-box]'); if (bx) return boxSheet(bx.dataset.box);
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') editSheet(null);
+    else if (a.dataset.act === 'missing') copyMissing();
     else if (a.dataset.act === 'all') { show = 'all'; renderCatalog(); }
     else claudeSheet();
   });
@@ -1245,13 +1257,18 @@
   }
   // Copy this list: the box's list as text (C.boxList). Where the browser won't copy, it's shown to copy by hand.
   function copyBox(box) {
-    var text = C.boxList(DOC, box), name = C.boxHolds(DOC, box).name;
+    var name = C.boxHolds(DOC, box).name;
+    copyText(C.boxList(DOC, box), name + '’s list', 'Copy this for a label or a message.', 'Copied ' + name + '’s list', true);
+  }
+  // Puts `text` on the clipboard and says `done`; where the browser won't, a sheet titled `title` shows it under
+  // `note`, selected, to copy by hand. `close` is for a button in a sheet, which closes once the text is copied.
+  function copyText(text, title, note, done, close) {
     var show = function () {
-      openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(name) + '’s list</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
-        '<div class="bd"><p class="note">Copy this for a label or a message.</p><textarea class="paste" id="bx-text" readonly style="min-height:160px">' + esc(text) + '</textarea></div>');
+      openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(title) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+        '<div class="bd"><p class="note">' + esc(note) + '</p><textarea class="paste" id="bx-text" readonly style="min-height:160px">' + esc(text) + '</textarea></div>');
       $('bx-text').select();
     };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { closeSheet(); toast('Copied ' + name + '’s list'); }, show);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { if (close) closeSheet(); toast(done); }, show);
     else show();
   }
   // Rename this box: the new label goes on every set and lot in it. A label another box has takes a second tap,

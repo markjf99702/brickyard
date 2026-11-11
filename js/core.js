@@ -542,6 +542,16 @@
       h.lots.map(function (l) { return l.name + ' · ' + count(lotTotals(l).pieces, 'loose piece'); })).join('\n');
   }
 
+  // What's missing from these sets as plain text, for an order of replacement pieces: a line for each set that has
+  // anything missing, by name, with its number, its name and what's missing ("60337 Express Passenger Train: one
+  // dark grey 1x2 plate"). A set's several lines of missing pieces are run into one, with commas.
+  function missingList(sets) {
+    return sets.filter(function (x) { return x.missing; }).sort(function (a, b) { return natural(a.name || '', b.name || '') || natural(a.num || '', b.num || ''); }).map(function (x) {
+      var lines = String(x.missing).split('\n').map(function (l) { return l.trim().replace(/[,;]$/, ''); }).filter(Boolean);
+      return ([shortNum(x.num), x.name].filter(Boolean).join(' ') || 'A set') + ': ' + lines.join(', ');
+    }).join('\n');
+  }
+
   function where(x) {
     var place = [x.room, x.spot].filter(Boolean).join(' › ');
     if (x.box) place = (place ? place + ' · ' : '') + 'Box ' + boxName(x.box);
@@ -772,7 +782,7 @@
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, instructionsUrl: instructionsUrl, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     foldTwins: foldTwins, doubles: doubles, restoreDoc: restoreDoc, arrived: arrived, arrivedText: arrivedText,
-    hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, missingList: missingList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);
