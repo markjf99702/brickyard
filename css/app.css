@@ -393,7 +393,7 @@ a.item { color: inherit; text-decoration: none; }
 .stage canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .stage canvas:active { cursor: grabbing; }
 .stage canvas:focus-visible { outline: 2px solid var(--blue); outline-offset: -4px; }
-.stage-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 4px 10px; border-radius: 99px; pointer-events: none; width: max-content; max-width: calc(100% - 20px); text-align: center; }
+.stage-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 85%, transparent); padding: 4px 10px; border-radius: 99px; pointer-events: none; width: max-content; max-width: calc(100% - 20px); text-align: center; }
 /* A model with nothing the builder can draw: no picture and no steps, only the message. */
 #model-view.bare .stage, #model-view.bare .stepbar, #model-view.bare #step-range, #model-view.bare #step-parts { display: none; }
 #model-view.bare #model-check { margin-top: 14px; }
@@ -403,6 +403,14 @@ a.item { color: inherit; text-decoration: none; }
 .callout .note.under { margin: 10px 0 0; }
 /* Shows once the picture has been turned or zoomed, and puts it back as it opened. */
 .stage-reset { position: absolute; right: 10px; top: 10px; min-height: 40px; background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); }
+/* Turn left and right in the picture's bottom left corner, zoom out and in in its bottom right: one tap each, for a
+   hand that can't drag or pinch (the other is holding bricks). The hint moved to the top to leave them room. */
+.stage-keys { position: absolute; bottom: 10px; display: flex; gap: 4px; }
+.stage-keys.left { left: 10px; }
+.stage-keys.right { right: 10px; }
+@media (max-width: 230px) { .stage-keys { flex-direction: column; } } /* a very narrow screen: each pair stands up, so the two don't meet */
+.stage-keys .icon-btn { background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); }
+.stage:has(.stage-reset:not([hidden])) .stage-hint { top: 62px; } /* "The picture was dropped", under Reset view */
 .stage-hint { transition: opacity .45s; }
 .stage-hint.going { opacity: 0; }
 .stepbar { display: flex; align-items: center; gap: 10px; padding: 12px 0 4px; }

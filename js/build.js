@@ -625,6 +625,7 @@ function startStage() {
       view.moved = false; $('stage-reset').hidden = true;
       frame(false);
     };
+    $('stage-keys').hidden = false;
     new ResizeObserver(resize).observe(canvas);
     // A phone can take the picture away (the tab left in the background, memory running short). The browser brings
     // it back by itself; until then the stage says so, where it was a blank box with a sad face.
@@ -667,6 +668,13 @@ function turnKeys(e) {
   const turn = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key], zoom = { '+': 0.8, '=': 0.8, '-': 1.25, _: 1.25 }[e.key];
   if (!turn && !zoom) return;
   e.preventDefault();
+  nudge(turn, zoom);
+}
+// One press of a key, or one tap of a button on the picture (the four in its bottom corners: turn left, turn
+// right, zoom out, zoom in), so turning doesn't take a drag, nor zooming two fingers.
+function nudge(turn, zoom) {
+  if (!view) return;
+  movedIt(); // first: it stops a turn or a glide that is still going, and the camera is moved from where that left it
   const off = camera.position.clone().sub(controls.target), at = new THREE.Spherical().setFromVector3(off);
   if (turn) {
     at.theta += turn[0] * Math.PI / 12; // 15 degrees a press
@@ -674,9 +682,12 @@ function turnKeys(e) {
   } else at.radius = Math.max(controls.minDistance, Math.min(controls.maxDistance, at.radius * zoom));
   camera.position.copy(controls.target).add(off.setFromSpherical(at));
   controls.update();
-  movedIt();
   redraw();
 }
+$('stage-keys').onclick = e => {
+  const b = e.target.closest('button');
+  if (b) nudge({ left: [1, 0], right: [-1, 0] }[b.dataset.turn], { in: 0.8, out: 1.25 }[b.dataset.zoom]);
+};
 function stopStage() {
   running = false; anims = []; spin = glide = null;
   if (raf) cancelAnimationFrame(raf);

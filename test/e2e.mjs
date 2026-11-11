@@ -3202,6 +3202,37 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await m.c.close();
 }
 
+// Four buttons on the picture turn it left and right and zoom out and in, a tap each: turning took a drag and
+// zooming two fingers or a wheel (WCAG 2.2 SC 2.5.7 Dragging Movements, SC 2.5.1 Pointer Gestures). They sit in the
+// picture's bottom corners, clear of each other and of the hint, and count as moving the picture (Reset view).
+{
+  const { c, p } = await withSets({ sets: {} }, { reducedMotion: 'reduce' });
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForFunction(() => window.BrickyardBuild.inView());
+  const box = () => p.evaluate(() => window.BrickyardBuild.inView().box.map(n => n.toFixed(3))), wide = b => b[2] - b[0];
+  const keys = await p.$$eval('#stage-keys button', bs => bs.map(b => { const r = b.getBoundingClientRect(); return [b.getAttribute('aria-label'), Math.round(r.width), Math.round(r.height), Math.round(r.left), Math.round(r.right)]; }));
+  assert.deepEqual(keys.map(k => k.slice(0, 3)), [['Turn left', 44, 44], ['Turn right', 44, 44], ['Zoom out', 44, 44], ['Zoom in', 44, 44]]);
+  const stage = await p.locator('.stage').boundingBox(), hint = await p.locator('#stage-hint').boundingBox(), first = await p.locator('#stage-keys button >> nth=0').boundingBox();
+  assert.ok(keys[1][4] < keys[2][3] && hint.y + hint.height < first.y && first.y + first.height <= stage.y + stage.height, 'the buttons are inside the picture, apart, and under the hint');
+  const home = await box();
+  assert.equal(await p.isHidden('#stage-reset'), true);
+  await p.tap('[data-turn="left"]');
+  const left = await box();
+  assert.deepEqual([left.join() !== home.join(), await p.isVisible('#stage-reset'), await p.textContent('.stepnum')], [true, true, 'Finished model'], 'Turn left turns the picture, and leaves the step');
+  await p.tap('#stage-reset');
+  await p.focus('#stage'); await p.keyboard.press('ArrowLeft');
+  assert.deepEqual(await box(), left, 'as the left arrow key does');
+  await p.tap('[data-turn="right"]');
+  assert.deepEqual(await box(), home, 'Turn right turns it back');
+  await p.tap('[data-zoom="in"]');
+  assert.ok(wide(await box()) > wide(home) * 1.1, 'Zoom in');
+  await p.tap('[data-zoom="out"]'); await p.tap('[data-zoom="out"]');
+  assert.ok(wide(await box()) < wide(home) * 0.9, 'Zoom out');
+  await p.tap('#stage-reset');
+  assert.deepEqual(await box(), home);
+  await c.close();
+}
+
 // The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
 // is one step (it jumped to the end), a tap or a swipe that starts on the track leaves the step alone, and
 // dragging the knob still works. A screen reader hears the step, not a bare number one behind.

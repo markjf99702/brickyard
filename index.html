@@ -86,9 +86,13 @@
     </div></header>
     <div class="wrap" id="build-list"><p class="note">Loading…</p></div>
     <div id="model-view" hidden>
-      <div class="stage"><canvas id="stage" tabindex="0" role="img" aria-label="The model in 3D. Drag to turn it, pinch or scroll to zoom. With the keyboard: arrow keys turn it, plus and minus zoom."></canvas>
+      <div class="stage"><canvas id="stage" tabindex="0" role="img" aria-label="The model in 3D. Drag to turn it, pinch or scroll to zoom, or use the turn and zoom buttons after it. With the keyboard: arrow keys turn it, plus and minus zoom."></canvas>
         <div class="stage-hint" id="stage-hint">Drag to turn · pinch to zoom</div>
-        <button class="btn sm quiet stage-reset" type="button" id="stage-reset" hidden>Reset view</button></div>
+        <button class="btn sm quiet stage-reset" type="button" id="stage-reset" hidden>Reset view</button>
+        <div id="stage-keys" hidden>
+          <div class="stage-keys left"><button class="icon-btn" type="button" data-turn="left" aria-label="Turn left"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a8 8 0 0 0-14-5"/><path d="M5 5v5.5h5.5"/></svg></button><button class="icon-btn" type="button" data-turn="right" aria-label="Turn right"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a8 8 0 0 1 14-5"/><path d="M19 5v5.5h-5.5"/></svg></button></div>
+          <div class="stage-keys right"><button class="icon-btn" type="button" data-zoom="out" aria-label="Zoom out"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button class="icon-btn" type="button" data-zoom="in" aria-label="Zoom in"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></button></div>
+        </div></div>
       <div class="wrap">
         <div class="stepbar">
           <button class="icon-btn" type="button" id="step-prev" aria-label="Previous step"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
