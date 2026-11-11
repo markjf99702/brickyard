@@ -527,7 +527,7 @@ await page.click('.chip[data-f="all"]');
   const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.textContent));
   await p.goto(base + '#catalog');
   await p.selectOption('#group', 'box');
-  assert.deepEqual([await heads(), await p.locator('#list-wrap .box-head').count()], [['Box 32', 'Box 121', 'Box 20', 'Not packed3'], 3], 'each box’s heading is a button, and Not packed’s is not');
+  assert.deepEqual([await heads(), await p.locator('#list-wrap .box-head').count()], [['Box 32', 'Box 121', 'Box 20', 'Not packed3'], 3], 'each box’s heading is a button that opens the box; Not packed’s only folds');
   assert.equal(await p.getAttribute('.box-head[data-box="3"]', 'aria-label'), 'Box 3, 2 sets');
   assert.ok((await p.locator('.box-head').first().boundingBox()).height >= 44, 'tall enough for a finger');
   await p.click('.box-head[data-box="3"]');
@@ -2594,6 +2594,76 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Folding. With the whole list showing, a tap on a group's heading folds its sets away and another shows them; Fold
+// all on the summary line folds every group, and turns into Unfold all. What's folded is remembered on the device,
+// for each way of grouping. A search or a filter chip shows every set it finds, folded group or not, and the folds
+// are back afterwards. A moving box's heading still opens the box: the arrow before it folds. A set that's shown
+// (added by hand, or See in My sets) has its group opened. Paper gets the whole list.
+{
+  const s = (id, name, room, more) => ({ id, t: 1, name, room, state: 'built', ...more });
+  const { c, p } = await withSets({ sets: { a: s('a', 'Orchid', 'Office', { box: '3' }), b: s('b', 'Typewriter', 'Office'), d: s('d', 'Castle', 'Den', { box: '3', check: 'which castle?' }), e: s('e', 'Titanic', 'Den', { box: '7' }), f: s('f', 'Loose bits', '') },
+    loose: { bag: { id: 'bag', t: 1, name: 'Blue tub', box: '3', parts: [['3001', 1, 42]] } } });
+  await p.goto(base + '#catalog');
+  const seen = () => p.$$eval('#list-wrap .item', els => els.filter(e => e.getClientRects().length).map(e => e.querySelector('.t').textContent));
+  const heads = () => p.$$eval('#list-wrap h2.group', hs => hs.map(h => [h.querySelector('span').textContent, h.querySelector('[data-fold]') ? h.querySelector('[data-fold]').getAttribute('aria-expanded') : 'plain']));
+  const prefs = () => p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.prefs') || '{}').folded);
+  const all = () => p.$eval('#fold-all', b => b.hidden ? null : b.textContent);
+  assert.deepEqual([await heads(), await seen(), await all()], [[['Den', 'true'], ['Office', 'true'], ['No room yet', 'true']], ['Castle', 'Titanic', 'Orchid', 'Typewriter', 'Loose bits'], 'Fold all'], 'every group starts open');
+  assert.deepEqual(await p.$eval('[data-fold="Office"]', b => [b.getBoundingClientRect().height >= 44, Math.round(b.getBoundingClientRect().width) >= 350]), [true, true], 'the whole heading is the button');
+  await p.focus('[data-fold="Office"]');
+  await p.keyboard.press('Enter');
+  assert.deepEqual([await heads(), await seen(), await prefs(), await all()], [[['Den', 'true'], ['Office', 'false'], ['No room yet', 'true']], ['Castle', 'Titanic', 'Loose bits'], { room: ['Office'] }, 'Fold all'], 'a tap on Office folds its sets away, and the device remembers');
+  assert.deepEqual([await p.evaluate(() => document.activeElement.dataset.fold), await p.getByRole('button', { name: 'Office, 2 sets', expanded: false }).count(), await p.textContent('#sum')], ['Office', 1, '5 sets'], 'the keyboard stays on the heading, which says it is folded; the count is still of every set');
+  await p.reload();
+  assert.deepEqual(await seen(), ['Castle', 'Titanic', 'Loose bits'], 'still folded after a reload');
+  // A search, or a filter chip, shows what it finds; the folds come back with the whole list.
+  await p.fill('#q', 'orchid');
+  assert.deepEqual([await seen(), await heads(), await all()], [['Orchid'], [['Office', 'plain']], null], 'a search finds a set in a folded group and shows it');
+  await p.fill('#q', '');
+  await p.click('.chip[data-f="check"]');
+  assert.deepEqual([await seen(), await all()], [['Castle'], null], 'so does a filter chip');
+  await p.click('.chip[data-f="all"]');
+  assert.deepEqual(await seen(), ['Castle', 'Titanic', 'Loose bits'], 'and the fold is back with the whole list');
+  // Fold all, Unfold all.
+  await p.click('#fold-all');
+  assert.deepEqual([await seen(), await all(), await prefs()], [[], 'Unfold all', { room: ['Den', 'Office', 'No room yet'] }]);
+  await p.click('[data-fold="Den"]');
+  assert.deepEqual([await seen(), await all()], [['Castle', 'Titanic'], 'Fold all'], 'one group opened: the button folds again');
+  await p.click('#fold-all'); await p.click('#fold-all');
+  assert.deepEqual([await seen(), await all(), await prefs()], [['Castle', 'Titanic', 'Orchid', 'Typewriter', 'Loose bits'], 'Fold all', { room: [] }], 'Unfold all shows every set');
+  // By moving box: the arrow folds, the heading still opens the box, and the box's loose pieces fold with it.
+  await p.selectOption('#group', 'box');
+  assert.deepEqual([await seen(), await p.locator('#list-wrap .note.lots').evaluateAll(els => els.filter(e => e.getClientRects().length).length)], [['Castle', 'Orchid', 'Titanic', 'Loose bits', 'Typewriter'], 1], 'folds are kept for each way of grouping: by box, nothing is folded yet');
+  await p.click('.group.two [data-fold="Box 3"]');
+  assert.deepEqual([await seen(), await p.locator('#list-wrap .note.lots').evaluateAll(els => els.filter(e => e.getClientRects().length).length), await prefs(), await p.getByRole('button', { name: 'What’s in Box 3', expanded: false }).count()],
+    [['Titanic', 'Loose bits', 'Typewriter'], 0, { room: [], box: ['Box 3'] }, 1], 'the arrow before Box 3 folds its sets and its loose pieces');
+  await p.click('.box-head[data-box="3"]');
+  assert.equal(await p.textContent('#sheetTitle'), 'Box 3', 'the heading itself still opens the box');
+  await p.click('[data-close]');
+  // A set that's shown has its group opened: See in My sets (showSet), and a set added by hand.
+  await p.evaluate(() => window.brickyard.showSet('a'));
+  await p.waitForSelector('.sheet');
+  assert.equal(await p.textContent('#sheetTitle'), 'Orchid');
+  await p.click('[data-close]');
+  assert.deepEqual([await seen(), await prefs()], [['Castle', 'Orchid', 'Titanic', 'Loose bits', 'Typewriter'], { room: [], box: [] }], 'showing a set in a folded box opens the box’s group');
+  await p.click('[data-fold="Not packed"]');
+  await p.click('#add-btn'); await p.fill('#e-name', 'New arrival'); await p.click('#e-save');
+  await until(async () => (await seen()).includes('New arrival'), 3000, 'a set added into a folded group was left hidden');
+  // On paper every set is listed, folded or not, without the arrows.
+  await p.click('#fold-all');
+  assert.deepEqual(await seen(), []);
+  await p.emulateMedia({ media: 'print' });
+  assert.deepEqual([(await seen()).length, await p.$$eval('.fold.mark, #fold-all', els => els.filter(e => e.getClientRects().length).length)], [6, 0], 'paper gets the whole list');
+  await p.emulateMedia({ media: 'screen' });
+  // Prefs saved before folding existed, or with something else under the name, are fine.
+  await p.evaluate(() => localStorage.setItem('brickyard.prefs', JSON.stringify({ pics: true, group: 'room', folded: 'yes' })));
+  await p.reload();
+  assert.deepEqual([(await seen()).length, await all()], [6, 'Fold all']);
+  await p.click('[data-fold="Den"]');
+  assert.deepEqual(await prefs(), { room: ['Den'] });
+  await c.close();
+}
+
 // With the Missing pieces filter on, Copy this list puts what's missing on the clipboard, a line a set, for an order
 // of replacement pieces: the sets the list is showing, so a search narrows it. Under any other filter there's no
 // such button. Where the browser won't copy, the text is shown to copy by hand.
@@ -3473,7 +3543,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   // Newest first: a heading for each day, newest at the top; sets with no date come last.
   await p.selectOption('#group', 'new');
   const day = iso => new Date(iso + 'T12:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.children].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
+  assert.deepEqual(await p.$$eval('#list-wrap h2.group', hs => hs.map(h => [...h.querySelectorAll('span')].map(s => s.textContent))), [[day('2026-10-21'), '1'], [day('2026-10-20'), '2'], ['No date', '2']]);
   assert.equal(await p.getByRole('heading', { name: day('2026-10-20') + ', 2 sets', level: 2 }).count(), 1);
   assert.deepEqual([await lines('d'), await lines('a'), await lines('e')], [['10294', 'Added ' + day('2026-10-21') + ' · Office'], ['10305', 'Added ' + day('2026-10-20') + ' · Hall', 'Missing: two shields, one grey 1x2 plate'], ['10497', 'Office', 'Check: ' + long]], 'each row says the day it was added, before where it is; a set with no day says where it is');
   assert.deepEqual([await p.textContent('.sumline label'), await p.getAttribute('#group', 'aria-label')], ['Sort and group RoomMoving boxThemeStateNewest first', 'Sort and group'], 'the menu is called Sort and group: Newest first is a sort');
@@ -3664,8 +3734,8 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await e.c.close();
 }
 
-// The row the keyboard is on is clear of the bar stuck to the top and the two buttons stuck to the bottom of My
-// sets, going down the list and coming back up (WCAG 2.2, 2.4.11 Focus Not Obscured: a third of the rows stopped
+// The row the keyboard is on is clear of the bar and the search box stuck to the top and the two buttons stuck to the
+// bottom of My sets (each room's heading is a stop on the way: it folds), going down the list and coming back up (WCAG 2.2, 2.4.11 Focus Not Obscured: a third of the rows stopped
 // partly under one or the other, some with only the edge of the focus ring showing). And a set shown from the
 // shelf planner still lands in the middle of what's left.
 {
@@ -3675,15 +3745,15 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
     const { c, p } = await withSets({ sets }, { viewport: size, hasTouch: false, deviceScaleFactor: 1 });
     await p.goto(base + '#catalog');
     const hidden = () => p.evaluate(() => {
-      const a = document.activeElement, r = a.getBoundingClientRect(), top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top;
+      const a = document.activeElement, r = a.getBoundingClientRect(), top = document.querySelector('#catalog .tools').getBoundingClientRect().bottom, bottom = document.querySelector('.fab-row').getBoundingClientRect().top;
       return a.classList.contains('item') ? Math.round(Math.max(0, top - r.top, r.bottom - bottom)) : -1;
     });
     await p.focus('#group');
     let rows = 0, worst = 0;
-    for (let i = 0; i < 40; i++) { await p.keyboard.press('Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
+    for (let i = 0; i < 43; i++) { await p.keyboard.press('Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
     assert.deepEqual([rows, worst], [40, 0], `going down the list at ${size.width} px: rows reached, and the most of one that was covered`);
     rows = 0;
-    for (let i = 0; i < 39; i++) { await p.keyboard.press('Shift+Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
+    for (let i = 0; i < 41; i++) { await p.keyboard.press('Shift+Tab'); const h = await hidden(); if (h >= 0) { rows++; worst = Math.max(worst, h); } }
     assert.deepEqual([rows, worst], [39, 0], `and coming back up at ${size.width} px`);
     // Shown from elsewhere (the planner's See in My sets): in the middle of the room between the bars.
     await p.evaluate(() => { scrollTo(0, 0); window.brickyard.showSet('s20'); });
@@ -4798,7 +4868,11 @@ await page.click('[data-close]');
   const { c, p } = await withSets({ sets });
   await p.goto(base + '#catalog');
   await p.evaluate(() => { const s = document.querySelector('#catalog .sync-btn'); s.hidden = false; s.querySelector('span').textContent = 'Synced'; });
-  assert.deepEqual(await small(p, '#catalog .back, #catalog .icon-btn, #catalog .sync-btn, .chip, #group, #catalog .btn, .jd-foot a'), [], 'My sets: nothing to tap is under 44 px');
+  assert.deepEqual(await small(p, '#catalog .back, #catalog .icon-btn, #catalog .sync-btn, .chip, #group, #fold-all, #list-wrap .fold, #catalog .btn, .jd-foot a'), [], 'My sets: nothing to tap is under 44 px');
+  await p.evaluate(() => { const d = window.brickyard.doc(); d.sets.b.box = '3'; window.brickyard.takeDoc(d); });
+  await p.selectOption('#group', 'box');
+  assert.deepEqual([await p.locator('#list-wrap .fold.mark').count(), await small(p, '#list-wrap .fold, #list-wrap .box-head'), await p.$eval('#list-wrap .fold.mark', b => b.getBoundingClientRect().left >= 0)], [1, [], true], 'by moving box, the arrow that folds a box and the heading that opens it are each 44 px');
+  await p.selectOption('#group', 'room');
   assert.ok(await p.evaluate(() => parseFloat(getComputedStyle(document.getElementById('group')).fontSize)) >= 16, 'Group by is in 16 px type');
   await p.click('.item:has-text("Lamborghini")');
   assert.deepEqual(await small(p, '.sheet .btn, .sheet .seg button, .sheet .check, .sheet input:not([type="checkbox"]), .sheet select'), [], 'a set’s sheet: nothing to tap is under 44 px');

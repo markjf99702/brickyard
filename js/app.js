@@ -432,15 +432,44 @@
   function allRows() { return [].slice.call(document.querySelectorAll('#list-wrap .item[data-id]')); }
   function spot(el) {
     if (!el || !el.dataset || !($('list-wrap').contains(el) || $('chips').contains(el))) return null;
-    return { id: el.dataset.id, f: el.dataset.f, box: el.dataset.box, at: allRows().indexOf(el) };
+    return { id: el.dataset.id, f: el.dataset.f, box: el.dataset.box, fold: el.dataset.fold, at: allRows().indexOf(el) };
   }
   // A moving box's heading in Group by Moving box (or the button a search for the box shows): what opens its sheet.
   function boxHead(box) { return [].filter.call(document.querySelectorAll('#list-wrap [data-box]'), function (el) { return C.sameBox(el.dataset.box, box); })[0] || null; }
   function found(s) {
     if (s.f) return document.querySelector('#chips .chip[data-f="' + s.f + '"]') || document.querySelector('#chips .chip');
     if (s.box) return boxHead(s.box) || document.querySelector('#catalog h1'); // a box that's been emptied has no heading
+    if (s.fold !== undefined) return foldBtn(s.fold) || document.querySelector('#catalog h1');
     var rows = allRows();
     return (s.id && rowOf(s.id)) || rows[Math.min(Math.max(s.at, 0), rows.length - 1)] || document.querySelector('#catalog h1');
+  }
+  // Folding: a tap on a group's heading folds its sets away under it, and another shows them again; Fold all, on the
+  // summary line, folds every group. Down a long list (300 sets by room is 31 screens) the headings alone are a
+  // screen or two, and one tap opens the room that's wanted. Which groups are folded is kept on this device with
+  // the other settings, for each way of grouping: prefs.folded = { room: ['Office', …], box: […], … }, by the
+  // heading's words, told apart the way groups are ("office" is "Office"). Only the whole list folds: a search or a
+  // filter chip is a look for particular sets, and shows them all. A folded group's rows are still on the page,
+  // hidden (css/app.css, .folded), so paper gets the whole list.
+  function foldedNames() { var f = prefs.folded && prefs.folded[prefs.group]; return Array.isArray(f) ? f : []; }
+  function isFolded(name) { return foldedNames().some(function (n) { return C.natural(n, name) === 0; }); }
+  function foldBtn(name) { return [].filter.call(document.querySelectorAll('#list-wrap [data-fold]'), function (b) { return C.natural(b.dataset.fold, name) === 0; })[0] || null; }
+  // Keeps `names` as the folded groups of this way of grouping; only the groups on the page now, so a room that's
+  // gone isn't kept for good.
+  function setFolded(names) {
+    var here = [].map.call(document.querySelectorAll('#list-wrap [data-fold]'), function (b) { return b.dataset.fold; });
+    if (!prefs.folded || typeof prefs.folded !== 'object' || Array.isArray(prefs.folded)) prefs.folded = {};
+    prefs.folded[prefs.group] = here.filter(function (h) { return names.some(function (n) { return C.natural(n, h) === 0; }); });
+    savePrefs(); renderCatalog();
+  }
+  function toggleFold(name) {
+    var was = isFolded(name), rest = foldedNames().filter(function (n) { return C.natural(n, name) !== 0; });
+    setFolded(was ? rest : rest.concat([name]));
+  }
+  // Shows the group a set's row is in, if it's folded: for a set that's being shown (one just added, or See in My
+  // sets from the planner).
+  function unfoldFor(id) {
+    var row = rowOf(id), h = row && row.closest('ul').previousElementSibling, b = h && h.classList.contains('folded') && h.querySelector('[data-fold]');
+    if (b) setFolded(foldedNames().filter(function (n) { return C.natural(n, b.dataset.fold) !== 0; }));
   }
   function renderCatalog() {
     var had = spot(document.activeElement), from = spot(lastFocus);
@@ -475,6 +504,7 @@
     }
     $('group').value = prefs.group;
     fillLists(all);
+    $('fold-all').hidden = true; // until there are groups to fold
 
     if (!all.length) {
       $('list-wrap').innerHTML = '<div class="empty"><svg width="80" height="60" viewBox="0 0 88 72" aria-hidden="true"><rect x="14" y="30" width="60" height="34" rx="4" fill="var(--red)"/><rect x="21" y="22" width="14" height="9" rx="2" fill="var(--red)"/><rect x="53" y="22" width="14" height="9" rx="2" fill="var(--red)"/></svg>' +
@@ -551,17 +581,29 @@
     // Under Missing pieces, a quiet button that copies what the rows say, for an order (copyMissing).
     lacking = show === 'missing' ? shown.slice() : [];
     var copyLine = lacking.length ? '<p class="boxline"><button class="btn sm quiet" type="button" data-act="missing">Copy this list</button></p>' : '';
+    var canFold = !q && show === 'all' && !plain, nFolded = 0;
     $('list-wrap').innerHTML = noBox + boxLine + copyLine + groups.map(function (g) {
       // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
       // A moving box's heading is a button that opens the box's sheet (boxSheet): its sets, and what can be done
       // with the box as a whole. `raw` is the box's label as its first set has it; Not packed has none.
       var raw = prefs.group === 'box' ? (g.sets[0] || (g.lots || [])[0] || {}).box || '' : '', said = esc(g.name) + ', ' + plural(g.sets.length, 'set');
       var inner = '<span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span>';
-      return (!g.name ? '' : raw ? '<h2 class="group tap"><button type="button" class="box-head" data-box="' + esc(raw) + '"' + (g.sets.length ? ' aria-label="' + said + '"' : '') + '>' + inner + '</button></h2>'
+      // With the whole list showing, a heading folds its group (toggleFold). A moving box's heading opens the box,
+      // so it has a small button of its own before it for the folding.
+      var shut = canFold && isFolded(g.name), fold = ' data-fold="' + esc(g.name) + '" aria-expanded="' + !shut + '"';
+      if (shut) nFolded++;
+      var boxBtn = '<button type="button" class="box-head" data-box="' + esc(raw) + '"' + (g.sets.length ? ' aria-label="' + said + '"' : '') + '>' + inner + '</button>';
+      return (!g.name ? '' : canFold ? '<h2 class="group tap' + (raw ? ' two' : '') + (shut ? ' folded' : '') + '">' +
+          (raw ? '<button type="button" class="fold mark"' + fold + ' aria-label="What’s in ' + esc(g.name) + '"></button>' + boxBtn
+            : '<button type="button" class="fold"' + fold + ' aria-label="' + said + '">' + inner + '</button>') + '</h2>'
+        : raw ? '<h2 class="group tap">' + boxBtn + '</h2>'
         : '<h2 class="group"' + (g.sets.length ? ' aria-label="' + said + '"' : '') + '>' + inner + '</h2>') +
         (g.sets.length ? '<ul class="list">' + g.sets.map(function (x) { return setItem(x, q, labels); }).join('') + '</ul>' : '') +
         (g.lots ? lotsLine(g.lots, g.name.replace(/^Box /, ''), g.sets.length > 0) : '');
     }).join('') + huntLine;
+    var fa = $('fold-all');
+    fa.hidden = !canFold;
+    fa.textContent = nFolded && nFolded === groups.length ? 'Unfold all' : 'Fold all';
   }
 
   // A row says what is missing and what to check, not only that something is ("Missing pieces" and "To check" sent
@@ -642,12 +684,18 @@
   function searchKey(e) { if (e.key === 'Enter' && window.matchMedia && matchMedia('(pointer: coarse)').matches) this.blur(); }
   $('q').addEventListener('keydown', searchKey);
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
+  $('fold-all').addEventListener('click', function () {
+    var all = [].map.call(document.querySelectorAll('#list-wrap [data-fold]'), function (b) { return b.dataset.fold; }), open = this.textContent === 'Unfold all';
+    setFolded(open ? [] : all);
+    say(open ? 'Every group shown' : 'Every group folded');
+  });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;
     show = b.dataset.f; renderCatalog();
   });
   $('list-wrap').addEventListener('click', function (e) {
     var b = e.target.closest('[data-id]'); if (b) return editSheet(DOC.sets[b.dataset.id]);
+    var f = e.target.closest('[data-fold]'); if (f) return toggleFold(f.dataset.fold);
     var bx = e.target.closest('[data-box]'); if (bx) return boxSheet(bx.dataset.box);
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') editSheet(null);
@@ -1076,6 +1124,7 @@
   function unhide(id) {
     if (!rowOf(id) && !passes(DOC.sets[id])) { show = 'all'; renderCatalog(); }
     if (!rowOf(id)) { $('q').value = ''; renderCatalog(); }
+    unfoldFor(id);
     return rowOf(id);
   }
   // Runs `then` on My sets, going there first from another screen, if the set is still there to show.
@@ -1662,6 +1711,8 @@
     }
     var rows = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; }), row = rows[0];
     if (!row) return;
+    // The first of them is shown even in a group that was folded (the others keep their folds, and their tint).
+    if (!row.getClientRects().length) { unfoldFor(row.dataset.id); rows = allRows().filter(function (el) { return ids.indexOf(el.dataset.id) >= 0; }); row = rows[0]; }
     var fab = document.querySelector('#catalog .fab-row'), at = row.getBoundingClientRect();
     var top = document.querySelector('#catalog .bar').getBoundingClientRect().bottom, tools = document.querySelector('#catalog .tools');
     if (getComputedStyle(tools).position === 'sticky') top += tools.offsetHeight; // the search stays under the bar
