@@ -603,8 +603,11 @@
   // set after another, each search started with clearing the one before.
   $('q').addEventListener('focus', function () { if (this.value) this.select(); });
   // The keyboard's Search key (Enter) puts the keyboard away: the list is searched as each letter is typed, so the
-  // key had nothing to do, and the keyboard stayed over all but a row and a half of what was found.
-  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  // key had nothing to do, and the keyboard stayed over all but a row and a half of what was found. On a touch
+  // screen only (a phone or a tablet, where the finger is the pointer): on a laptop there's no keyboard to put
+  // away, and Enter took the cursor out of the box, so typing more meant a click back into it.
+  function searchKey(e) { if (e.key === 'Enter' && window.matchMedia && matchMedia('(pointer: coarse)').matches) this.blur(); }
+  $('q').addEventListener('keydown', searchKey);
   $('group').addEventListener('change', function () { prefs.group = this.value; savePrefs(); renderCatalog(); });
   $('chips').addEventListener('click', function (e) {
     var b = e.target.closest('.chip'); if (!b) return;
@@ -1226,7 +1229,7 @@
       });
       $('ab-none').hidden = any;
     });
-    $('ab-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+    $('ab-q').addEventListener('keydown', searchKey);
     $('ab-go').onclick = function () {
       var was = rows.filter(function (r) { return r.on; }).map(function (r) { return alter(r.x.id, { box: box }); }).filter(Boolean);
       if (!was.length) { closeSheet(); return; }

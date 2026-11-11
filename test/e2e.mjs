@@ -2534,7 +2534,8 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
 }
 
 // Small things for fingers. The keyboard's Search key (Enter) in the search box puts the keyboard away: the list
-// is searched at every letter, so the key did nothing and the keyboard stayed over the results. Two quick taps on
+// is searched at every letter, so the key did nothing and the keyboard stayed over the results. Only on a touch
+// screen: on a laptop Enter does nothing, and the cursor stays in the box (it used to leave it). Two quick taps on
 // a button are never a double tap that zooms the page (touch-action), while the 3D picture keeps its touches to
 // itself. A hover look is only for a device that hovers (on a phone it stayed on the last row tapped), and rows,
 // cards, chips and menu rows have a pressed look. And a run of digits is never made a phone link.
@@ -2545,6 +2546,19 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await p.press('#q', 'Enter');
   assert.deepEqual([await p.evaluate(() => document.activeElement.tagName), await p.inputValue('#q'), await p.locator('#list-wrap .item .t').allTextContents()], ['BODY', 'tree', ['Tree House']], 'Enter leaves the search box, with what it found still showing');
   await p.fill('#q', '');
+  {
+    const lap = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built', box: '3' }, o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' } } }, { viewport: { width: 1280, height: 800 }, hasTouch: false, deviceScaleFactor: 1 });
+    await lap.p.goto(base + '#catalog');
+    await lap.p.fill('#q', 'tree');
+    await lap.p.press('#q', 'Enter');
+    await lap.p.keyboard.type(' house');
+    assert.deepEqual([await lap.p.evaluate(() => document.activeElement.id), await lap.p.inputValue('#q'), await lap.p.locator('#list-wrap .item .t').allTextContents()], ['q', 'tree house', ['Tree House']], 'on a laptop Enter leaves the cursor in the search box, and typing carries on');
+    await lap.p.fill('#q', 'box 3');
+    await lap.p.click('.boxline button'); await lap.p.click('#bx-add');
+    await lap.p.fill('#ab-q', 'orc'); await lap.p.press('#ab-q', 'Enter');
+    assert.deepEqual([await lap.p.evaluate(() => document.activeElement.id), await lap.p.locator('.sheet').count()], ['ab-q', 1], 'and in the search of Add sets to this box');
+    await lap.c.close();
+  }
   const touch = sels => p.evaluate(list => list.map(s => getComputedStyle(document.querySelector(s)).touchAction).join(), sels);
   assert.equal(await touch(['#add-btn', '.chip', '#q', '.item', '#group', '#menu-btn', '#catalog .back', '.jd-foot a']), Array(8).fill('manipulation').join());
   assert.equal(await p.getAttribute('meta[name="format-detection"]', 'content'), 'telephone=no');
