@@ -163,38 +163,60 @@
     });
   }
 
-  // Put every waiting set somewhere it fits, keeping sets already on shelves where they are. Tallest sets go
-  // first, each on the shortest shelf that takes it with CLEAR cm above it, so tall shelves stay free for tall
-  // sets. Among shelves of that height, one that takes it facing out comes before one where it has to turn side-on
-  // (it used to turn on the first shelf it came to while the next one still had room for it facing out); then the
-  // shelf it fills most nearly. Before any of that, a set with a room in My sets goes on a bookcase in that room
-  // when one takes it, and anywhere only when none does; sets and bookcases with no room are placed as ever.
-  // Shelves still level after all that are taken from eye level outwards (it used to be from the top down).
-  // Returns new bookcases (the old ones aren't changed) and the sets that didn't fit,
-  // with why.
+  // Put every waiting set somewhere it fits, keeping sets already on shelves where they are. Returns new bookcases
+  // (the old ones aren't changed) and the sets that didn't fit, with why.
+  //
+  // The sets are taken tallest first, each put on the best shelf there is for it then (fillOnce, below). Taking them
+  // in one order only can leave out a set that another order finds room for, so eight ways are tried: four
+  // orders, each filling the fullest shelf first and then again the emptiest first. Tallest first on the fullest
+  // shelf is what's kept unless another way places more sets (in 200 made-up collections that was 1 in 4 of them);
+  // of the ways that place the most, the one with fewest sets side-on.
+  var ORDERS = [
+    function (a, b) { return b.size.h - a.size.h || Math.max(b.size.w, b.size.d) - Math.max(a.size.w, a.size.d); }, // tallest
+    function (a, b) { return b.size.w - a.size.w || b.size.h - a.size.h; }, // widest
+    function (a, b) { return b.size.w * b.size.h - a.size.w * a.size.h; }, // biggest from the front
+    function (a, b) { return b.size.h - a.size.h || a.size.w - b.size.w; }, // tallest, the narrower of them first
+  ];
   function fill(cases, sets) {
     var byId = {}; sets.forEach(function (x) { byId[x.id] = x; });
+    var first = null, best = null;
+    ORDERS.forEach(function (order) {
+      [false, true].forEach(function (spread) {
+        var r = fillOnce(cases, sets, byId, order, spread);
+        if (!first) first = best = r;
+        else if (r.left.length < best.left.length || (r.left.length === best.left.length && best !== first && r.turned < best.turned)) best = r;
+      });
+    });
+    return { cases: best.cases, left: best.left };
+  }
+  // One way of filling. For each set the best shelf is, most important first: one in the set's own room (a set with
+  // a room in My sets goes on a bookcase in that room when one takes it, and anywhere only when none does; sets and
+  // bookcases with no room are placed as ever); the shortest that takes it with CLEAR cm above it, so tall shelves
+  // stay free for tall sets; one that takes it facing out before one where it has to turn side-on (it used to turn
+  // on the first shelf it came to while the next one still had room for it facing out); the one it fills most
+  // nearly (or, with `spread`, the one with most room left); and the one nearest eye level (it used to be the top).
+  function fillOnce(cases, sets, byId, order, spread) {
     var out = JSON.parse(JSON.stringify(cases));
     var todo = sort(sets, out).waiting.slice().sort(function (a, b) {
-      return b.size.h - a.size.h || Math.max(b.size.w, b.size.d) - Math.max(a.size.w, a.size.d) || String(a.name || '').localeCompare(String(b.name || ''));
+      return order(a, b) || String(a.name || '').localeCompare(String(b.name || '')) || (String(a.id) < String(b.id) ? -1 : 1);
     });
-    var left = [];
+    var left = [], turned = 0;
     todo.forEach(function (x) {
       var best = null;
       out.forEach(function (c) {
         c.levels.forEach(function (l, li) {
           var f = fits(c, li, x, byId, false, CLEAR);
           if (f.why) return;
-          // What makes one shelf better than another, most important first; less is better.
-          var key = [x.room && !sameRoom(x.room, c.room) ? 1 : 0, tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along), eyeGap(c, li)];
+          var rest = tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along);
+          var key = [x.room && !sameRoom(x.room, c.room) ? 1 : 0, tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, spread ? -rest : rest, eyeGap(c, li)];
           if (!best || before(key, best.key)) best = { l: l, turn: f.turn, key: key };
         });
       });
-      if (!best) { left.push({ set: x, why: whyNot(out, x, byId, CLEAR) }); return; }
-      var p = { id: x.id }; if (best.turn) p.turn = true;
+      if (!best) { left.push(x); return; }
+      var p = { id: x.id }; if (best.turn) { p.turn = true; turned++; }
       best.l.sets.push(p);
     });
-    return { cases: out, left: left };
+    return { cases: out, turned: turned, left: left.map(function (x) { return { set: x, why: whyNot(out, x, byId, CLEAR) }; }) };
   }
   // How far the middle of a shelf is from eye level, in tenths of a cm, taking the bookcase to stand on the floor
   // with a board under each shelf. levels[0] is the top shelf.

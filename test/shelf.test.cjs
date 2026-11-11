@@ -111,6 +111,19 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq(S.fill([billy], pair).cases[0].levels.map(l => l.sets.length).join(''), '020000', 'a shelf with a set on it is still filled before an empty one');
 }
 
+// Fit tries eight ways of taking the sets and keeps the one that places most. Tallest first (widest of those first)
+// stands the 60 cm set on this 80 cm shelf and nothing else fits beside it; another order gets two sets on. When
+// no other way places more, tallest first is what's kept.
+{
+  const four = [set('a', 30, 20, 20), set('b', 60, 20, 20), set('c', 30, 20, 20), set('d', 50, 20, 20)];
+  const k = { id: 'k', name: 'K', w: 80, d: 20, levels: [{ h: 32, sets: [] }, { h: 12, sets: [] }] };
+  const r = S.fill([k], four);
+  eq([r.cases[0].levels[0].sets.map(p => p.id).sort(), r.left.map(x => [x.set.id, x.why]).sort()], [['a', 'c'], [['b', 'No room left on a shelf it fits'], ['d', 'No room left on a shelf it fits']]], 'the order that places most sets is kept');
+  eq(Object.keys(r).sort(), ['cases', 'left'], 'Fit gives back the bookcases and what is left');
+  const wideK = { id: 'k', name: 'K', w: 100, d: 20, levels: [{ h: 32, sets: [] }] };
+  eq(S.fill([wideK], four).cases[0].levels[0].sets.map(p => p.id), ['b', 'a'], 'tallest and widest first when nothing places more');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
