@@ -164,7 +164,10 @@
 
   // Put every waiting set somewhere it fits, keeping sets already on shelves where they are. Tallest sets go
   // first, each on the shortest shelf that takes it with CLEAR cm above it, so tall shelves stay free for tall
-  // sets. Returns new bookcases (the old ones aren't changed) and the sets that didn't fit, with why.
+  // sets. Among shelves of that height, one that takes it facing out comes before one where it has to turn side-on
+  // (it used to turn on the first shelf it came to while the next one still had room for it facing out); then the
+  // shelf it fills most nearly. Returns new bookcases (the old ones aren't changed) and the sets that didn't fit,
+  // with why.
   function fill(cases, sets) {
     var byId = {}; sets.forEach(function (x) { byId[x.id] = x; });
     var out = JSON.parse(JSON.stringify(cases));
@@ -178,8 +181,9 @@
         c.levels.forEach(function (l, li) {
           var f = fits(c, li, x, byId, false, CLEAR);
           if (f.why) return;
-          var spare = l.h - x.size.h, rest = tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along);
-          if (!best || spare < best.spare || (spare === best.spare && rest < best.rest)) best = { c: c, l: l, turn: f.turn, spare: spare, rest: rest };
+          // What makes one shelf better than another, most important first; less is better.
+          var key = [tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along)];
+          if (!best || before(key, best.key)) best = { l: l, turn: f.turn, key: key };
         });
       });
       if (!best) { left.push({ set: x, why: whyNot(out, x, byId, CLEAR) }); return; }
@@ -187,6 +191,10 @@
       best.l.sets.push(p);
     });
     return { cases: out, left: left };
+  }
+  function before(a, b) {
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+    return false;
   }
 
   // Remove a set from wherever it is.

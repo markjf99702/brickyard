@@ -73,6 +73,18 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq(S.fill([held], all).cases[0].levels[0].sets.map(p => p.id), ['snug', 'low'], 'a set already on a shelf its own height stays there');
 }
 
+// Side-on only when no shelf of that height takes the set facing out. The first shelf has 40 cm left and the second
+// 74: a 50 x 20 set goes on the second facing out, where it used to turn side-on on the first (the closer fit).
+{
+  const a = set('a', 39, 20, 20), b = set('b', 5, 20, 20), x = set('x', 50, 20, 20), all = [a, b, x];
+  const k = { id: 'k', name: 'K', w: 80, d: 60, levels: [{ h: 30, sets: [{ id: 'a' }] }, { h: 30, sets: [{ id: 'b' }] }] };
+  eq(S.fill([k], all).cases[0].levels.map(l => l.sets), [[{ id: 'a' }], [{ id: 'b' }, { id: 'x' }]], 'facing out on another shelf of the same height before side-on');
+  const k1 = { id: 'k', name: 'K', w: 80, d: 60, levels: [{ h: 30, sets: [{ id: 'a' }] }, { h: 30, sets: [{ id: 'b' }, { id: 'c' }] }] };
+  eq(S.fill([k1], all.concat([set('c', 30, 20, 20)])).cases[0].levels[0].sets, [{ id: 'a' }, { id: 'x', turn: true }], 'side-on when none of them takes it facing out');
+  const k2 = { id: 'k', name: 'K', w: 80, d: 60, levels: [{ h: 30, sets: [{ id: 'a' }] }, { h: 40, sets: [{ id: 'b' }] }] };
+  eq(S.fill([k2], all).cases[0].levels[0].sets, [{ id: 'a' }, { id: 'x', turn: true }], 'a taller shelf is still kept for taller sets');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
