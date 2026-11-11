@@ -222,6 +222,10 @@ const link = out.trim().split('\n').find(l => l.startsWith('https://'));
 await page.goto(base + link.slice(link.indexOf('#')));
 await page.waitForSelector('.rv');
 assert.equal(await page.locator('.rv li').count(), 7);
+// It's owned once, and the link has it on a shelf the catalog doesn't: that row offers to move it (see further down).
+// Unticked here, so the catalog below is the one these checks were written for.
+assert.deepEqual([await page.locator('.rv li.off').count(), await page.textContent('.rv li .w'), await page.textContent('#rv-add')], [0, 'Move it: Office › Closet (now Office · Box 7)', 'Add 6, move 1'], 'the set already owned is offered as a move');
+await page.click('.rv li >> nth=0 >> input');
 assert.equal(await page.locator('.rv li.off').count(), 1, 'the set already owned is unticked');
 assert.match(await page.textContent('#rv-add'), /Add 6 sets/);
 assert.deepEqual(await page.$$eval('.bulk label > span', s => s.map(x => x.textContent)), ['Room', 'Shelf or spot', 'Moving box'], 'the fields for the whole batch have labels');
@@ -1052,11 +1056,14 @@ assert.equal(Object.values((await doc()).sets).filter(x => x.del).length, 1, 're
   await p.goto(link);
   await p.waitForSelector('#rv-add');
   await p.fill('#rv-box', '12'); // the wrong box
+  // Put them all in box 12 is all of them: the Bonsai Tree that's owned already is in the photo too, and its row
+  // turns into a move, ticked. Undo takes it back out of the box as well.
+  assert.deepEqual([await ticks(), await p.textContent('#rv li:nth-child(4) .w'), await p.textContent('#rv-add')], [[true, true, true, true], 'Move it: Box 12', 'Add 3, move 1']);
   await p.click('#rv-add');
-  assert.deepEqual([await toastSays(), await names()], [['Added 3 sets', 'Undo'], ['Bonsai Tree', 'Galaxy Explorer in 12', 'Kingfisher Bird in 12', 'Orchid', 'Retro Radio in 12']]);
+  assert.deepEqual([await toastSays(), await names()], [['Added 3, moved 1', 'Undo'], ['Bonsai Tree in 12', 'Galaxy Explorer in 12', 'Kingfisher Bird in 12', 'Orchid', 'Retro Radio in 12']]);
   await p.click('.toast button');
   assert.deepEqual([await toastSays(), await names(), await p.locator('.item .t').allTextContents(), await p.evaluate(() => window.brickyard.doc().seen)],
-    [['Took those 3 sets out again', ''], ['Bonsai Tree', 'Orchid'], ['Bonsai Tree', 'Orchid'], {}], 'Undo leaves My sets as it was');
+    [['Took out the 3 sets added, and put the other back', ''], ['Bonsai Tree', 'Orchid'], ['Bonsai Tree', 'Orchid'], {}], 'Undo leaves My sets as it was');
   assert.deepEqual(Object.values(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog.sets).filter(x => !x.del).length, 2, 'and that is saved');
   await p.goto(link);
   await p.waitForSelector('#rv-add');
@@ -1374,6 +1381,94 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   assert.deepEqual((await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del).map(x => x.name))).sort(), ['Bonsai Tree', 'Galaxy Explorer', 'Galaxy Explorer', 'Tree House'], 'left ticked, both copies are added; unticked, one');
   const plain = await open([{ name: 'Bonsai Tree' }, { num: '21327', name: 'Typewriter' }]);
   assert.deepEqual([plain.map(r => r[2].length), await p.textContent('.sheet .lede')], [[1, 0], 'Hall shelf · 2 sets · 1 you already have'], 'a list with nothing in it twice says nothing about it');
+  await c.close();
+}
+
+// A link from Claude moves the sets you already own. A Tree House sent as "box 7, partly built" used to arrive
+// unticked as "You already have this one", and ticking it added a second Tree House, the first still on the bookcase.
+// A row for a set owned once, whose room, shelf, box or state is not the catalog's, now says what it would change
+// and is ticked; Add changes only those on the set that's owned. A set typed in by name gets its number from the
+// row. "Add a second copy instead" is on each such row; a set owned twice is left alone, and says so.
+{
+  const own = {
+    t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', year: 2019, pieces: 3036, state: 'built', room: 'Living room', spot: 'Bookcase', notes: 'A gift', missing: 'one leaf', tags: ['ideas'], added: '2026-01-02' },
+    o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built', room: 'Office', spot: 'Desk', box: 'Box 3' },
+    b: { id: 'b', t: 1, name: 'Bonsai Tree', room: 'Office', year: 2020, notes: 'Typed in' },
+    g1: { id: 'g1', t: 1, num: '10497-1', name: 'Galaxy Explorer', room: 'Hall' }, g2: { id: 'g2', t: 1, num: '10497-1', name: 'Galaxy Explorer', room: 'Attic' },
+    r: { id: 'r', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', room: 'Office', box: '7' },
+  };
+  const batch = { brickyard: 1, batch: { id: 'pack7', name: 'Box 7', box: '7', sets: [
+    { num: '21318', name: 'Treehouse', state: 'partial', notes: 'From the photo', year: 2021 }, { num: '10311', name: 'Orchid' }, { num: '10281', name: 'Bonsai Tree', year: 2021, pieces: 878, theme: 'Icons' },
+    { num: '10497', name: 'Galaxy Explorer' }, { num: '10334', name: 'Retro Radio' }, { num: '21327', name: 'Typewriter' }, { num: '10311', name: 'Orchid' }] } };
+  const { c, p } = await withSets({ sets: own });
+  const link = base + '#b1z' + deflateRawSync(JSON.stringify(batch)).toString('base64url');
+  const rows = () => p.$$eval('#rv li', ls => ls.map(l => [l.querySelector('input').checked, l.querySelector('input').getAttribute('aria-label'), [...l.querySelectorAll('.w')].map(w => w.textContent).join(' | '), (l.querySelector('[data-copy]') || {}).textContent || '']));
+  const sets = () => p.evaluate(() => { const o = {}; Object.values(window.brickyard.doc().sets).filter(x => !x.del).forEach(x => { o[x.id] = x; }); return o; });
+  const says = async () => { await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden); return p.textContent('.toast span'); };
+  await p.goto(link);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual(await rows(), [
+    [true, 'Move Treehouse', 'Move it: Box 7, Partly built (now Living room › Bookcase, Built)', 'Add a second copy instead'],
+    [true, 'Move Orchid', 'Move it: Box 7 (now Office › Desk · Box 3)', 'Add a second copy instead'],
+    [true, 'Move Bonsai Tree', 'Move it: Box 7 (now Office), and add its number', 'Add a second copy instead'],
+    [false, 'Add Galaxy Explorer', 'You already have 2 of this one, and a link can’t tell which to change. Change the right one yourself.', ''],
+    [false, 'Add Retro Radio', 'You already have this one (Office · Box 7)', ''],
+    [true, 'Add Typewriter', '', ''],
+    [false, 'Add Orchid', 'You already have this one (Office › Desk · Box 3) | Also above in this list.', ''],
+  ], 'what each row would do');
+  assert.deepEqual([await p.textContent('#rv-add'), await p.textContent('#rv-n'), await p.textContent('.sheet .lede')], ['Add 1, move 3', '4 of 7 ticked', 'Box 7 · 7 sets · 6 you already have · 1 twice in this list']);
+  // The link to tap under a row is a finger tall, and the words don't spill out of the sheet on a phone.
+  assert.ok(await p.$$eval('#rv [data-copy]', bs => bs.every(b => b.getBoundingClientRect().height >= 44)), 'Add a second copy instead is 44 px tall');
+  assert.ok(await p.evaluate(() => document.querySelector('.sheet').scrollWidth <= document.querySelector('.sheet').clientWidth), 'nothing spills sideways');
+  // A second copy instead: the row adds, and can be turned back.
+  await p.click('#rv li:nth-child(2) [data-copy]');
+  assert.deepEqual([(await rows())[1], await p.textContent('#rv-add')], [[true, 'Add Orchid', 'Adds a second copy. You already have this one (Office › Desk · Box 3)', 'Move the one you have instead'], 'Add 2, move 2']);
+  await p.click('#rv li:nth-child(2) [data-copy]');
+  assert.deepEqual([(await rows())[1].slice(0, 2), await p.textContent('#rv-add')], [[true, 'Move Orchid'], 'Add 1, move 3']);
+  // What's typed under Put them all in changes where they'd go, and the rows say so; a tick that was touched stays.
+  await p.click('#rv li:nth-child(3) input');
+  await p.fill('#rv-box', '');
+  assert.deepEqual((await rows()).map(r => [r[0], r[2]]).slice(0, 5), [[true, 'Change it: Partly built (now Built)'], [false, 'You already have this one (Office › Desk · Box 3)'],
+    [false, 'Add its number to the one you have (Office)'], [false, 'You already have 2 of this one'], [false, 'You already have this one (Office · Box 7)']], 'with the box cleared, nothing is packed');
+  assert.equal(await p.textContent('#rv-add'), 'Add 1, change 1');
+  await p.fill('#rv-box', '7');
+  await p.click('#rv li:nth-child(3) input');
+  assert.equal(await p.textContent('#rv-add'), 'Add 1, move 3');
+  await p.click('#rv-add');
+  assert.equal(await says(), 'Added 1, moved 3');
+  let now = await sets();
+  assert.deepEqual([Object.keys(now).length, now.t, now.o.box, now.b], [7,
+    { ...own.t, state: 'partial', box: '7', t: now.t.t }, '7', { id: 'b', name: 'Bonsai Tree', room: 'Office', year: 2020, notes: 'Typed in', num: '10281-1', pieces: 878, theme: 'Icons', box: '7', t: now.b.t }],
+    'only the box and the state changed on the Tree House; the Bonsai Tree got its number, pieces and theme, and kept its year');
+  assert.ok(now.t.t > 1 && now.g1.t === 1 && now.r.t === 1, 'and the sets that weren’t ticked are untouched');
+  // Undo takes the new set out and puts the three back as they were.
+  await p.click('.toast button');
+  now = await sets();
+  assert.deepEqual([Object.keys(now).sort(), { ...now.t, t: 1 }, { ...now.o, t: 1 }, { ...now.b, t: 1 }], [Object.keys(own).sort(), own.t, own.o, own.b], 'Undo puts everything back');
+  assert.equal(await says(), 'Took out the 1 set added, and put the others back');
+  // Only sets that are owned: the button and the message say Move.
+  const just = base + '#b1z' + deflateRawSync(JSON.stringify({ brickyard: 1, batch: { id: 'pack9', sets: [{ num: '21318', box: '9' }, { num: '10311', room: 'Office', spot: 'Desk', state: 'apart' }, { num: '10334', room: 'Den' }] } })).toString('base64url');
+  await p.goto('about:blank');
+  await p.goto(just);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([(await rows()).map(r => r[2]), await p.textContent('#rv-add')], [['Move it: Box 9 (now Living room › Bookcase)', 'Change it: Taken apart (now Built)', 'Move it: Den (now Office · Box 7)'], 'Move 2, change 1']);
+  await p.click('#rv li:nth-child(2) input');
+  assert.equal(await p.textContent('#rv-add'), 'Move 2 sets');
+  await p.click('#rv-add');
+  assert.equal(await says(), 'Moved 2 sets');
+  now = await sets();
+  assert.deepEqual([now.t.box, now.t.room, now.r.room, now.r.box, now.o.state, Object.keys(now).length], ['9', 'Living room', 'Den', '7', 'built', 6], 'moved to another room with no box named, it stays in its box');
+  // Opened again, the link has nothing left to do; and an old link no longer matches where the sets are, but it was
+  // opened before, so its moves aren't ticked: one tap would have put them all back.
+  await p.goto('about:blank');
+  await p.goto(just);
+  await p.waitForSelector('#rv-add');
+  assert.deepEqual([(await rows()).map(r => [r[0], r[2]]), await p.isDisabled('#rv-add')], [[[false, 'You already have this one (Living room › Bookcase · Box 9)'], [false, 'Change it: Taken apart (now Built)'], [false, 'You already have this one (Den · Box 7)']], true]);
+  await p.click('#rv li:nth-child(2) input');
+  await p.click('#rv-add');
+  assert.deepEqual([await says(), (await sets()).o.state], ['Changed 1 set', 'apart']);
+  await p.click('.toast button');
+  assert.deepEqual([await says(), (await sets()).o.state], ['Put that set back as it was', 'built']);
   await c.close();
 }
 

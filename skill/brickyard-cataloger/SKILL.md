@@ -5,7 +5,7 @@ description: Catalog someone's LEGO sets into Brickyard, their LEGO app, from ph
 
 # Brickyard cataloger
 
-Brickyard (https://brickyard.junkdrawer.works/) keeps track of someone's LEGO: every set they own, where it is (a room and shelf, or a moving box), whether it's built, and what pieces are missing. It keeps its data in their browser and nowhere else. Your job is to turn photos of their sets into an accurate list and hand it to Brickyard as a **link**. Opening the link shows the list to check, with sets they already own unticked, before anything is added.
+Brickyard (https://brickyard.junkdrawer.works/) keeps track of someone's LEGO: every set they own, where it is (a room and shelf, or a moving box), whether it's built, and what pieces are missing. It keeps its data in their browser and nowhere else. Your job is to turn photos of their sets into an accurate list and hand it to Brickyard as a **link**. Opening the link shows the list to check before anything is added: sets they already own are unticked, or offered as a move when your list has them somewhere new.
 
 Two things make this worth doing, so protect them:
 - **Accuracy over completeness.** A wrong set in someone's catalog is worse than a missing one. Never invent set numbers, and say plainly what you couldn't identify.
@@ -30,6 +30,8 @@ Rules:
 ## 2. Where they are, and what state they're in
 
 Each set can have a **room** and a **spot** (shelf, desk, closet), and a **moving box** label for while things are packed. Use what they tell you: "these are on the office bookcase" → `room: "Office", spot: "Bookcase"`; "this is box 7" → `box: "7"`. If they said nothing, don't hold things up asking: the review screen lets them set a room, spot and box for the whole batch.
+
+**Sets they already own go in the list too, with where they are now.** "These eight went in box 7" is eight entries with `box: "7"`, whether or not the sets are in Brickyard already. For a set they own once, Brickyard's review offers the entry as a move ("Move it: Box 7 (now Living room › Bookcase)") and changes only its room, spot, box and state, never its name, notes or missing pieces. So give only what they told you or the photo shows: leave `state` out unless you know it, and leave `room` and `spot` out when all you know is the box. A link never takes a set out of its box: an entry with no `box` leaves the box as it is, and they unpack in Brickyard (tap the box’s heading in My sets, then **Unpack this box**). A set they own twice isn't moved (a link can't tell the copies apart); say so, and that they can change the right one in Brickyard. A set they typed in by name alone gets its number, year, pieces and theme filled in from your entry.
 
 Each set has a **state**:
 - `built`: assembled, on display or put away whole;
@@ -74,4 +76,4 @@ Brickyard's shelf planner needs each built set's size, and its **Copy these for 
 4. The Brickyard link, as a link, copied character for character from the script's output.
 5. The file as the fallback (**Open a file** in Brickyard's menu).
 
-Don't claim you've added sets to their catalog. They add them when they open the link and tap **Add**. Opening the same link twice is safe: Brickyard says so and unticks what's already there.
+Don't claim you've added or moved sets in their catalog. They do that when they open the link and tap **Add**. Opening the same link twice is safe: Brickyard says so and unticks what's already there.

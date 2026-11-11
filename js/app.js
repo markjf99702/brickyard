@@ -1330,13 +1330,76 @@
     // already owned is found by its number or name, which misses one whose number was put right after it was
     // added, or one removed since: opened again, the link had those ticked, one tap from coming back.
     var before = tookFrom(batch.id);
+    // A row for a set that's owned once is about that set (`one`): Claude was sent a photo of it where it is now.
+    // Owned twice, a link can't tell which copy it means; and a second row for the same set is a second copy.
+    var spoken = {};
     var rows = batch.sets.map(function (x, i) {
-      var dup = C.findDup(DOC, x), was = before[i] ? DOC.sets[before[i]] || { del: 1 } : null;
-      return { x: x, dup: dup, was: dup ? null : was, again: again[i], on: !dup && !was };
+      var dups = C.findDups(DOC, x), dup = dups[0] || null, was = before[i] ? DOC.sets[before[i]] || { del: 1 } : null;
+      var one = dups.length === 1 && !spoken[dup.id];
+      if (dup) spoken[dup.id] = 1;
+      return { x: x, dup: dup, copies: dups.length, one: one, was: dup ? null : was, again: again[i], on: !dup && !was, copy: false, touched: false };
     });
     var seenAt = DOC.seen[batch.id];
     var nd = rows.filter(function (r) { return r.dup; }).length, nc = rows.filter(function (r) { return r.x.check; }).length, na = rows.filter(function (r) { return r.again; }).length;
     var nb = rows.filter(function (r) { return r.was; }).length;
+    // A row as it would be added, with what's typed under Put them all in (`f`; the batch's own to start with).
+    var typed = { room: batch.room, spot: batch.spot, box: batch.box };
+    function placed(x) {
+      var y = Object.assign({}, x), f = typed;
+      if (f.room && f.room !== batch.room) { y.room = f.room; y.spot = f.spot; }
+      else if (f.spot && f.spot !== batch.spot) y.spot = f.spot;
+      // A box typed here goes on every set. Cleared, the batch's box comes off the sets that have it (they're
+      // unpacked), and a set Claude put in a box of its own keeps that one.
+      if (f.box && f.box !== batch.box) y.box = f.box;
+      else if (!f.box && batch.box && C.natural(C.boxName(y.box), C.boxName(batch.box)) === 0) delete y.box;
+      return y;
+    }
+    // What a row would change on the one set it's about (C.updateFor): its room, shelf, box and state, and its
+    // number if it was typed in by name. Null for a row that adds a set. `asCopy` aside, for the words on the row.
+    function about(r) { return r.one ? C.updateFor(r.dup, placed(r.x)) : null; }
+    function change(r) { return r.copy ? null : about(r); }
+    // A move is ticked to start with, so "these eight went in box 7" is one tap; not on a link opened before,
+    // where the rows say where the sets were then, and one tap would put them all back there.
+    function usual(r) { return r.dup ? !!change(r) && !seenAt && !nb : !r.was; }
+    function verb(r) { var u = change(r); return !u ? 'Add' : u.moved ? 'Move' : 'Change'; }
+    function moveWords(u, have) {
+      var to = [], from = [], t = '';
+      // Where to, by the parts of it that change ("Box 7"), and where it is now, in full.
+      if (u.moved) {
+        var part = {};
+        if ('room' in u.set || 'spot' in u.set) { part.room = u.after.room; part.spot = u.after.spot; }
+        if (u.set.box) part.box = u.set.box;
+        to.push(C.where(part));
+        from.push(C.where(have));
+      }
+      if (u.state) { to.push(C.STATE_NAMES[u.after.state]); from.push(C.STATE_NAMES[have.state]); }
+      from = from.filter(Boolean).join(', ');
+      if (to.length) t = (u.moved ? 'Move it: ' : 'Change it: ') + to.join(', ') + (from ? ' (now ' + from + ')' : '');
+      if (u.fill) t = t ? t + ', and add its number' : 'Add its number to the one you have' + (C.where(have) ? ' (' + C.where(have) + ')' : '');
+      return t;
+    }
+    // The lines under a row's name, which its tick box is described by: Tab down the ticks read only "Add Cargo
+    // Train", without the reason it's unticked or the thing to check, the things this review is for.
+    function lines(r) {
+      var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · '), u = change(r), have = '';
+      if (r.dup) {
+        var at = C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '';
+        have = u ? esc(moveWords(u, r.dup))
+          : r.copy ? 'Adds a second copy. You already have this one' + at
+          : r.copies > 1 ? 'You already have ' + r.copies + ' of this one' + (C.updateFor(r.dup, placed(x)) ? ', and a link can’t tell which to change. Change the right one yourself.' : '')
+          : 'You already have this one' + at;
+      }
+      return '<div class="m">' + esc(meta) + '</div>' + (have ? '<div class="w' + (u ? ' mv' : '') + '">' + have + '</div>' : '') +
+        (r.was ? '<div class="w">Added from this link before' + (r.was.del ? ', and removed since' : ', now ' + esc(nowCalled(x, r.was))) + '</div>' : '') +
+        (r.again ? '<div class="w">Also above in this list.' + (r.on && !u ? ' Untick it unless you have two.' : '') + '</div>' : '');
+    }
+    // "Add a second copy instead", on a row that would change the set that's owned, and the way back.
+    function other(r) {
+      var u = about(r);
+      return !u ? '' : '<button class="rv-alt" type="button" data-copy>' + (!r.copy ? 'Add a second copy instead' : u.moved ? 'Move the one you have instead' : 'Change the one you have instead') + '</button>';
+    }
+    function label(r) { return verb(r) + ' ' + (r.x.name || 'this set'); }
+    rows.forEach(function (r) { r.on = usual(r); r.changes = !!change(r); });
     openSheet('<div class="hd"><h2 id="sheetTitle">Add sets from Claude</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede">' + (batch.name ? '<b>' + esc(batch.name) + '</b> · ' : '') + plural(rows.length, 'set') + (nd ? ' · ' + nd + ' you already have' : '') + (nb ? ' · ' + nb + ' added before' : '') + (nc ? ' · ' + nc + ' to check' : '') + (na ? ' · ' + na + ' twice in this list' : '') + '</p>' +
       (seenAt || nb ? '<p class="flag"><span>You opened this link before. ' + (nb ? 'The sets you added from it then are unticked, and so are any others you already have.' : 'Sets you already have are unticked.') + '</span></p>' : '') +
@@ -1344,47 +1407,89 @@
       field('Moving box', input('rv-box', batch.box, ' list="dl-box"')) +
       '<span class="note" style="margin:0">Leave Room and Shelf blank to keep what Claude put for each set. Clear Moving box if they’re unpacked.</span></div>' +
       '<ul class="rv" id="rv">' + rows.map(function (r, i) {
-        var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · ');
-        // A tick box is described by the rest of its row: Tab down the ticks read only "Add Cargo Train", without
-        // the reason it's unticked or the thing to check, the things this review is for.
-        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '" aria-describedby="rv-d' + i + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
-          '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div id="rv-d' + i + '"><div class="m">' + esc(meta) + '</div>' +
-          (r.dup ? '<div class="w">You already have this one' + (C.where(r.dup) ? ' (' + esc(C.where(r.dup)) + ')' : '') + '</div>' : '') +
-          (r.was ? '<div class="w">Added from this link before' + (r.was.del ? ', and removed since' : ', now ' + esc(nowCalled(x, r.was))) + '</div>' : '') +
-          (r.again ? '<div class="w">Also above in this list.' + (r.on ? ' Untick it unless you have two.' : '') + '</div>' : '') +
-          (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div></div></li>';
+        var x = r.x;
+        return '<li data-i="' + i + '"' + (r.on ? '' : ' class="off"') + '><input type="checkbox" aria-label="' + esc(label(r)) + '" aria-describedby="rv-d' + i + '"' + (r.on ? ' checked' : '') + '>' + picHtml(x) +
+          '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div id="rv-d' + i + '">' + lines(r) +
+          (x.check ? '<div class="w">Check: ' + esc(x.check) + '</div>' : '') + '</div><div id="rv-x' + i + '">' + other(r) + '</div></div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft"><span class="note" id="rv-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="rv-add">Add</button></div>',
       function () { return now() !== was; });
     // The ticks and where they all go: changing either is something to lose.
-    function now() { return fieldsOf(['rv-room', 'rv-spot', 'rv-box'], rows.map(function (r) { return r.on; })); }
+    function now() { return fieldsOf(['rv-room', 'rv-spot', 'rv-box'], rows.map(function (r) { return [r.on, r.copy]; })); }
     var was = now();
+    // What a tap on the button would do: add `a` sets, move `m` and change `u` (their state, or their number).
+    function tally() {
+      var n = { a: 0, m: 0, u: 0 };
+      rows.forEach(function (r) { if (!r.on) return; var c = change(r); if (!c) n.a++; else if (c.moved) n.m++; else n.u++; });
+      return n;
+    }
+    // "Add 3 sets", as it always said; with sets that are owned in it, "Add 3, move 5" or "Move 5 sets".
+    function saying(n, words) {
+      var parts = [[n.a, words[0]], [n.m, words[1]], [n.u, words[2]]].filter(function (p) { return p[0]; });
+      if (parts.length === 1) return parts[0][1] + ' ' + plural(parts[0][0], 'set');
+      return parts.map(function (p, i) { return (i ? p[1].toLowerCase() : p[1]) + ' ' + p[0].toLocaleString(); }).join(', ');
+    }
     function count() {
       var n = rows.filter(function (r) { return r.on; }).length;
       $('rv-n').textContent = n + ' of ' + rows.length + ' ticked';
-      $('rv-add').textContent = n ? 'Add ' + plural(n, 'set') : 'Add';
+      $('rv-add').textContent = n ? saying(tally(), ['Add', 'Move', 'Change']) : 'Add';
       $('rv-add').disabled = !n;
+    }
+    // A row drawn again: its tick, and the words that say what the tick does.
+    function draw(r, i) {
+      var li = $('rv').children[i], box = li.querySelector('input[type="checkbox"]');
+      box.checked = r.on; box.setAttribute('aria-label', label(r)); li.classList.toggle('off', !r.on);
+      r.changes = !!change(r);
+      $('rv-d' + i).innerHTML = lines(r) + (r.x.check ? '<div class="w">Check: ' + esc(r.x.check) + '</div>' : '');
+      var b = $('rv-x' + i).querySelector('button'), held = b && document.activeElement === b;
+      $('rv-x' + i).innerHTML = other(r);
+      if (held && $('rv-x' + i).querySelector('button')) $('rv-x' + i).querySelector('button').focus();
     }
     $('rv').onchange = function (e) {
       var li = e.target.closest('li'); if (!li) return;
-      rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
+      var r = rows[+li.dataset.i];
+      r.on = e.target.checked; r.touched = true; draw(r, +li.dataset.i); count();
     };
-    $('rv').onclick = tickRow;
+    $('rv').onclick = function (e) {
+      var b = e.target.closest('[data-copy]');
+      if (!b) { tickRow(e); return; }
+      var i = +b.closest('li').dataset.i, r = rows[i];
+      r.copy = !r.copy; r.on = true; r.touched = true; draw(r, i); count();
+    };
+    // What's typed under Put them all in changes where each set would go, so what a row for an owned set says, and
+    // whether it's a move at all. A tick nobody has touched follows it.
+    ['rv-room', 'rv-spot', 'rv-box'].forEach(function (id) {
+      $(id).addEventListener('input', function () {
+        typed = { room: $('rv-room').value.trim(), spot: $('rv-spot').value.trim(), box: $('rv-box').value.trim() };
+        rows.forEach(function (r, i) {
+          if (!r.dup) return;
+          // A row that stops being a change, or becomes one, is a different question: its tick starts again, or a
+          // tick put there to move a set would be left there to add a second copy of it.
+          if (!!change(r) !== r.changes) r.touched = false;
+          if (!r.touched) r.on = usual(r);
+          draw(r, i);
+        });
+        count();
+      });
+    });
     $('rv-add').onclick = function () {
-      var room = $('rv-room').value.trim(), spot = $('rv-spot').value.trim(), box = $('rv-box').value.trim(), n = 0, day = today();
-      var took = Object.assign({}, before), ids = [], seenWas = DOC.seen[batch.id], nc = 0;
+      typed = { room: $('rv-room').value.trim(), spot: $('rv-spot').value.trim(), box: $('rv-box').value.trim() };
+      var done = { a: 0, m: 0, u: 0 }, day = today();
+      var took = Object.assign({}, before), ids = [], added = [], changed = [], seenWas = DOC.seen[batch.id], nc = 0;
       rows.forEach(function (r, i) {
         if (!r.on) return;
-        var y = Object.assign({}, r.x);
-        if (room && room !== batch.room) { y.room = room; y.spot = spot; }
-        else if (spot && spot !== batch.spot) y.spot = spot;
-        // A box typed here goes on every set. Cleared, the batch's box comes off the sets that have it (they're
-        // unpacked), and a set Claude put in a box of its own keeps that one.
-        if (box && box !== batch.box) y.box = box;
-        else if (!box && batch.box && C.natural(C.boxName(y.box), C.boxName(batch.box)) === 0) delete y.box;
+        var y = placed(r.x);
+        if (change(r)) {
+          // The set as it is this minute: it may have changed, or gone, on another device while the sheet was open.
+          var cur = DOC.sets[r.dup.id], u = cur && !cur.del ? C.updateFor(cur, y) : null, back = u && alter(cur.id, u.set);
+          if (!back) return;
+          changed.push(back); ids.push(cur.id);
+          if (u.moved) done.m++; else done.u++;
+          return;
+        }
         y = C.cleanSet(Object.assign(y, { added: day }));
         if (!y) return;
-        y.id = newId(); putSet(y); n++; took[i] = y.id; ids.push(y.id);
+        y.id = newId(); putSet(y); done.a++; took[i] = y.id; ids.push(y.id); added.push(y.id);
         if (y.check) nc++;
       });
       DOC.seen[batch.id] = Date.now();
@@ -1395,13 +1500,17 @@
       // itself as that place goes would undo it.
       save(); renderCatalog(); closeSheet(function () { setTimeout(function () { showNew(ids, nc); }, 0); });
       // Undo takes out the sets this tap added (a batch with the wrong box typed for all of them was fourteen sets
-      // to put right or remove by hand), and forgets that the link was opened, so it's offered whole again.
-      toast('Added ' + plural(n, 'set') + (nc ? '. ' + nc.toLocaleString() + ' to check.' : ''), false, { label: 'Undo', run: function () {
-        ids.forEach(function (id) { if (DOC.sets[id] && !DOC.sets[id].del) removeSet(id); });
+      // to put right or remove by hand), puts the ones it moved or changed back as they were, and forgets that the
+      // link was opened, so it's offered whole again.
+      var n = done.a, k = changed.length;
+      toast((n + k ? saying(done, ['Added', 'Moved', 'Changed']) : 'Nothing to change') + (nc ? '. ' + nc.toLocaleString() + ' to check.' : ''), false, !(n + k) ? null : { label: 'Undo', run: function () {
+        added.forEach(function (id) { if (DOC.sets[id] && !DOC.sets[id].del) removeSet(id); });
         if (seenWas === undefined) delete DOC.seen[batch.id]; else DOC.seen[batch.id] = seenWas;
         tookFrom(batch.id, before);
-        save(); refresh();
-        toast(n === 1 ? 'Took that set out again' : 'Took those ' + n.toLocaleString() + ' sets out again');
+        asWas(changed, []);
+        toast(!k ? (n === 1 ? 'Took that set out again' : 'Took those ' + n.toLocaleString() + ' sets out again')
+          : !n ? (k === 1 ? 'Put that set back as it was' : 'Put those ' + k.toLocaleString() + ' sets back as they were')
+          : 'Took out the ' + plural(n, 'set') + ' added, and put the other' + (k === 1 ? '' : 's') + ' back');
       } });
     };
     count();

@@ -164,6 +164,36 @@ check(C.cleanSet({ name: 'y'.repeat(500) }).name.length === 160, 'name clamped')
     eq(C.findDup(two, C.cleanSet({ num: '75257', name: 'Millennium Falcon' })), null, 'two different numbers with one name are not the same set');
   }
   eq(C.findDup(doc, { name: '!!!' }), null, 'a name with nothing to compare matches nothing');
+  // Every owned set a new one might be, for telling one copy from two.
+  const two = C.cleanDoc({ catalog: { sets: { n: { id: 'n', t: 1, name: 'Bonsai Tree' }, a: { id: 'a', t: 1, num: '10281', name: 'Bonsai Tree' }, a2: { id: 'a2', t: 1, num: '10281', name: 'Bonsai' }, f: { id: 'f', t: 1, num: '75192', name: 'Millennium Falcon' }, g: { id: 'g', t: 3, del: 1 } } } });
+  eq(C.findDups(two, C.cleanSet({ num: '10281', name: 'Bonsai Tree' })).map(x => x.id), ['a', 'a2', 'n'], 'findDups: every copy, the ones with the number first');
+  eq([C.findDups(two, C.cleanSet({ num: '75192' })).map(x => x.id), C.findDups(two, C.cleanSet({ num: '10497' }))], [['f'], []], 'one copy, and none');
+}
+// What a row from Claude changes on the set already owned: where it is and its state, from what the row gives, and
+// nothing else about it.
+{
+  const have = C.cleanSet({ num: '21318', name: 'Tree House', year: 2019, pieces: 3036, state: 'built', room: 'Living room', spot: 'Bookcase', notes: 'Mine', missing: 'a leaf', tags: ['ideas'] });
+  const up = x => C.updateFor(have, C.cleanSet(Object.assign({ num: '21318' }, x)));
+  eq(up({ name: 'Treehouse (Ideas)', year: 2020, pieces: 1, theme: 'Ideas', notes: 'Other', missing: 'none', tags: ['x'], check: 'hm' }), null, 'a row that says nothing new about where it is changes nothing');
+  eq(up({ room: 'living room', spot: 'bookcase', state: 'built' }), null, 'the same place and state, typed another way, is no change');
+  eq(up({ box: '7', state: 'partial' }), { set: { box: '7', state: 'partial' }, moved: true, state: true, fill: false, after: Object.assign({}, have, { box: '7', state: 'partial' }) }, 'box 7, partly built: only those two change, and the room stays');
+  eq(up({ room: 'Office' }).set, { room: 'Office', spot: '' }, 'a new room takes the old shelf off');
+  eq([up({ room: 'Office' }).after.spot, up({ room: 'Office' }).after.notes], [undefined, 'Mine'], 'and the rest of the set is as it was');
+  eq(up({ room: 'Office', spot: 'Top shelf' }).set, { room: 'Office', spot: 'Top shelf' }, 'a new room and shelf');
+  eq(up({ spot: 'Desk' }).set, { spot: 'Desk' }, 'a new shelf in the same room');
+  eq(up({ state: 'apart' }), { set: { state: 'apart' }, moved: false, state: true, fill: false, after: Object.assign({}, have, { state: 'apart' }) }, 'a change of state alone is not a move');
+  const boxed = C.cleanSet(Object.assign({}, have, { box: 'Box 3' }));
+  eq(C.updateFor(boxed, C.cleanSet({ num: '21318', box: '03' })), null, 'the same box under another label is no move');
+  eq(C.updateFor(boxed, C.cleanSet({ num: '21318', room: 'Living room', spot: 'Bookcase', state: 'apart' })).set, { state: 'apart' }, 'a row that doesn’t move it leaves its box alone');
+  eq(C.updateFor(boxed, C.cleanSet({ num: '21318', room: 'Office', spot: 'Top shelf' })).set, { room: 'Office', spot: 'Top shelf' }, 'moved to another shelf with no box named, it stays in its box: a link never unpacks');
+  eq(C.updateFor(boxed, C.cleanSet({ num: '21318', room: 'Office', box: '9' })).set, { room: 'Office', spot: '', box: '9' }, 'another room and another box');
+  // A set typed in by name alone gets its number from the row, and its year, pieces and theme where they're blank.
+  const named = C.cleanSet({ name: 'Bonsai Tree', year: 2020, room: 'Office', notes: 'Gift' });
+  eq(C.updateFor(named, C.cleanSet({ num: '10281', name: 'Bonsai Tree', year: 2021, pieces: 878, theme: 'Icons', notes: 'x' })),
+    { set: { num: '10281-1', pieces: 878, theme: 'Icons' }, moved: false, state: false, fill: true, after: Object.assign({}, named, { num: '10281-1', pieces: 878, theme: 'Icons' }) }, 'the number, and the blanks: the year it has is kept');
+  eq(C.updateFor(named, C.cleanSet({ num: '10281', name: 'Bonsai Tree', box: '4' })).set, { box: '4', num: '10281-1' }, 'moved and filled in at once');
+  eq(C.updateFor(C.cleanSet({ num: '10698' }), C.cleanSet({ num: '10698', name: 'Large Creative Brick Box', year: 2015, pieces: 790 })), null, 'a set that has its number is not filled in');
+  eq(C.updateFor(named, C.cleanSet({ name: 'Bonsai Tree', year: 2021, theme: 'Icons' })), null, 'and nothing is filled in from a row with no number');
 }
 // A set that's in one list twice: the later ones are marked, the first isn't. Told the same way as a double
 // with the catalog (same number, or the same name when one of the two has no number), whichever comes first.

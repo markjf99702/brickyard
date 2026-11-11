@@ -288,15 +288,40 @@
     var k = nameKey(set.name);
     return !!k && nameKey(have.name) === k;
   }
-  // Which owned set a new one might be. A set owned by name alone (typed in before the photos were sent) is found
+  // Which owned sets a new one might be. A set owned by name alone (typed in before the photos were sent) is found
   // when the new one arrives with its number and the same name: it used to be missed, and the review ticked it to
-  // be added a second time. One with the same number comes first. Two sets with different numbers and one name stay
-  // two sets.
-  function findDup(doc, set) {
-    var all = live(doc), i;
-    for (i = 0; i < all.length; i++) if (isDup(all[i], set)) return all[i];
-    for (i = 0; i < all.length; i++) if (!all[i].num && isDup(set, all[i])) return all[i];
-    return null;
+  // be added a second time. Ones with the same number come first. Two sets with different numbers and one name stay
+  // two sets. findDup is the first of them.
+  function findDups(doc, set) {
+    var all = live(doc), own = all.filter(function (x) { return isDup(x, set); });
+    return own.concat(all.filter(function (x) { return !x.num && own.indexOf(x) < 0 && isDup(set, x); }));
+  }
+  function findDup(doc, set) { return findDups(doc, set)[0] || null; }
+  // What a row from Claude says about a set already owned (`have`) that the catalog doesn't: null when nothing, or
+  // { set: the fields to change and what to, moved, state, fill, after: the set as it would be }. "These eight
+  // went in box 7" used to be eight rows marked "You already have this one", and ticking one added a second copy.
+  // Only where it is and what state it's in ever change: its room, shelf, moving box and state, and only the ones
+  // the row gives. A new room takes the row's shelf with it (the old shelf was in the old room). A row that names
+  // no box says nothing about its box, which stays: a box can be in a room, and a set is taken out of one in
+  // Brickyard (Unpack), never by a link. `moved` is a change of place, `state` a change of state.
+  // The set's name, notes, missing pieces and the rest are never touched, and its number only when it has none (it
+  // was typed in by name, and the row is the same name with its number): then the number is filled in, and its
+  // year, pieces and theme where those are blank (`fill`).
+  function updateFor(have, x) {
+    var set = {}, moved = false, fill = false, differs = function (a, b) { return natural(a || '', b || '') !== 0; };
+    if (x.room && differs(x.room, have.room)) { set.room = x.room; set.spot = x.spot || ''; moved = true; }
+    else if (x.spot && differs(x.spot, have.spot)) { set.spot = x.spot; moved = true; }
+    if (x.box && !sameBox(x.box, have.box)) { set.box = x.box; moved = true; }
+    if (x.state && x.state !== have.state) set.state = x.state;
+    if (!have.num && x.num) {
+      set.num = x.num; fill = true;
+      ['year', 'pieces', 'theme'].forEach(function (k) { if (!have[k] && x[k]) set[k] = x[k]; });
+    }
+    if (!moved && !fill && !set.state) return null;
+    var after = {};
+    Object.keys(have).forEach(function (k) { after[k] = have[k]; });
+    Object.keys(set).forEach(function (k) { if (set[k] === '') delete after[k]; else after[k] = set[k]; });
+    return { set: set, moved: moved, state: !!set.state, fill: fill, after: after };
   }
   // In a list of sets (a batch from Claude), which ones are in it again: true for each set that matches one
   // earlier in the list, either way round, so a set with its number and the same set by name alone are a pair
@@ -611,7 +636,7 @@
   var api = {
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
-    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
+    emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

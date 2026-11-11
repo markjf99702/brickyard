@@ -289,6 +289,11 @@ a.item { color: inherit; text-decoration: none; }
 .rv .t { font-weight: 600; line-height: 1.25; }
 .rv .m { color: var(--muted); font-size: 13.5px; }
 .rv .w { color: var(--red-text); font-size: 13.5px; margin-top: 2px; }
+/* A row that moves or changes a set already owned says what it will do, in the page's ink: nothing is wrong. */
+.rv .w.mv { color: var(--ink); font-weight: 600; }
+.rv li.off .w.mv { color: var(--muted); font-weight: 400; }
+/* "Add a second copy instead" under such a row: a link to tap, with a finger's height to tap it in. */
+.rv-alt { border: 0; background: none; padding: 0; margin: -4px 0 -8px; min-height: 44px; display: inline-flex; align-items: center; color: var(--blue); font: inherit; font-weight: 600; font-size: 13.5px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .bulk { background: var(--soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px; }
 .bulk .field { margin: 0; }
 
