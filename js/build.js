@@ -258,7 +258,7 @@ const renderList = orSay(async () => {
     // How a list gets added, and the sets to ask for. A set with no number can't have one.
     const bare = none.filter(x => !x.num).length, can = none.length - bare;
     html += '<p class="note" id="apart-how">' + (can ? 'A parts list is a small file in the Brickyard project. Copy ' + (can === 1 && !bare ? 'this set' : 'these sets') + ' and paste ' + (can === 1 && !bare ? 'it' : 'them') +
-      ' into a Claude session opened on the Brickyard project: it adds ' + (can === 1 ? 'the list' : 'each list') + '.' : '') +
+      ' into a Claude session opened on the Brickyard project: it adds ' + (can === 1 && !bare ? 'the list' : 'each list') + '.' : '') +
       (bare ? (can ? ' ' : '') + (bare === none.length ? (bare === 1 ? 'It has' : 'They have') : bare === 1 ? '1 of them has' : bare + ' of them have') + ' no set number, and a parts list goes by the number: add it in My sets.' : '') + '</p>' +
       (can ? '<div class="acts-row"><button class="btn quiet" type="button" id="copy-apart">Copy my taken-apart sets</button></div>' : '');
   }
@@ -544,7 +544,7 @@ function showStep(k, animate = true) {
   const here = current.model.parts.map((q, i) => ({ q, i })).filter(x => x.q[6] === step && shapes[x.q[0]]);
   const groups = {};
   here.forEach(({ q }) => { const k2 = q[0] + '/' + q[1]; groups[k2] = (groups[k2] || 0) + 1; });
-  const shortKeys = new Set(current.res.short.map(x => x.key));
+  const shortKeys = new Set(current.built ? [] : current.res.short.map(x => x.key)); // a built model isn't short of anything
   // Pieces that push on from below, under something already built (the checker notes them; nothing showed it).
   const note = current.res.notes.find(x => x.kind === 'under' && x.step === step), under = {};
   if (note) note.parts.forEach(i => { const k2 = current.model.parts[i][0] + '/' + current.model.parts[i][1]; under[k2] = (under[k2] || 0) + 1; });

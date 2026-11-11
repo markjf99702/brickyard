@@ -5767,11 +5767,14 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   await p.click('a[href="#model-' + id + '"]');
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
   assert.equal(await p.textContent('#model-check .flag'), 'You’re short: 1 × Bright Green plate 6x12. Cottage is built, so its pieces aren’t counted. Swap colours where it doesn’t matter, or ask Claude for another version.');
+  await p.click('#step-next'); // Start building: step 1 is the plate
+  assert.equal(await p.locator('#step-parts li.short').count(), 1, 'the piece it’s short of is marked in its step');
   // Both built: each keeps its own pieces, the first line names both, and a reload keeps it.
   await p.click('#model-menu'); await p.click('#mm-built');
   assert.equal(await says(), 'Field is built. Its pieces are left out for your other models and for Claude.');
   await p.reload();
-  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field' && document.querySelector('#step-parts li'));
+  assert.equal(await p.locator('#step-parts li.short').count(), 0, 'a built model isn’t short of anything');
   assert.equal(await p.textContent('#model-check .note.ok'), '✓ You’ve built this. Its pieces are left out for your other models and for Claude.');
   await p.goto(base + '#build');
   await p.waitForSelector('#built-note');
@@ -5934,7 +5937,8 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
     '7× Plate 1x2White · 3023', '2× Part 32000Light Bluish Grey · 32000 · the builder can’t draw this yet'], 'each kind: how many, its name, its colour and number, and what the builder can’t draw');
   assert.deepEqual(await p.$$eval('#ls-inside li i', is => is.slice(0, 3).map(i => i.style.backgroundColor)), ['rgb(27, 42, 52)', 'rgb(180, 0, 0)', 'rgb(153, 153, 153)'], 'with a swatch of its colour, grey for one Brickyard doesn’t know');
   assert.equal(await p.textContent('#ls-use'), 'The builder can use 20 of them today. The rest are kept, and count once Brickyard learns their shapes.');
-  assert.ok(await p.evaluate(() => { const s = document.querySelector('.sheet'), r = document.getElementById('ls-add').getBoundingClientRect(); return document.documentElement.scrollWidth <= innerWidth && r.bottom <= innerHeight && r.top > 0; }), 'Add is on the screen, and nothing runs off the side');
+  await p.waitForFunction(() => getComputedStyle(document.querySelector('.sheet')).transform === 'none'); // the sheet has finished sliding up
+  assert.ok(await p.evaluate(() => { const r = document.getElementById('ls-add').getBoundingClientRect(); return document.documentElement.scrollWidth <= innerWidth && r.bottom <= innerHeight && r.top > 0; }), 'Add is on the screen, and nothing runs off the side');
   await p.click('.sheet [data-close]');
   await c.close();
   // A list with every row read has no such line, and a long one keeps its list folded until it's asked for.
