@@ -84,7 +84,7 @@ python3 scripts/make_loose.py tub.json --out OUTDIR
 ```
 
 - A row is `[part, colour, count]`: LDraw part number, LDraw colour number (or the colour's name as `data/colors.json` has it), how many. Add the part's name as a fourth item for a piece that isn't in `data/shapes.json`: Brickyard keeps it and shows the name, though the builder can't use it yet.
-- `name` is what they call it. The script makes the lot's id from the name, so a recount sent under the same name **replaces** the lot in Brickyard instead of adding a second one. Use the same name every time, and don't put a count or a date in it. `box` is the moving box it's packed in, if they said.
+- `name` is what they call it. The script makes the lot's id from the name, so a recount sent under the same name **replaces** the lot in Brickyard instead of adding a second one. Use the same name every time, and don't put a count or a date in it. (If Brickyard has loose pieces of that name from somewhere else, it asks: **Replace it** or **Keep both**.) `box` is the moving box it's packed in, if they said.
 - The script prints `DROPPED:` for every row it leaves out, with why, and a `NOTE:` for a piece listed twice (the counts are added up) and for each piece the builder can't draw yet. Fix the rows you can; tell them about the rest. With no row it can read it writes nothing.
 - It writes `NAME.brickyard-loose.json` and prints a link starting `https://brickyard.junkdrawer.works/#l2z`. Hand over the link and the file, the total, and anything left out. Opening it shows every kind of piece with its colour and count to check before it's added.
 

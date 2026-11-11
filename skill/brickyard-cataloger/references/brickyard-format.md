@@ -71,7 +71,7 @@ Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scan
 | Field | Meaning |
 |---|---|
 | `id` | Keeps the lot the same lot. Opening a lot whose id Brickyard already has **replaces** it, so a re-scan never doubles the count. Left out, one is made from the contents |
-| `name` | Up to 80 characters; "Loose pieces" if left out |
+| `name` | Up to 80 characters; "Loose pieces" if left out. A lot that arrives with a new id under a name they already have is offered as a replacement first ("Replace it"), with "Keep both" second |
 | `box` | Moving-box label, up to 40 characters |
 | `note` | Free text, up to 300 characters |
 | `parts[]` | Rows of `[LDraw part, LDraw colour, count]`. A fourth item is the part's name, worth adding for parts the builder can't draw (not in `parts/shapes.json`). The same part and colour twice is added up; rows that don't fit are dropped |

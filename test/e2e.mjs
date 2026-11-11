@@ -5949,6 +5949,61 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   await big.c.close();
 }
 
+// Loose pieces that arrive under a name you already have, with another id (a list written by hand has no id of its
+// own): a recount of "Blue tub" came in as a second Blue tub, and both were counted. The review says so and offers
+// Replace it first and Keep both second.
+{
+  const loose = { old: { id: 'old', t: 1, name: 'Blue tub', box: '7', parts: [['3001', 4, 12]] }, bag: { id: 'bag', t: 1, name: 'Red bag', parts: [['3003', 1, 5]] } };
+  const recount = { brickyard: 1, loose: { name: 'blue tub', parts: [['3001', 4, 14]] } }, link = base + '#l1j' + Buffer.from(JSON.stringify(recount)).toString('base64url');
+  const lots = p => p.evaluate(() => Object.values(window.brickyard.doc().loose).filter(l => !l.del).map(l => [l.name, l.box || '', l.parts[0][2]]).sort());
+  const { c, p } = await withSets({ sets: {}, loose });
+  await p.goto(link);
+  await p.waitForSelector('#ls-add');
+  assert.equal(await p.textContent('#ls-same'), 'You already have loose pieces called Blue tub (12 pieces). If this is a recount, replace it, so nothing is counted twice. If it’s another one, keep both.');
+  assert.deepEqual(await p.$$eval('.sheet .ft button', bs => bs.map(b => [b.textContent, b.classList.contains('quiet')])), [['Keep both', true], ['Replace it', false]], 'Replace it is the main button');
+  assert.equal(await p.inputValue('#ls-box'), '7', 'the box it was in is offered');
+  assert.doesNotMatch(await p.textContent('.sheet'), /\blots?\b/i);
+  await p.click('#ls-add');
+  await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden && !document.querySelector('.sheet'));
+  assert.equal(await p.textContent('.toast span'), 'Replaced 14 loose pieces');
+  assert.deepEqual(await lots(p), [['Red bag', '', 5], ['blue tub', '7', 14]], 'one Blue tub, the recount');
+  assert.equal(await p.evaluate(() => window.brickyard.doc().loose.old.del), 1, 'the old one is removed, so a sync doesn’t bring it back');
+  await p.waitForSelector('li.lot');
+  assert.equal(await p.textContent('.pieces h2'), 'Your pieces19');
+  await c.close();
+  // Keep both: two of the same name, as before.
+  const two = await withSets({ sets: {}, loose });
+  await two.p.goto(link);
+  await two.p.waitForSelector('#ls-both');
+  await two.p.click('#ls-both');
+  await two.p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden && !document.querySelector('.sheet'));
+  assert.equal(await two.p.textContent('.toast span'), 'Added 14 loose pieces');
+  assert.deepEqual(await lots(two.p), [['Blue tub', '7', 12], ['Red bag', '', 5], ['blue tub', '7', 14]]);
+  // With two of that name, a third says so, and Replace them takes the place of both. Unticked, it stays unticked.
+  await two.p.evaluate(() => { const d = window.brickyard.doc(), t = {}; Object.values(d.loose).forEach(l => { if (/blue tub/i.test(l.name)) t[l.id] = false; }); localStorage.setItem('brickyard.pool', JSON.stringify(t)); });
+  await two.p.goto('about:blank');
+  await two.p.goto(base + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: { name: 'Blue Tub', parts: [['3001', 4, 9]] } })).toString('base64url'));
+  await two.p.waitForSelector('#ls-add');
+  assert.equal(await two.p.textContent('#ls-same'), 'You already have loose pieces called Blue tub, 2 times (26 pieces in all). If this is a recount, replace them, so nothing is counted twice. If it’s another one, keep both.');
+  assert.equal(await two.p.textContent('#ls-add'), 'Replace them');
+  await two.p.click('#ls-add');
+  await two.p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual(await lots(two.p), [['Blue Tub', '7', 9], ['Red bag', '', 5]]);
+  await two.p.waitForSelector('li.lot');
+  assert.deepEqual(await two.p.$$eval('li.lot input', is => is.map(i => i.checked)), [false, true], 'and it stays unticked, as the ones it replaced were');
+  await two.c.close();
+  // The same id is the same lot, as it always was: no question, it replaces. Another name is just added.
+  const same = await withSets({ sets: {}, loose });
+  await same.p.goto(base + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: { id: 'old', name: 'Blue tub', parts: [['3001', 4, 14]] } })).toString('base64url'));
+  await same.p.waitForSelector('#ls-add');
+  assert.deepEqual([await same.p.locator('#ls-same').count(), await same.p.locator('#ls-both').count(), await same.p.textContent('#ls-add')], [0, 0, 'Replace them']);
+  await same.p.goto('about:blank');
+  await same.p.goto(base + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: { name: 'Green tub', parts: [['3001', 4, 14]] } })).toString('base64url'));
+  await same.p.waitForSelector('#ls-add');
+  assert.deepEqual([await same.p.locator('#ls-same').count(), await same.p.locator('#ls-both').count(), await same.p.textContent('#ls-add')], [0, 0, 'Add 14 pieces']);
+  await same.c.close();
+}
+
 await browser.close();
 server.close();
 
