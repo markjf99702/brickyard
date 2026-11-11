@@ -4262,6 +4262,28 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// Fit keeps 1 cm clear above a set. One that only a shelf of its own height could take is left, says what it needs on
+// its row, and can still be stood there by hand: its sheet says so and offers the shelf.
+{
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Snug', 20, 20, 32), b: set('b', 'Snug too', 20, 20, 31.5), l: set('l', 'Low', 20, 20, 31) }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [] }] } } });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('#shelves-body .list .item')].map(e => e.querySelector('.t').textContent + ': ' + ((e.querySelector('.m.warn') || {}).textContent || '')));
+  assert.deepEqual([await p.textContent('[data-act="fill"]'), await rows()], ['Fit the sets onto the shelves', ['Low: ', 'Snug: 32 cm tall: needs 33 cm of space', 'Snug too: 31.5 cm tall: needs 32.5 cm of space']], 'a set with no room above it says what it needs');
+  await p.click('[data-act="fill"]');
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().cases.k.levels[0].sets.map(q => q.id)), await p.textContent('#need-line'), await p.locator('[data-act="fill"]').count()],
+    [['l'], '2 need a shelf 1 cm taller than they are.', 0], 'Fit leaves them, and one line adds them up');
+  await p.click('#shelves-body .list .item >> nth=0');
+  await p.waitForSelector('#z-where');
+  assert.deepEqual([await p.textContent('#z-msg'), await p.evaluate(() => document.querySelector('#z-where option[value="k:0"]').disabled)],
+    ['32 cm tall: needs 33 cm of space. Fit keeps 1 cm clear above a set; you can still choose a shelf here.', false], 'its sheet says it can still be put there by hand');
+  await p.selectOption('#z-where', 'k:0');
+  await p.click('#z-save');
+  assert.deepEqual(await p.evaluate(() => window.brickyard.doc().cases.k.levels[0].sets.map(q => q.id)), ['l', 'a'], 'and by hand it goes on a shelf exactly its height');
+  await c.close();
+}
+
 // Fit has Undo, and a bookcase can be started again: "Take every set off" in its sheet, on a second tap, with Undo
 // too. (Fit leaves placed sets where they are, so a fresh arrangement meant opening every set's sheet.) When nothing
 // waiting fits, the count says so, and one line under Not on a shelf yet adds up why: how many need more shelf and

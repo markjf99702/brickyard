@@ -59,6 +59,20 @@ eq(S.used(r.cases[0].levels[2], ids(sets)), 61, 'shelf use counts the gap');
 const k3 = JSON.parse(JSON.stringify(r.cases[0])); S.takeOff([k3], 'b');
 eq(k3.levels[1].sets.map(p => p.id), ['mid'], 'take a set off');
 eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it fits', 'no room left');
+// Fit keeps 1 cm clear above a set: a shelf exactly the set's height is left for a taller one, and a set that only
+// such a shelf could take says what it needs. By hand (fits without the last argument) it still stands there.
+{
+  const snug = set('snug', 20, 20, 32), low = set('low', 20, 20, 31), half = set('half', 20, 20, 31.5), all = [snug, low, half];
+  const two = { id: 'k', name: 'Two', w: 76, d: 26, levels: [{ h: 40, sets: [] }, { h: 32, sets: [] }] }, one = { id: 'k', name: 'One', w: 76, d: 26, levels: [{ h: 32, sets: [] }] };
+  eq(S.fill([two], all).cases[0].levels.map(l => l.sets.map(p => p.id)), [['snug', 'half'], ['low']], 'Fit uses a shelf only when it is 1 cm taller than the set');
+  const r1 = S.fill([one], all);
+  eq([r1.cases[0].levels[0].sets.map(p => p.id), r1.left.map(x => [x.set.id, x.why])], [['low'], [['snug', '32 cm tall: needs 33 cm of space'], ['half', '31.5 cm tall: needs 32.5 cm of space']]], 'a set that misses by that centimetre says so');
+  eq([S.fits(one, 0, snug, ids(all)), S.whyNot([one], snug, ids(all)), S.reason([one], snug, ids(all), S.CLEAR).kind, S.fits(one, 0, snug, ids(all), false, S.CLEAR).near], [{ turn: false }, '', 'clear', true], 'by hand it still stands on a shelf exactly its height');
+  eq(S.reason([one], set('big', 20, 20, 50), ids(all), S.CLEAR), { kind: 'tall', why: '50 cm tall; your shelf is 32 cm tall' }, 'a set taller than every shelf says that, as before');
+  const held = { id: 'k', name: 'One', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'snug' }] }] };
+  eq(S.fill([held], all).cases[0].levels[0].sets.map(p => p.id), ['snug', 'low'], 'a set already on a shelf its own height stays there');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };

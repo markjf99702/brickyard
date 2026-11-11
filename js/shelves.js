@@ -73,7 +73,8 @@
     } else {
       // On shelves: the sets drawn there. One that has lost its size isn't, and counts under Needs a size.
       var placed = sorted.placed.filter(S.hasSize).length, total = placed + sorted.waiting.length + sorted.noSize.length;
-      var fitting = sorted.waiting.filter(function (x) { return !S.whyNot(all, x, ids); }).length;
+      // What Fit would place: it keeps S.CLEAR cm above a set, so a set only a shelf of its own height takes is left.
+      var fitting = sorted.waiting.filter(function (x) { return !S.whyNot(all, x, ids, S.CLEAR); }).length;
       // When nothing waiting fits there's no Fit button, and the count says why there's nothing more to press.
       var rest = total - placed, stuck = !fitting && rest ? '; the other ' + (rest === 1 ? 'one ' : rest.toLocaleString() + ' ') +
         (!sorted.noSize.length ? (rest === 1 ? 'doesn’t fit' : 'don’t fit') : !sorted.waiting.length ? (rest === 1 ? 'needs a size' : 'need a size') : 'don’t fit or need a size') : '';
@@ -96,7 +97,7 @@
       // Each set with why it's waiting (worked out afresh from the bookcases and sizes as they are now, so it never
       // outlives a bookcase or a size changing): the ones that fit somewhere first, then the ones that only need
       // room, then the ones no shelf here can take.
-      var rows = sorted.waiting.map(function (x, i) { var r = all.length ? S.reason(all, x, ids) : { why: '', kind: '' }; return { x: x, why: r.why, kind: r.kind, i: i }; });
+      var rows = sorted.waiting.map(function (x, i) { var r = all.length ? S.reason(all, x, ids, S.CLEAR) : { why: '', kind: '' }; return { x: x, why: r.why, kind: r.kind, i: i }; });
       var rank = function (r) { return r.kind === '' ? 0 : r.kind === 'room' ? 1 : 2; };
       rows.sort(function (a, b) { return rank(a) - rank(b) || a.i - b.i; });
       html += '<h2 class="group" id="sv-waiting" tabindex="-1" aria-label="Not on a shelf yet, ' + plural(sorted.waiting.length, 'set') + '"><span>Not on a shelf yet</span><span>' + sorted.waiting.length + '</span></h2>' + needLine(rows, all) +
@@ -170,14 +171,15 @@
   function needLine(rows, all) {
     var of = function (kind) { return rows.filter(function (r) { return r.kind === kind; }); };
     var is = function (n, one, many) { return (n === 1 ? '1 ' + one : n.toLocaleString() + ' ' + many); };
-    var room = of('room'), tall = of('tall').length, deep = of('deep').length, wide = of('wide').length, big = of('big').length, bits = [];
+    var room = of('room'), tall = of('tall').length, clear = of('clear').length, deep = of('deep').length, wide = of('wide').length, big = of('big').length, bits = [];
     var hs = [].concat.apply([], all.map(function (c) { return c.levels.map(function (l) { return l.h; }); }));
     var most = function (f) { return cm(Math.max.apply(null, all.map(f))); }, one = all.length === 1;
     if (room.length) {
-      var need = S.shelfNeeded(room.map(function (r) { return r.x; }), all);
+      var need = S.shelfNeeded(room.map(function (r) { return r.x; }), all, S.CLEAR);
       bits.push(is(room.length, 'needs', 'need') + ' more shelf: about ' + (need < 100 ? Math.ceil(need / 5) * 5 + ' cm' : (need < 1000 ? (Math.round(need / 10) / 10) : Math.round(need / 100)) + ' m') + '.');
     }
     if (tall) bits.push(is(tall, 'is', 'are') + ' taller than your ' + (hs.length === 1 ? 'shelf' : 'tallest shelf') + ' (' + cm(Math.max.apply(null, hs)) + ' cm).');
+    if (clear) bits.push(is(clear, 'needs a shelf ' + cm(S.CLEAR) + ' cm taller than it is', 'need a shelf ' + cm(S.CLEAR) + ' cm taller than they are') + '.');
     if (deep) bits.push(is(deep, 'is', 'are') + ' deeper than your ' + (one ? 'bookcase' : 'deepest bookcase') + ' (' + most(function (c) { return c.d; }) + ' cm).');
     if (wide) bits.push(is(wide, 'is', 'are') + ' wider than your ' + (one ? 'bookcase' : 'widest bookcase') + ' (' + most(function (c) { return c.w; }) + ' cm).');
     if (big) bits.push(is(big, 'is', 'are') + ' too big some other way.');
@@ -463,7 +465,9 @@
     // Which set this is, under its name: two copies of one set, or two sets of one colour, looked the same here.
     var which = [C.shortNum(x.num), x.theme].filter(Boolean).join(' · ');
     // For a set that fits nowhere, the reason its row in the list gives; then whatever Save couldn't do.
-    var stuck = !at && all.length && S.hasSize(x) ? S.whyNot(all, x, ids) : '';
+    // One that only Fit leaves out (it keeps S.CLEAR cm above a set) can still be stood on a shelf from here.
+    var stuck = !at && all.length && S.hasSize(x) ? S.whyNot(all, x, ids, S.CLEAR) : '';
+    if (stuck && !S.whyNot(all, x, ids)) stuck += '. Fit keeps ' + cm(S.CLEAR) + ' cm clear above a set; you can still choose a shelf here.';
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(nameOf(x)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (which ? '<p class="note" id="z-which" style="margin-top:0">' + esc(which) + '</p>' : '') +
       '<div class="three">' +
