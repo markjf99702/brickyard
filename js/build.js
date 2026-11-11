@@ -623,6 +623,7 @@ $('model-menu').onclick = () => {
     setBuilt(current.id, on);
     current.built = on;
     renderCheck();
+    if (!current.cover) showStep(current.at, false); // the step on screen marks its short pieces, or stops marking them
     app.closeSheet();
     toast(on ? name + ' is built. Its pieces are left out for your other models and for Claude.' : name + ' is taken apart. Its pieces count for your other models again.');
   };
@@ -695,7 +696,8 @@ async function copyLink() {
 }
 
 function partsSheet() {
-  const { res, pool } = current;
+  // A built model has its pieces, so there's no "you have" to set against them, and none is short.
+  const { res } = current, pool = current.built ? null : current.pool;
   const rows = Object.keys(res.used).sort((a, b) => partName(a.split('/')[0]).localeCompare(partName(b.split('/')[0])) || a.localeCompare(b));
   app.openSheet('<div class="hd"><h2 id="sheetTitle">All the pieces</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
     '<ul class="need wide">' + rows.map(k => {

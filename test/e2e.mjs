@@ -5772,6 +5772,12 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   // Both built: each keeps its own pieces, the first line names both, and a reload keeps it.
   await p.click('#model-menu'); await p.click('#mm-built');
   assert.equal(await says(), 'Field is built. Its pieces are left out for your other models and for Claude.');
+  assert.equal(await p.locator('#step-parts li.short').count(), 0, 'the step on screen stops marking it at once');
+  await p.click('#model-menu'); await p.click('#mm-parts');
+  await p.waitForSelector('.sheet ul.need li');
+  assert.deepEqual([await p.locator('.sheet ul.need li.short').count(), /you have/.test(await p.textContent('.sheet ul.need'))], [0, false], 'and All the pieces doesn’t call a built model’s piece short');
+  await p.click('.sheet [data-close]');
+  await p.waitForFunction(() => !document.querySelector('.sheet ul.need'));
   await p.reload();
   await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Field' && document.querySelector('#step-parts li'));
   assert.equal(await p.locator('#step-parts li.short').count(), 0, 'a built model isn’t short of anything');
