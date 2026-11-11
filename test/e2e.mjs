@@ -271,8 +271,15 @@ assert.equal(await page.locator('.item').count(), 2);
 // "box" then a word that isn't a box is an ordinary search; a box with nothing in it finds nothing.
 await page.fill('#q', 'creative brick box large');
 assert.deepEqual(await page.locator('.item .t').allTextContents(), ['Large Creative Brick Box'], '"creative brick box large" is an ordinary search');
-await page.fill('#q', 'box 4');
-assert.match(await page.textContent('#list-wrap'), /Nothing matches/, 'box 4 has nothing in it');
+await page.fill('#q', 'box 99');
+assert.match(await page.textContent('#list-wrap'), /Nothing matches/, 'box 99 has nothing in it');
+// "box" and a number no moving box is labelled with is searched as words: it found nothing, with the Brick Box
+// 10698 in the list. A line says no box has that label.
+await page.fill('#q', 'brick box 10698');
+assert.deepEqual([await page.locator('.item .t').allTextContents(), await page.textContent('#no-box')],
+  [['Large Creative Brick Box'], 'No moving box is labelled 10698. These match the words.'], '"brick box 10698" finds the Brick Box');
+await page.fill('#q', 'box 3');
+assert.equal(await page.locator('#no-box').count(), 0, 'a box that is there has no such line');
 await page.fill('#q', '');
 await page.selectOption('#group', 'box');
 assert.deepEqual(await page.locator('.group span:first-child').allTextContents(), ['Box 3', 'Box 7', 'Box 12', 'Not packed']);

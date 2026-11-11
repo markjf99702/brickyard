@@ -360,7 +360,8 @@
   // front (boxName), on either side, and words after the label are searched as usual ("box 3 typewriter").
   // A word after "box" that's neither a label nor a number is just a word ("creative brick box large"): then
   // it's no box search at all (null). Otherwise it returns the label (null for a box with nothing in it, such as
-  // "box 3" before anything is packed in box 3) and the rest of the query.
+  // "box 3" before anything is packed in box 3) and the rest of the query. With no label, `matches` searches the
+  // words as they were typed.
   // It can be asked as a question: "in box 3", "what's in box 3" and "sets in box 3" are all box 3 (the other words
   // used to be searched for, so "in box 3" found only the sets with "in" somewhere). "box3" is box 3 too, and a
   // label is matched the way boxes are grouped (natural), so "box 03" finds box 3.
@@ -397,8 +398,13 @@
     if (!q) return true;
     q = unlego(q);
     var b = boxSearch(q, labels || (x.box ? [x.box] : []));
-    if (b) {
-      if (!b.label || !inBox(x, b.label)) return false;
+    // "box" and a number that no moving box is labelled with is an ordinary search of the words: "brick box 10698"
+    // found nothing, because no box was labelled 10698, with the Large Creative Brick Box 10698 in the catalog.
+    // The words are looked for in what the set itself says. The "box" that search puts in front of every packed
+    // set's label is left out (`bare`), or "box 7" with no box 7 would be every packed set with a 7 somewhere.
+    var bare = !!b && !b.label;
+    if (b && b.label) {
+      if (!inBox(x, b.label)) return false;
       q = b.rest;
     }
     q = fold(q);
@@ -407,7 +413,7 @@
       q = q.replace(/(^|\s)not packed(?=\s|$)/, ' ');
     }
     // The number's "-1" is left out of the text without punctuation: "76391-1" read as 763911, and "911" found it.
-    var rest = [shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? 'box ' + boxName(x.box) + ' ' + x.box : '', x.missing, x.notes, x.check, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '',
+    var rest = [shortNum(x.num), x.name, x.theme, x.room, x.spot, x.box ? (bare ? '' : 'box ' + boxName(x.box) + ' ') + x.box : '', x.missing, x.notes, x.check, (x.tags || []).join(' '), STATE_NAMES[x.state] || '', x.year || '',
       x.missing ? 'missing pieces' : '', x.check ? 'to check' : ''].join(' ');
     var hay = fold((x.num || '') + ' ' + rest), plain = unpunct(fold(rest));
     var has = function (w) { var u = unpunct(w); return hay.indexOf(w) >= 0 || (!!u && plain.indexOf(u) >= 0); };

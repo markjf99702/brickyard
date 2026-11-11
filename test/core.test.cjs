@@ -294,7 +294,16 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   eq([find('what’s in box kitchen 2'), find('in box 3 porsche'), find('lego box 12')], [['Millennium'], ['Porsche'], ['Battle']], 'with a label of two words, a word after it, or LEGO in front');
   eq([C.boxSearch('what’s in box 3', labels), C.boxSearch('box 3 sets', labels), C.boxSearch('in box 3 porsche', labels)], [{ label: '03', rest: '' }, { label: '03', rest: '' }, { label: '03', rest: 'porsche' }], 'what is left to search for');
   eq([find('in the'), find('falcon in')], [['Millennium'], ['Millennium']], '"in" away from a box is a word like any other');
-  eq([find('box 7'), find('box7'), find('in box 7'), C.boxSearch('brick box 10698', labels)], [[], [], [], { label: null, rest: 'brick' }], 'a box nothing is packed in still finds nothing');
+  eq([find('box 7'), find('box7'), find('in box 7'), C.boxSearch('brick box 10698', labels)], [[], [], [], { label: null, rest: 'brick' }], 'a box nothing is packed in still finds nothing: not the packed sets with a 7 in them');
+  // "box" and a number no box is labelled with is searched as words, so a set with Box in its name is found by it.
+  {
+    const more = sets.concat([C.cleanSet({ num: '10698', name: 'Large Creative Brick Box', state: 'apart' }), C.cleanSet({ num: '11021', name: 'Bricks Bricks Plates', box: 'Box 10' })]);
+    const all = more.map(x => x.box).filter(Boolean), look = q => more.filter(x => C.matches(x, q, all)).map(x => x.name.split(' ')[0]);
+    eq([look('brick box 10698'), look('box 10698'), look('creative box 106')], [['Large'], ['Large'], ['Large']], 'no box is labelled 10698, so "brick box 10698" is the Brick Box');
+    eq([look('box 10'), look('brick box 10'), look('box 3 brick')], [['Bricks'], ['Bricks'], []], 'a box that is there is still that box, whatever else has the words');
+    eq([look('box 7'), look('box 99')], [[], []], 'and one that is not finds only sets that say box themselves');
+    eq(look('box 1'), ['Large', 'Bricks'], 'which the Brick Box 10698 does, and a label typed as "Box 10"');
+  }
   eq([C.inBox(sets[2], '3'), C.inBox(sets[3], '3'), C.inBox(sets[4], 'kitchen 2')], [true, false, true], 'inBox matches a label the way boxes are grouped');
 }
 // "Box 5", "box #5" and "#5" typed as a label are all box 5: shown as "Box 5", never "Box Box 5", and found by

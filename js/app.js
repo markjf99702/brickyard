@@ -461,7 +461,10 @@
         return la !== lb ? (la ? 1 : -1) : C.natural(a.name, b.name);
       });
     }
-    $('list-wrap').innerHTML = groups.map(function (g) {
+    // "box 7" with no box labelled 7 is searched as words (C.matches); what it found says so, since a set in box 17
+    // with a 7 in its number is among them.
+    var noBox = bs && !bs.label ? '<p class="note" id="no-box">No moving box is labelled ' + esc(noLabel(q)) + '. These match the words.</p>' : '';
+    $('list-wrap').innerHTML = noBox + groups.map(function (g) {
       // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
       return (g.name ? '<h2 class="group"' + (g.sets.length ? ' aria-label="' + esc(g.name) + ', ' + plural(g.sets.length, 'set') + '"' : '') + '><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h2>' : '') +
         (g.sets.length ? '<ul class="list">' + g.sets.map(function (x) { return setItem(x, q, labels); }).join('') + '</ul>' : '') +
@@ -496,7 +499,7 @@
   function foundBy(x, q, labels) {
     var without = function (keys) { var y = Object.assign({}, x); keys.forEach(function (k) { delete y[k]; }); return C.matches(y, q, labels); };
     if ((!x.tags && !x.notes) || without(['tags', 'notes'])) return {};
-    var box = C.boxSearch(q, labels), out = {}, words = C.fold(box ? box.rest : q).split(/\s+/).filter(Boolean);
+    var box = C.boxSearch(q, labels), out = {}, words = C.fold(box && box.label ? box.rest : q).split(/\s+/).filter(Boolean);
     if (x.tags && (!without(['tags']) || without(['notes']))) out.tags = true;
     if (x.notes && !without(['notes'])) {
       var lines = x.notes.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
@@ -504,6 +507,9 @@
     }
     return out;
   }
+
+  // What was typed after "box", up to the first space: the label no box has.
+  function noLabel(q) { var m = /(?:^|\s)box\s*#?\s*(\S+)/i.exec(q); return m ? m[1] : ''; }
 
   // The loose pieces packed in a box, as one muted line that goes to Build from your box, where they live.
   // "Also" when the box has sets in it too.
