@@ -463,7 +463,11 @@
     var opts = '<option value="">Not on a shelf</option>' + all.map(function (c) {
       return '<optgroup label="' + esc(c.name) + '">' + c.levels.map(function (l, li) {
         var here = at && at.c === c.id && at.l === li, f = S.fits(c, li, x, ids, here && at.turn);
-        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here ? ' disabled' : '') + '>' + esc(c.name) + ' · shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (f.why && !here ? ' · ' + esc(f.why.replace(/ \(.*\)/, '').toLowerCase()) : '') + '</option>';
+        // A shelf that is only short of room can be chosen, and says by how much it would be over: after Fit every
+        // shelf is full, and each was greyed out, so a set couldn't be moved by hand at all. One too short, too
+        // shallow or too narrow for the set stays greyed out.
+        var says = !f.why || here ? '' : f.short ? 'full, ' + cm(f.short.over) + ' cm over with this' : f.why.replace(/ \(.*\)/, '').toLowerCase();
+        return '<option value="' + esc(c.id) + ':' + li + '"' + (here ? ' selected' : '') + (f.why && !here && !f.short ? ' disabled' : '') + '>' + esc(c.name) + ' · shelf ' + (li + 1) + ' (' + cm(l.h) + ' cm)' + (says ? ' · ' + esc(says) : '') + '</option>';
       }).join('') + '</optgroup>';
     }).join('');
     var level = at ? caseOf(at.c).levels[at.l] : null, pos = level ? level.sets.findIndex(function (p) { return p.id === id; }) : -1;
@@ -473,6 +477,7 @@
     // One that only Fit leaves out (it keeps S.CLEAR cm above a set) can still be stood on a shelf from here.
     var stuck = !at && all.length && S.hasSize(x) ? S.whyNot(all, x, ids, S.CLEAR) : '';
     if (stuck && !S.whyNot(all, x, ids)) stuck += '. Fit keeps ' + cm(S.CLEAR) + ' cm clear above a set; you can still choose a shelf here.';
+    else if (stuck && S.reason(all, x, ids, S.CLEAR).kind === 'room') stuck += '. You can still choose a full shelf here: it will show as overfull until a set comes off.';
     app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(nameOf(x)) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
       (which ? '<p class="note" id="z-which" style="margin-top:0">' + esc(which) + '</p>' : '') +
       '<div class="three">' +
@@ -547,6 +552,8 @@
           // The shelf chosen went while the sheet was open (its bookcase removed, or made shorter).
           if (!c1 || !c1.levels[li]) { refuse('That shelf isn’t there any more. Close this and open the set again.', $('z-where')); return; }
           var f = S.fits(c1, li, y, ids2, $('z-turn') ? turn : false);
+          // Short of room only: by hand it goes there all the same, and the shelf is flagged overfull.
+          if (f.short) f = { turn: f.short.turn };
           if (f.why) { refuse(f.why + '.', want === from && $('z-turn') ? $('z-turn') : $('z-where')); return; }
           // The tick was changed and this shelf only takes the set the other way round.
           if (ticked && !!f.turn !== turn) { refuse(wayWhy(c1, li, y, ids2, turn), $('z-turn')); return; }
@@ -568,8 +575,9 @@
       // when that's the only way it fits there), or off the shelves; else the turn; else the move along the shelf.
       var to = S.placements(next)[id] || null, c2 = to && next.filter(function (k) { return k.id === to.c; })[0];
       var nth = to ? c2.levels[to.l].sets.findIndex(function (q) { return q.id === id; }) : -1;
+      var over = to ? Math.round((S.used(c2.levels[to.l], ids2) - c2.w) * 10) / 10 : 0;
       var said = back ? nameOf(y) + ' is back'
-        : to && (!cur || cur.c !== to.c || cur.l !== to.l) ? nameOf(y) + ' is on ' + shelfName(c2, to.l) + (to.turn ? ', side-on' : '')
+        : to && (!cur || cur.c !== to.c || cur.l !== to.l) ? nameOf(y) + ' is on ' + shelfName(c2, to.l) + (to.turn ? ', side-on' : '') + (over > 0 ? ', which is now ' + cm(over) + ' cm over' : '')
         : cur && !to ? 'Off the shelves'
         : to && !to.turn !== !cur.turn ? (to.turn ? 'Turned side-on' : 'Turned to face out')
         : to && nth !== spot ? (nth < spot ? 'Moved left' : 'Moved right')

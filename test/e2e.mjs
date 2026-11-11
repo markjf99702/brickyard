@@ -4284,6 +4284,34 @@ await page.click('[data-close]');
   await c.close();
 }
 
+// A set can be put on a full shelf by hand. In Where it stands, a shelf that is only short of room can be chosen
+// and says by how much it would be over (every full shelf was greyed out, so after Fit nothing could be moved); one
+// too short for the set stays greyed out. Chosen, the set stands there and the shelf is flagged overfull.
+{
+  const set = (id, name, w, d, h) => ({ id, t: 1, name, state: 'built', size: { w, d, h } });
+  const { c, p } = await withSets({ sets: { a: set('a', 'Long', 50, 10, 10), b: set('b', 'Wide', 38, 26, 10) }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }, { h: 8, sets: [] }] } } });
+  await p.goto(base + '#shelves');
+  await p.waitForSelector('.case');
+  assert.equal(await p.locator('[data-act="fill"]').count(), 0, 'Fit has nothing it can place');
+  await p.click('#shelves-body .list .item[data-set="b"]');
+  await p.waitForSelector('#z-where');
+  assert.deepEqual(await p.evaluate(() => [document.getElementById('z-msg').textContent].concat([...document.querySelectorAll('#z-where option')].slice(1).map(o => o.textContent + (o.disabled ? ' [greyed]' : '')))),
+    ['No room left on a shelf it fits. You can still choose a full shelf here: it will show as overfull until a set comes off.', 'Billy · shelf 1 (32 cm) · full, 13 cm over with this', 'Billy · shelf 2 (8 cm) · too tall [greyed]'],
+    'a full shelf can be chosen and says how far over it would be; one too short can’t');
+  await p.selectOption('#z-where', 'k:0');
+  await p.click('#z-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.deepEqual([await p.evaluate(() => window.BrickCore.shelves(window.brickyard.doc()).k.levels[0].sets.map(q => q.id)), await p.textContent('.toast span'), await p.textContent('.case .flag.bad'), await p.locator('.sv-tag.bad').count()],
+    [['a', 'b'], 'Wide is on Billy, shelf 1, which is now 13 cm over', 'Shelf 1 is overfull: 89 cm of sets on a 76 cm shelf. Move a set off, or turn one side-on.', 1], 'chosen, the set stands there and the shelf is flagged overfull');
+  await p.locator('.sv-set[data-set="b"]').click();
+  await p.waitForSelector('#z-where');
+  await p.selectOption('#z-where', '');
+  await p.click('#z-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.deepEqual([await p.textContent('.toast span'), await p.locator('.case .flag.bad').count()], ['Off the shelves', 0], 'and moving it off clears the flag');
+  await c.close();
+}
+
 // "Keep themes together" under Fit: off to begin with, and Fit then puts each set on the closest fit. Ticked, a set
 // goes beside one of its own theme first, and the tick is still there after a reload (kept with the device's other
 // settings, not in the catalog). It's only there while there is something for Fit to place.

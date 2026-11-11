@@ -170,6 +170,21 @@ const galaxy = set('galaxy', 51, 25, 33), billy = { id: 'b', name: 'Billy', w: 7
 eq(S.whyNot([billy, kallax], galaxy, ids([galaxy])), 'Too big for every shelf', 'too tall for one bookcase and too big for the other');
 eq(S.fits(shelf(35, 45, [20]), 0, set('w', 40, 30, 10), ids([set('w', 40, 30, 10), set('o', 10, 10, 10)])), { turn: true }, 'still side-on when facing out is too wide');
 
+// A shelf that is only short of room says so, with the way the set would stand there and how far over the shelf
+// would be: by hand it can be put there all the same. A shelf too short or too shallow for it doesn't, and Fit
+// never overfills.
+{
+  const a = set('a', 50, 10, 10), b = set('b', 38, 26, 10), s2 = set('s', 30, 28, 10);
+  const k = { id: 'k', name: 'K', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }, { h: 8, sets: [] }] };
+  eq(S.fits(k, 0, b, ids([a, b])), { why: 'Not enough room left on this shelf', short: { turn: false, over: 13 } }, 'a full shelf says how far over it would be with the set on it');
+  eq(S.fits(k, 0, b, ids([a, b]), true).short, { turn: false, over: 13 }, 'facing out when side-on is too deep, whatever is asked');
+  eq(S.fits(k, 1, b, ids([a, b])).short, undefined, 'a shelf too short for it is not one to squeeze onto');
+  const roomy = { id: 'r', name: 'R', w: 76, d: 30, levels: [{ h: 32, sets: [{ id: 'a' }] }] };
+  eq([S.fits(roomy, 0, s2, ids([a, s2])).short, S.fits(roomy, 0, s2, ids([a, s2]), true).short], [{ turn: false, over: 5 }, { turn: true, over: 3 }], 'the way asked for, when the empty shelf would take it');
+  const r = S.fill([k], [a, b]);
+  eq([r.cases[0].levels[0].sets.length, r.left.map(x => x.why)], [1, ['No room left on a shelf it fits']], 'Fit never puts a set on a full shelf');
+}
+
 // Sets that fill a shelf exactly fit. Sizes are kept to 0.1 cm, and sums of those aren't exact in a computer's
 // arithmetic (76 - 11.4 - 1 is 63.599999999999994), so 11.4 + 1 + 63.6 on a 76 cm shelf was "Not enough room".
 {

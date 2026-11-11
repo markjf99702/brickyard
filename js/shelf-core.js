@@ -41,6 +41,10 @@
   // that would take the set if it were empty is short of room; otherwise the set is too deep, too wide, or too
   // wide facing out and too deep side-on ("too big"). By hand a set can stand on a shelf exactly its height; Fit
   // asks for `clear` cm above it as well, and a shelf that is tall enough but for that says so with `near`.
+  //
+  // A shelf that is only short of room says so with `short`: { turn: the way the set would stand there (the way
+  // asked for if the empty shelf takes it, else the other), over: how many cm too much the shelf would then hold }.
+  // By hand the set can be put there all the same (the planner flags the shelf as overfull); Fit never does.
   function fits(c, li, x, byId, preferTurn, clear) {
     if (!hasSize(x)) return { why: 'It needs a size' };
     var level = c.levels[li];
@@ -60,7 +64,8 @@
     if (deep === 2) return { why: 'Too deep (' + least + ' cm, the shelf is ' + c.d + ')' };
     if (wide === 2) return { why: 'Too wide (' + least + ' cm, the shelf is ' + c.w + ')' };
     if (deep && wide) return { why: 'Too big (' + x.size.w + ' × ' + x.size.d + ' cm, the shelf is ' + c.w + ' × ' + c.d + ')' };
-    return { why: 'Not enough room left on this shelf' };
+    var way = ways.filter(function (t) { var g = footprint(x, t); return g.deep <= c.d && g.along <= c.w; })[0];
+    return { why: 'Not enough room left on this shelf', short: { turn: way, over: (tenths(footprint(x, way).along) - room) / 10 } };
   }
 
   // Why a set fits on no shelf at all, or '' if it fits somewhere. Running out of room says more than being
