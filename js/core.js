@@ -279,6 +279,65 @@
     return Object.keys(doc.sets).map(function (k) { return doc.sets[k]; }).filter(function (x) { return !x.del; });
   }
 
+  // ---------- two copies of a catalog, and what differs between them ----------
+  // A thing in the catalog (a set, a bookcase, a lot) without the time it was last changed.
+  function untimed(x) { var o = {}; Object.keys(x).forEach(function (k) { if (k !== 't') o[k] = x[k]; }); return o; }
+  function sameThing(a, b) { return canon(untimed(a)) === canon(untimed(b)); }
+  // The time for a change that has to win a merge against `a`: now, and after `a` was last changed.
+  function later(a, now) { return Math.max(now, a ? a.t + 1 : 0); }
+
+  // Two devices each added the same set before they first synced (or before a backup or a catalog link was opened on
+  // the other): merged, it's there twice, under two ids. foldTwins merges `here` (this device's catalog) with `there`
+  // (the other one) and keeps such a pair once. A pair is a set only `here` has ever had and a set only `there` has
+  // ever had, with the same set number and everything else the same (name, place, moving box, state, notes, size…;
+  // not the day it was added). Copies that differ in anything are left alone: they may be two sets really owned, and
+  // My sets has a Doubles filter for those. Nothing is folded among the sets of one catalog, so two copies that were
+  // together on a device stay two; each set folds with one twin at most, so two here and two there stay two.
+  // The copy from `there` is the one kept (the other devices know it by that id), unless the one here is on a shelf
+  // in the planner and the other isn't; two that are both on shelves are two sets, and stay. The other gets a
+  // removal timed `now`, which takes it off every device.
+  // Returns { doc: the merged catalog, folded: [{ kept: id, dropped: id, name }] }.
+  function twinKey(x) {
+    var o = untimed(x); delete o.id; delete o.added;
+    return canon(o);
+  }
+  function foldTwins(here, there, now) {
+    var doc = mergeDocs(here, there), folded = [], placed = {}, theirs = {};
+    Object.keys(doc.cases).forEach(function (id) {
+      (doc.cases[id].levels || []).forEach(function (l) { l.sets.forEach(function (y) { placed[y.id] = 1; }); });
+    });
+    var only = function (a, b) {
+      return Object.keys(a.sets).sort().map(function (id) { return a.sets[id]; }).filter(function (x) { return !x.del && x.num && !b.sets[x.id]; });
+    };
+    only(there, here).forEach(function (y) { var k = twinKey(y); (theirs[k] = theirs[k] || []).push(y); });
+    only(here, there).forEach(function (x) {
+      var list = theirs[twinKey(x)] || [], i = -1;
+      list.forEach(function (y, j) { if (i < 0 && !(placed[x.id] && placed[y.id])) i = j; });
+      if (i < 0) return;
+      var y = list.splice(i, 1)[0], keep = placed[x.id] ? x : y, drop = keep === x ? y : x;
+      doc.sets[drop.id] = { id: drop.id, t: later(drop, now), del: 1 };
+      folded.push({ kept: keep.id, dropped: drop.id, name: keep.name || 'Set ' + shortNum(keep.num) });
+    });
+    return { doc: doc, folded: folded };
+  }
+
+  // Which sets are in the catalog more than once, for the Doubles filter: { id: true } for every set that shares its
+  // number with another, or (one of them having no number) its name.
+  function doubles(sets) {
+    var nums = {}, byName = {}, bare = {}, out = {};
+    sets.forEach(function (x) {
+      var k = nameKey(x.name);
+      if (x.num) nums[x.num] = (nums[x.num] || 0) + 1;
+      else if (k) bare[k] = (bare[k] || 0) + 1;
+      if (k) byName[k] = (byName[k] || 0) + 1;
+    });
+    sets.forEach(function (x) {
+      var k = nameKey(x.name);
+      if (x.num ? nums[x.num] > 1 || (k && bare[k]) : k && byName[k] > 1) out[x.id] = true;
+    });
+    return out;
+  }
+
   function nameKey(n) { return String(n || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ''); }
 
   // Whether a new set might be one already there: the same set number, or (with no number) the same name. The
@@ -422,13 +481,15 @@
   }
 
   function totals(sets) {
+    var twice = doubles(sets);
     return sets.reduce(function (t, x) {
       t.sets++; t.pieces += x.pieces || 0;
       if (x.state) t[x.state] = (t[x.state] || 0) + 1;
       if (x.missing) t.missing++;
       if (x.check) t.check++;
+      if (twice[x.id]) t.doubles++;
       return t;
-    }, { sets: 0, pieces: 0, missing: 0, check: 0 });
+    }, { sets: 0, pieces: 0, missing: 0, check: 0, doubles: 0 });
   }
 
   // "box 3" means moving box 3, not any set with "box" and a 3 somewhere. A label can be more than one word
@@ -637,6 +698,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink, linkCheck: linkCheck,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, findDups: findDups, updateFor: updateFor, repeats: repeats, cleanBatch: cleanBatch,
+    foldTwins: foldTwins, doubles: doubles,
     hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;

@@ -732,6 +732,42 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     check(refused, 'still refused: ' + t);
   }
 
+  // The same set added on two devices before they first synced: merged it's there twice, under two ids. foldTwins
+  // keeps an exact pair once; anything that differs, and anything that was together in one catalog, is left alone.
+  {
+    const cat = sets => C.cleanDoc({ catalog: { sets } });
+    const bonsai = (id, more) => Object.assign({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Office', notes: 'A gift', added: '2026-11-01' }, more);
+    const liveIds = d => C.live(d).map(x => x.id).sort();
+    let r = C.foldTwins(cat({ a: bonsai('a') }), cat({ b: bonsai('b', { added: '2026-11-03', t: 9 }) }), 1000);
+    eq([liveIds(r.doc), r.folded, r.doc.sets.a], [['b'], [{ kept: 'b', dropped: 'a', name: 'Bonsai Tree' }], { id: 'a', t: 1000, del: 1 }], 'an exact twin is kept once, as the copy from the other device, and the one here is removed');
+    eq(C.mergeDocs(r.doc, cat({ a: bonsai('a') })).sets.a.del, 1, 'the removal wins when the other device still has the copy');
+    r = C.foldTwins(cat({ a: bonsai('a') }), cat({ b: bonsai('b', { room: 'Hall' }) }), 1000);
+    eq([liveIds(r.doc), r.folded], [['a', 'b'], []], 'copies that differ in anything are left alone: you may own two');
+    r = C.foldTwins(cat({ a: bonsai('a'), a2: bonsai('a2') }), cat({ b: bonsai('b') }), 1000);
+    eq([liveIds(r.doc), r.folded.length], [['a2', 'b'], 1], 'two here and one there stay two');
+    r = C.foldTwins(cat({ a: bonsai('a'), a2: bonsai('a2') }), cat({ a: bonsai('a'), a2: bonsai('a2') }), 1000);
+    eq([liveIds(r.doc), r.folded], [['a', 'a2'], []], 'two that are together in both catalogs are never folded');
+    r = C.foldTwins(cat({ a: bonsai('a'), a2: bonsai('a2') }), cat({ a: bonsai('a'), b: bonsai('b') }), 1000);
+    eq(liveIds(r.doc), ['a', 'b'], 'a set the other catalog knows too folds with nothing; the one only here folds with the one only there');
+    r = C.foldTwins(cat({ a: bonsai('a') }), cat({ a: { id: 'a', t: 9, del: 1 }, b: bonsai('b') }), 1000);
+    eq([liveIds(r.doc), r.folded], [['b'], []], 'a set the other catalog removed is removed, not folded');
+    r = C.foldTwins(cat({ a: { id: 'a', t: 1, name: 'Custom Castle', state: 'built' } }), cat({ b: { id: 'b', t: 1, name: 'Custom Castle', state: 'built' } }), 1000);
+    eq(liveIds(r.doc), ['a', 'b'], 'sets with no number are left alone');
+    const shelf = id => ({ k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [{ id }] }] } });
+    r = C.foldTwins(C.cleanDoc({ catalog: { sets: { a: bonsai('a') }, cases: shelf('a') } }), cat({ b: bonsai('b') }), 1000);
+    eq([liveIds(r.doc), r.folded[0].kept], [['a'], 'a'], 'the copy that is on a shelf in the planner is the one kept');
+    r = C.foldTwins(C.cleanDoc({ catalog: { sets: { a: bonsai('a') }, cases: shelf('a') } }),
+      C.cleanDoc({ catalog: { sets: { b: bonsai('b') }, cases: { k2: Object.assign(shelf('b').k, { id: 'k2' }) } } }), 1000);
+    eq(liveIds(r.doc), ['a', 'b'], 'two that are each on a shelf are two sets');
+    eq(C.foldTwins(cat({ a: bonsai('a', { t: 5000 }) }), cat({ b: bonsai('b') }), 1000).doc.sets.b.t, 5, 'the kept copy is not changed');
+
+    // Doubles, for the filter in My sets: sets that share a number, or a name when one has no number.
+    const sets = [bonsai('a'), bonsai('b', { room: 'Hall' }), { id: 'c', name: 'Typewriter', num: '21327-1' }, { id: 'd', name: 'typewriter' }, { id: 'e', name: 'Orchid', num: '10311-1' },
+      { id: 'f', name: 'Millennium Falcon', num: '75192-1' }, { id: 'g', name: 'Millennium Falcon', num: '75257-1' }];
+    eq(Object.keys(C.doubles(sets)).sort(), ['a', 'b', 'c', 'd'], 'the same number twice, or the same name where one has no number; two numbers under one name are two sets');
+    eq(C.totals(sets).doubles, 4, 'and the totals count them');
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

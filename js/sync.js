@@ -114,6 +114,16 @@
     return api('POST', UP + '?uploadType=multipart&fields=id,version', payload, 'multipart/related; boundary=' + bd).then(function (r) { return r.json(); });
   }
   function take(doc) { app.takeDoc(doc); }
+  // This device's catalog with the one from Drive. The first time the two meet (this device has never finished a
+  // sync, or the file was another device's own that never met this one), a set that was added on both is kept once
+  // (C.foldTwins); after that it's a plain merge, so nothing that has been together on a device is ever folded.
+  var twins = [];
+  function mergeIn(remote, first) {
+    if (!first) return C.mergeDocs(app.doc(), remote);
+    var r = C.foldTwins(app.doc(), remote, Date.now());
+    if (r.folded.length) { app.folded(r.folded); twins = twins.concat(r.folded); }
+    return r.doc;
+  }
 
   // The catalog file's id and version, making it (and its folder) the first time. If two devices each made
   // one, their catalogs are merged here and the extra goes to the Drive trash.
@@ -126,7 +136,7 @@
         if (fs.length) {
           return fs.slice(1).reduce(function (p, x) {
             return p.then(function () { return read(x.id); }).then(function (d) {
-              take(C.mergeDocs(app.doc(), d)); D.pending = true;
+              take(mergeIn(d, true)); D.pending = true;
               return api('PATCH', API + '/' + x.id, JSON.stringify({ trashed: true }), 'application/json');
             });
           }, Promise.resolve()).then(function () { D.fileId = fs[0].id; return { id: fs[0].id, version: String(fs[0].version) }; });
@@ -152,7 +162,7 @@
         if (f.made || (f.version === D.version && !D.pending)) return;
         var got = f.version === D.version ? Promise.resolve(null) : read(f.id);
         return got.then(function (remote) {
-          var merged = remote ? C.mergeDocs(app.doc(), remote) : app.doc();
+          var merged = remote ? mergeIn(remote, !D.last) : app.doc();
           if (remote && !C.sameDoc(merged, app.doc())) take(merged);
           if (remote && C.sameDoc(merged, remote)) { D.version = f.version; return; }
           // Someone else may have written since we read: check, and if so merge their copy in first.
@@ -166,6 +176,7 @@
     return round(0).then(function () {
       if (edits === seq) D.pending = false;
       D.last = Date.now(); D.err = ''; told = ''; saveD(); syncing = false; render();
+      if (twins.length) { app.toastAfter(app.foldedText(twins, 'on both devices'), 'long'); twins = []; }
       if (again || D.pending) { again = false; soon(); }
       // Drive can't refuse a write that crosses another device's, so look again shortly after writing: if the
       // file moved on, the next round merges this device's changes back in. And once more after that: when two

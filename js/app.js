@@ -331,11 +331,16 @@
 
   var FILTERS = [
     ['all', 'All'], ['unpacked', 'Not packed'], ['built', 'Built'], ['partial', 'Partly built'], ['apart', 'Taken apart'], ['sealed', 'Sealed'],
-    ['missing', 'Missing pieces'], ['check', 'To check'],
+    ['missing', 'Missing pieces'], ['check', 'To check'], ['doubles', 'Doubles'],
   ];
+  // Doubles is the sets that are here more than once (C.doubles): the same number twice, or the same name where one
+  // has no number. Two copies that differ in some detail are never folded into one (C.foldTwins), since you may
+  // own two; this is where to look them over. `twice` is worked out each time the list is drawn.
+  var twice = {};
   function passes(x) {
     var f = show;
     if (f === 'all') return true;
+    if (f === 'doubles') return !!twice[x.id];
     if (f === 'unpacked') return !x.box;
     if (f === 'missing') return !!x.missing;
     if (f === 'check') return !!x.check;
@@ -383,6 +388,7 @@
   }
   function drawCatalog() {
     var all = C.live(DOC), q = $('q').value.trim(), t = C.totals(all);
+    twice = C.doubles(all);
     $('cat-tools').hidden = !all.length;
     // With no sets yet the empty state has the same two buttons, so the row at the bottom would only repeat them.
     document.querySelector('#catalog .fab-row').hidden = !all.length;
@@ -1640,6 +1646,7 @@
   // removed. Those are counted, and a box offers to bring them back (timed now, so they win the merge everywhere).
   function catalogSheet(doc, from) {
     var link = from === 'link', incoming = C.live(doc).length, merged = C.mergeDocs(DOC, doc);
+    var twins = C.foldTwins(DOC, doc, Date.now()).folded;
     var loose = C.liveLots(doc).reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
     var gone = C.live(doc).filter(function (x) { return DOC.sets[x.id] && DOC.sets[x.id].del && merged.sets[x.id].del; });
     var names = gone.slice(0, 3).map(function (x) { return x.name || 'Set ' + C.shortNum(x.num); }).join(', ') + (gone.length > 3 ? ' and ' + (gone.length - 3) + ' more' : '');
@@ -1647,15 +1654,37 @@
       '<p class="lede">This ' + (link ? 'link' : 'file') + ' has ' + plural(incoming, 'set') + (loose ? ' and ' + plural(loose, 'loose piece') : '') +
       '. Bringing it in merges it with what’s here, set by set: whichever was changed last is kept, and removing a set counts as a change. Sets that are only here stay.</p>' +
       (gone.length ? '<label class="check"><input type="checkbox" id="cs-back"><span>Bring back the ' + (gone.length === 1 ? 'set' : gone.length.toLocaleString() + ' sets') + ' removed here since this ' + (link ? 'link was copied' : 'file was saved') +
-        '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') + '</div>' +
+        '<span class="note" style="display:block;margin:2px 0 0">' + esc(names) + '</span></span></label>' : '') +
+      (twins.length ? '<p class="note" id="cs-twins">' + esc(foldedText(twins, link ? 'here and in this link' : 'here and in this file', true)) + '</p>' : '') + '</div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="cs-go">Merge it in</button></div>');
     $('cs-go').onclick = function () {
       var back = $('cs-back') && $('cs-back').checked ? gone : [];
-      DOC = C.mergeDocs(DOC, doc);
+      var fold = C.foldTwins(DOC, doc, Date.now());
+      DOC = fold.doc; folded(fold.folded);
       back.forEach(function (x) { putBack('sets', JSON.parse(JSON.stringify(x))); });
       save(); closeSheet(); renderCatalog();
-      toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + 'You have ' + plural(C.live(DOC).length, 'set') + '.');
+      toast('Merged. ' + (back.length ? plural(back.length, 'set') + ' brought back. ' : '') + (fold.folded.length ? foldedText(fold.folded, link ? 'here and in the link' : 'here and in the file') + ' ' : '') +
+        'You have ' + plural(C.live(DOC).length, 'set') + '.', fold.folded.length ? 'long' : false);
     };
+  }
+
+  // The same set added on two devices before their catalogs first met is kept once (C.foldTwins): when a backup or
+  // a catalog link is opened, and on a device's first sync (js/sync.js). The words that say how many; `ahead` for
+  // the sheet that says it before it happens. And what Build from your box had ticked for the copy that went
+  // (brickyard.pool, by set id) goes to the copy that's kept.
+  function foldedText(list, where, ahead) {
+    return list.length === 1 ? list[0].name + ' is ' + where + ' with the same details: ' + (ahead ? 'it will be kept once.' : 'it’s kept once.')
+      : plural(list.length, 'set') + ' are ' + where + ' with the same details: ' + (ahead ? 'each will be kept once.' : 'each is kept once.');
+  }
+  function folded(list) {
+    var pool = read('brickyard.pool'), has = function (k) { return Object.prototype.hasOwnProperty.call(pool, k); }, moved = false;
+    if (!pool || typeof pool !== 'object') return;
+    list.forEach(function (f) {
+      if (!has(f.dropped)) return;
+      if (!has(f.kept)) pool[f.kept] = pool[f.dropped];
+      delete pool[f.dropped]; moved = true;
+    });
+    if (moved) write('brickyard.pool', pool);
   }
 
   // ---------- menu ----------
@@ -1773,7 +1802,7 @@
     fillLists: function () { fillLists(C.live(DOC)); },
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
-    newId: newId, takeDoc: takeDoc, showSet: showSet,
+    newId: newId, takeDoc: takeDoc, showSet: showSet, folded: folded, foldedText: foldedText,
     // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
     // gives this the new copy of the thing that opened it.
     lastFocus: function (el) { if (el !== undefined) lastFocus = el; return lastFocus; },

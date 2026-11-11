@@ -223,6 +223,31 @@ assert.ok(merged.includes('Enterprise') && merged.includes('World Map') && merge
 await A.page.waitForTimeout(2600); await synced(A.page);
 assert.deepEqual(inDrive(), ['Bonsai Tree', 'Enterprise', 'Galaxy Explorer', 'Typewriter', 'World Map'], 'and sync takes it to Drive');
 
+// The same set added on two devices before the second one's first sync: an exact twin is kept once, and a message
+// says so; a copy that differs (another room) stays a second set. Later syncs never fold anything.
+{
+  const toast = page => page.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? '' : t.querySelector('span').textContent; });
+  const orchid = (id, more) => ({ id, t: 5, num: '10311-1', name: 'Orchid', state: 'built', room: 'Office', added: '2026-11-01', ...more });
+  const count = (page, name) => page.evaluate(n => Object.values(window.brickyard.doc().sets).filter(x => !x.del && x.name === n).length, name);
+  await A.page.goto(SITE);
+  await A.page.evaluate(x => window.brickyard.putSet(x), orchid('n1'));
+  await A.page.waitForTimeout(2600); await synced(A.page);
+  const F = await device({ f1: orchid('f1', { added: '2026-11-03' }), f2: orchid('f2', { room: 'Hall' }) });
+  await F.page.click('#sync-offer'); await F.page.click('#dv-go'); await F.page.click('[data-close]');
+  await synced(F.page);
+  assert.deepEqual(await F.page.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => !x.del && x.name === 'Orchid').map(x => x.id).sort()), ['f2', 'n1'], 'on its first sync the exact twin is kept once; the Orchid in another room is a second set');
+  await F.page.waitForFunction(() => /kept once/.test(document.querySelector('.toast').textContent));
+  assert.equal(await toast(F.page), 'Orchid is on both devices with the same details: it’s kept once.');
+  await F.page.waitForTimeout(2600); await synced(F.page);
+  await syncNow(A.page);
+  assert.deepEqual([await count(A.page, 'Orchid'), await A.page.evaluate(() => [!window.brickyard.doc().sets.n1.del, window.brickyard.doc().sets.f1.del])], [2, [true, 1]], 'the first device keeps its own copy, and the twin never shows there');
+  // Once a device has synced, a second copy made on it on purpose is never folded.
+  await F.page.evaluate(x => window.brickyard.putSet(x), orchid('f9'));
+  await F.page.waitForTimeout(2600); await synced(F.page);
+  await syncNow(A.page);
+  assert.equal(await count(A.page, 'Orchid'), 3, 'a copy added after the first sync stays');
+}
+
 assert.deepEqual(problems, [], 'problems while using it');
 await browser.close();
 console.log('sync: all good');
