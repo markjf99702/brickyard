@@ -8,6 +8,7 @@
 
   var GAP = 1; // cm between neighbouring sets on a shelf
   var CLEAR = 1; // cm Fit keeps clear above a set, so there's room to lift it in and out
+  var EYE = 140, BOARD = 2; // cm: the height Fit fills from, and the board under each shelf when working that out
   var ON_SHELVES = ['built', 'partial'];
 
   function hasSize(x) { return !!(x && x.size && x.size.w && x.size.d && x.size.h); }
@@ -168,6 +169,7 @@
   // (it used to turn on the first shelf it came to while the next one still had room for it facing out); then the
   // shelf it fills most nearly. Before any of that, a set with a room in My sets goes on a bookcase in that room
   // when one takes it, and anywhere only when none does; sets and bookcases with no room are placed as ever.
+  // Shelves still level after all that are taken from eye level outwards (it used to be from the top down).
   // Returns new bookcases (the old ones aren't changed) and the sets that didn't fit,
   // with why.
   function fill(cases, sets) {
@@ -184,7 +186,7 @@
           var f = fits(c, li, x, byId, false, CLEAR);
           if (f.why) return;
           // What makes one shelf better than another, most important first; less is better.
-          var key = [x.room && !sameRoom(x.room, c.room) ? 1 : 0, tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along)];
+          var key = [x.room && !sameRoom(x.room, c.room) ? 1 : 0, tenths(l.h) - tenths(x.size.h), f.turn ? 1 : 0, tenths(c.w) - tenths(used(l, byId)) - tenths(footprint(x, f.turn).along), eyeGap(c, li)];
           if (!best || before(key, best.key)) best = { l: l, turn: f.turn, key: key };
         });
       });
@@ -193,6 +195,13 @@
       best.l.sets.push(p);
     });
     return { cases: out, left: left };
+  }
+  // How far the middle of a shelf is from eye level, in tenths of a cm, taking the bookcase to stand on the floor
+  // with a board under each shelf. levels[0] is the top shelf.
+  function eyeGap(c, li) {
+    var y = BOARD;
+    for (var i = c.levels.length - 1; i > li; i--) y += c.levels[i].h + BOARD;
+    return Math.abs(tenths(y + c.levels[li].h / 2) - tenths(EYE));
   }
   // Rooms are typed by hand in two places, so "Office" and "office " are the same room.
   function sameRoom(a, b) { var f = function (t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); }; return !!f(a) && f(a) === f(b); }

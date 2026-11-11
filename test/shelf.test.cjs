@@ -100,6 +100,17 @@ eq(S.whyNot([k3], set('x', 45, 20, 14), ids(sets)), 'No room left on a shelf it 
   eq(S.fill([hall, bare], [mine]).cases.map(c => c.levels[0].sets.length), [1, 0], 'a bookcase with no room is not the set’s room');
 }
 
+// Shelves that suit a set equally are taken from eye level (1.4 m up, the bookcase on the floor) outwards, not from
+// the top down. Six 30 cm spaces with 2 cm boards have their middles 177, 145, 113, 81, 49 and 17 cm up.
+{
+  const billy = { id: 'k', name: 'Billy', w: 76, d: 26, levels: [30, 30, 30, 30, 30, 30].map(h => ({ h, sets: [] })) }, six = [];
+  for (let i = 0; i < 6; i++) six.push(set('s' + i, 60, 20, 20));
+  const where = n => S.fill([billy], six.slice(0, n)).cases[0].levels.map(l => l.sets.length).join('');
+  eq([1, 2, 3, 4, 5, 6].map(where), ['010000', '011000', '111000', '111100', '111110', '111111'], 'from eye level outwards');
+  const pair = [set('p', 30, 20, 20), set('q', 30, 20, 20)];
+  eq(S.fill([billy], pair).cases[0].levels.map(l => l.sets.length).join(''), '020000', 'a shelf with a set on it is still filled before an empty one');
+}
+
 // A set wider than a shelf (or too wide one way and too deep the other) says so, even on an empty shelf: only a
 // shelf that would take it when empty can be short of room.
 const lambo = set('lambo', 60, 26, 15), kallax = { id: 'kx', name: 'Kallax', w: 33, d: 37, levels: [{ h: 33, sets: [] }] };
