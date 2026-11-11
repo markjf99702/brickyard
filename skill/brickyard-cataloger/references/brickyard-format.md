@@ -78,7 +78,7 @@ Bricks that aren't a set: a tub, a bag, a moving box. Stud Finder (the tray scan
 
 Part numbers: the everyday number for a piece is accepted as well as LDraw's current one. BrickLink and Rebrickable write a 1x2 plate as `3023` and a round 1x1 plate as `4073`; the builder knows them as `3023b` and `6141`. `parts/aliases.json` lists these, and a number in it is read as the builder's whenever pieces are counted, in the page and in the designer skill's `check_model.py`. The lot is kept with the numbers it came with.
 
-Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed; `#l2z<data><check>` and `#l2j<data><check>` are the same with the check on the end (see Links above). Opening one shows the lot to review, then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.
+Links: `https://brickyard.junkdrawer.works/#l1z<data>` (deflated, base64url, like `#b1z`) or `#l1j<data>` uncompressed; `#l2z<data><check>` and `#l2j<data><check>` are the same with the check on the end (see Links above). Opening one shows the lot to review (every kind of piece with its colour and count, which ones the builder can't draw yet, and how many rows couldn't be read), then puts it in **Your pieces** under Build from your box, where it can be unticked or removed. Lots are saved in the catalog (`"loose": {id: lot}` in a backup, each with `t`, and `"del": 1` for a removed one), so backups and Drive sync carry them.
 
 ## A model (for Build from your box)
 

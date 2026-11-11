@@ -833,6 +833,15 @@ print(json.dumps([${expr} for v in json.loads(sys.stdin.read())]))`, path.join(r
     eq(said(here, C.mergeDocs(here, cat({ e: s('e', 'Saturn V'), a: { id: 'a', t: 5, del: 1 } })), { e: true, a: true }), '', 'the two copies of a folded twin are left out');
   }
 
+  // A lot of loose pieces says how many of its rows couldn't be read, for its review: they went without a word.
+  // A piece listed twice is added up, not left out.
+  {
+    const lot = { name: 'Blue tub', parts: [['3001', 4, 12], ['3001', 'red', 2], ['3020', 15, 0], 'nope', ['30 20', 15, 1], ['3001', 4, 2], ['2780', 0, 40, 'Technic Pin']] };
+    const r = await C.parseIncoming(JSON.stringify({ brickyard: 1, loose: lot }));
+    eq([r.kind, r.dropped, r.lot.parts], ['loose', 4, [['2780', 0, 40, 'Technic Pin'], ['3001', 4, 14]]], 'a lot says how many rows it left out');
+    eq((await C.parseIncoming(JSON.stringify({ loose: { parts: [['3001', 4, 1]] } }))).dropped, 0, 'none, when every row is read');
+  }
+
   console.log(failed ? `${failed} failed, ${passed} passed` : `all ${passed} checks passed`);
   process.exit(failed ? 1 : 0);
 })();

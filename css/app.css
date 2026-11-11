@@ -444,6 +444,9 @@ details.where summary:focus-visible { outline: 2px solid var(--blue); outline-of
 details.where .note { margin: 0 0 8px; }
 details.where ul { margin: 0; padding: 0 0 4px 18px; display: grid; gap: 6px; font-size: 15px; line-height: 1.35; }
 @media (prefers-reduced-motion: reduce) { details.where summary::before { transition: none; } }
+/* What's inside a lot of loose pieces, in its review (js/app.js, looseSheet): the same fold, over a list of pieces. */
+details.where.inside { margin: 0 0 12px; border-bottom: 1px solid var(--line); }
+details.where.inside ul.need { padding: 0 0 12px; gap: 8px; }
 
 /* ---------- shelf planner ---------- */
 /* Under the planner's count: the ways down to the two lists below the bookcases, as words to tap, 44 px tall. A

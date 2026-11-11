@@ -151,22 +151,27 @@
     if (typeof v === 'number' ? !isFinite(v) || v % 1 : !/^\d{1,5}$/.test(String(v == null ? '' : v))) return -1;
     var n = Number(v); return n >= 0 && n <= 99999 ? n : -1;
   }
-  function cleanLot(x, id, t) {
-    if (!x || typeof x !== 'object') return null;
-    var key = s(x.id || id, 40);
-    t = typeof t === 'number' && isFinite(t) ? t : (typeof x.t === 'number' && isFinite(x.t) ? x.t : 0);
-    if (x.del) return key ? { id: key, t: t, del: 1 } : null;
-    var byKey = {}, parts = [];
-    (Array.isArray(x.parts) ? x.parts : []).slice(0, 20000).forEach(function (r) {
-      if (!Array.isArray(r)) return;
-      var p = partNum(r[0]), c = colourNum(r[1]), n = whole(r[2], 0, 100000);
-      if (!p || c < 0 || n < 1) return;
+  // The rows of a lot that can be read, the same part and colour added up, and how many rows couldn't be
+  // (`dropped`), so the review can say that some were left out: they used to go without a word.
+  function lotRows(x) {
+    var byKey = {}, parts = [], all = x && Array.isArray(x.parts) ? x.parts : [], dropped = Math.max(0, all.length - 20000);
+    all.slice(0, 20000).forEach(function (r) {
+      var p = Array.isArray(r) ? partNum(r[0]) : '', c = p ? colourNum(r[1]) : -1, n = p ? whole(r[2], 0, 100000) : 0;
+      if (!p || c < 0 || n < 1) { dropped++; return; }
       var k = p + '/' + c, row = byKey[k];
       if (row) { row[2] = Math.min(100000, row[2] + n); return; }
       row = [p, c, n];
       var nm = s(r[3], 60); if (nm) row.push(nm);
       byKey[k] = row; parts.push(row);
     });
+    return { parts: parts, dropped: dropped };
+  }
+  function cleanLot(x, id, t) {
+    if (!x || typeof x !== 'object') return null;
+    var key = s(x.id || id, 40);
+    t = typeof t === 'number' && isFinite(t) ? t : (typeof x.t === 'number' && isFinite(x.t) ? x.t : 0);
+    if (x.del) return key ? { id: key, t: t, del: 1 } : null;
+    var parts = lotRows(x).parts;
     if (!parts.length) return null;
     parts.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]; });
     var o = { id: key || 'l' + hash(JSON.stringify(parts)), t: t, name: s(x.name, 80) || 'Loose pieces', parts: parts };
@@ -894,7 +899,7 @@
     if (o && o.loose && !o.sets && !o.batch) {
       var lot = cleanLot(o.loose);
       if (!lot || lot.del) throw new Error('empty');
-      return { kind: 'loose', lot: lot };
+      return { kind: 'loose', lot: lot, dropped: lotRows(o.loose).dropped };
     }
     var sizes = o && (o.sizes || (o.batch && o.batch.sizes)), sets = o && (o.sets || (o.batch && o.batch.sets));
     if (Array.isArray(sizes) && sizes.length && !sets) return { kind: 'sizes', doc: o };

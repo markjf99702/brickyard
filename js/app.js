@@ -1472,7 +1472,7 @@
     return p.then(function (r) {
       if (r.kind === 'sizes') takeSizes(r.doc);
       else if (r.kind === 'model') takeModel(r.doc);
-      else if (r.kind === 'loose') onScreen('#build', function () { looseSheet(r.lot); });
+      else if (r.kind === 'loose') onScreen('#build', function () { looseSheet(r.lot, r.dropped); });
       else if (r.kind === 'catalog') onScreen('#catalog', function () { catalogSheet(r.doc, from, r); });
       else onScreen('#catalog', function () { reviewSheet(r.batch, link); });
     }).catch(function (e) { unread(e, plain || 'That doesn’t look like sets from Claude or a Brickyard file'); });
@@ -1777,23 +1777,41 @@
     return fetch('parts/' + name).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
   }
   function shapeIds() {
-    return Promise.all([partsFile('shapes.json'), partsFile('aliases.json')]).then(function (f) {
+    return Promise.all([partsFile('shapes.json'), partsFile('aliases.json'), partsFile('colors.json')]).then(function (f) {
       var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
-      return { knows: function (p) { return has(f[0], has(f[1], p) ? f[1][p] : p); } };
+      var shape = function (p) { var k = has(f[1], p) ? f[1][p] : p; return has(f[0], k) ? f[0][k] : null; };
+      return { knows: function (p) { return !!shape(p); }, any: Object.keys(f[0]).length > 0,
+        name: function (p) { var sh = shape(p); return sh && sh.n ? String(sh.n) : ''; },
+        colour: function (c) { var x = has(f[2], String(c)) ? f[2][String(c)] : null; return x ? { name: String(x[0]), hex: String(x[1]), alpha: x[2] } : { name: 'Colour ' + c, hex: '#999999' }; } };
     });
   }
-  function looseSheet(lot) {
+  // What's in a lot, a line for each kind: how many, the piece's name, its colour and number, and "the builder
+  // can't draw this yet" on the ones it can't. (The review said "70 pieces of 4 kinds" and nothing of which.) A
+  // piece the builder doesn't know goes by the name the sender gave it, or its number.
+  function lotRowsHtml(lot, shapes) {
+    return lot.parts.map(function (r) {
+      var col = shapes.colour(r[1]), known = shapes.knows(r[0]);
+      return '<li><i style="background:' + esc(/^#[0-9a-f]{3,8}$/i.test(col.hex) ? col.hex : '#999999') + (col.alpha ? ';opacity:.6' : '') + '"></i><span><b>' + r[2].toLocaleString() + '×</b> ' + esc(shapes.name(r[0]) || r[3] || 'Part ' + r[0]) +
+        '<small>' + esc(col.name) + ' · ' + esc(r[0]) + (known || !shapes.any ? '' : ' · the builder can’t draw this yet') + '</small></span></li>';
+    }).join('');
+  }
+  function looseSheet(lot, dropped) {
     var had = DOC.loose[lot.id] && !DOC.loose[lot.id].del ? DOC.loose[lot.id] : null, n = C.lotTotals(lot);
     openSheet('<div class="hd"><h2 id="sheetTitle">Add loose pieces</h2><button class="btn sm quiet" type="button" data-close>Not now</button></div><div class="bd">' +
       '<p class="lede"><b>' + esc(lot.name) + '</b> · ' + plural(n.pieces, 'piece') + ' of ' + plural(n.kinds, 'kind') + '</p>' +
       (had ? '<p class="flag"><span>You already have these loose pieces (' + plural(C.lotTotals(had).pieces, 'piece') + '). Adding them again replaces them, so nothing is counted twice.</span></p>' : '') +
+      (dropped ? '<p class="flag" id="ls-dropped"><span>' + (dropped === 1 ? '1 row of this list couldn’t be read, so it is left out.' : dropped.toLocaleString() + ' rows of this list couldn’t be read, so they are left out.') +
+        ' Check what’s inside against what was counted.</span></p>' : '') +
       '<p class="note" id="ls-use"></p>' +
+      // Open for a list short enough to read at a glance; a long one waits for a tap.
+      '<details class="where inside" id="ls-inside"' + (n.kinds <= 40 ? ' open' : '') + '><summary>What’s inside: ' + plural(n.kinds, 'kind') + '</summary><ul class="need wide"></ul></details>' +
       '<div class="bulk">' + field('Call it', input('ls-name', lot.name, ' maxlength="80"')) +
       field('Moving box', input('ls-box', lot.box || (had && had.box) || '', ' list="dl-box" maxlength="40" placeholder="Leave blank if it’s not packed"')) + '</div>' +
       '<p class="note">Loose pieces join <b>Your pieces</b> in Build from your box, next to your taken-apart sets. You can untick or remove them there.</p></div>' +
       '<div class="ft"><span></span><button class="btn" type="button" id="ls-add">' + (had ? 'Replace them' : 'Add ' + plural(n.pieces, 'piece')) + '</button></div>');
     shapeIds().then(function (shapes) {
       var use = lot.parts.reduce(function (k, r) { return k + (shapes.knows(r[0]) ? r[2] : 0); }, 0);
+      if ($('ls-inside')) $('ls-inside').querySelector('ul').innerHTML = lotRowsHtml(lot, shapes);
       if ($('ls-use')) $('ls-use').textContent = use === n.pieces ? 'The builder can use all of them.'
         : 'The builder can use ' + use.toLocaleString() + ' of them today. The rest are kept, and count once Brickyard learns their shapes.';
     });

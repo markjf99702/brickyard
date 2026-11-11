@@ -5918,6 +5918,37 @@ assert.deepEqual(told, [], 'and no request for one said which site was asking');
   await none.c.close();
 }
 
+// Add loose pieces shows what's inside: a line for each kind with how many, the piece's name, its colour and its
+// number, and which ones the builder can't draw yet. (It said "70 pieces of 4 kinds" and nothing of which.) Rows
+// that couldn't be read are counted in a line of their own; they were left out without a word.
+{
+  const lot = { name: 'Blue tub', parts: [['3001', 4, 12], ['3023', 15, 7], ['2780', 0, 40, 'Technic Pin with Friction'], ['32000', 71, 2], ['3001', 9999, 1], ['3001', 'red', 2], ['3020', 15, 0], 'nope'] };
+  const { c, p } = await withSets({ sets: {} });
+  await p.goto(base + '#l1j' + Buffer.from(JSON.stringify({ brickyard: 1, loose: lot })).toString('base64url'));
+  await p.waitForSelector('#ls-add');
+  await p.waitForFunction(() => document.querySelectorAll('#ls-inside li').length > 0);
+  assert.equal(await p.textContent('.sheet .lede'), 'Blue tub · 62 pieces of 5 kinds');
+  assert.equal(await p.textContent('#ls-dropped'), '3 rows of this list couldn’t be read, so they are left out. Check what’s inside against what was counted.');
+  assert.deepEqual([await p.textContent('#ls-inside summary'), await p.$eval('#ls-inside', d => d.open)], ['What’s inside: 5 kinds', true]);
+  assert.deepEqual(await p.$$eval('#ls-inside li', ls => ls.map(l => l.querySelector('span').textContent)), ['40× Technic Pin with FrictionBlack · 2780 · the builder can’t draw this yet', '12× Brick 2x4Red · 3001', '1× Brick 2x4Colour 9999 · 3001',
+    '7× Plate 1x2White · 3023', '2× Part 32000Light Bluish Grey · 32000 · the builder can’t draw this yet'], 'each kind: how many, its name, its colour and number, and what the builder can’t draw');
+  assert.deepEqual(await p.$$eval('#ls-inside li i', is => is.slice(0, 3).map(i => i.style.backgroundColor)), ['rgb(27, 42, 52)', 'rgb(180, 0, 0)', 'rgb(153, 153, 153)'], 'with a swatch of its colour, grey for one Brickyard doesn’t know');
+  assert.equal(await p.textContent('#ls-use'), 'The builder can use 20 of them today. The rest are kept, and count once Brickyard learns their shapes.');
+  assert.ok(await p.evaluate(() => { const s = document.querySelector('.sheet'), r = document.getElementById('ls-add').getBoundingClientRect(); return document.documentElement.scrollWidth <= innerWidth && r.bottom <= innerHeight && r.top > 0; }), 'Add is on the screen, and nothing runs off the side');
+  await p.click('.sheet [data-close]');
+  await c.close();
+  // A list with every row read has no such line, and a long one keeps its list folded until it's asked for.
+  const long = { name: 'Big bin', parts: Array.from({ length: 60 }, (_, i) => ['3001', i, 1]) };
+  const big = await withSets({ sets: {} });
+  await big.p.goto(base + '#l1z' + deflateRawSync(JSON.stringify({ brickyard: 1, loose: long })).toString('base64url'));
+  await big.p.waitForSelector('#ls-add');
+  await big.p.waitForFunction(() => document.querySelectorAll('#ls-inside li').length === 60);
+  assert.deepEqual([await big.p.locator('#ls-dropped').count(), await big.p.$eval('#ls-inside', d => d.open), await big.p.textContent('#ls-inside summary')], [0, false, 'What’s inside: 60 kinds']);
+  await big.p.click('#ls-inside summary');
+  assert.equal(await big.p.isVisible('#ls-inside li'), true, 'a tap opens it');
+  await big.c.close();
+}
+
 await browser.close();
 server.close();
 
