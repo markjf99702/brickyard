@@ -302,7 +302,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
     c: { id: 'c', t: 1, name: 'Charlie', room: 'Office', box: '3' }, d: { id: 'd', t: 1, name: 'Delta', room: 'office', box: '03' },
     e: { id: 'e', t: 1, name: 'Echo', room: 'Office' } } });
   await p.goto(base + '#catalog');
-  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => [h.children[0].textContent.toLowerCase(), +h.children[1].textContent]));
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => { const s = h.querySelectorAll('span'); return [s[0].textContent.toLowerCase(), +s[1].textContent]; }));
   assert.deepEqual(await heads(), [['office', 5]], 'one room, whatever its spelling');
   await p.selectOption('#group', 'box');
   assert.deepEqual(await heads(), [['box 3', 2], ['box kitchen 2', 2], ['not packed', 1]], 'one moving box, whatever its spelling');
@@ -320,7 +320,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   const subs = () => p.locator('#list-wrap .item .m').evaluateAll(ms => ms.map(m => m.textContent).filter(Boolean));
   assert.deepEqual(await subs(), ['Box 5', 'Box 5', 'Box 5', 'Box 15'], 'grouped by room, each set says Box 5, not Box Box 5');
   await p.selectOption('#group', 'box');
-  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => [h.children[0].textContent, +h.children[1].textContent]));
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => { const s = h.querySelectorAll('span'); return [s[0].textContent, +s[1].textContent]; }));
   assert.deepEqual(await heads(), [['Box 5', 3], ['Box 15', 1]], 'Box 5, #5 and 5 are one box');
   await p.selectOption('#group', 'theme');
   assert.deepEqual(await subs(), ['Office · Box 5', 'Office · Box 5', 'Office · Box 5', 'Office · Box 15'], 'and say so grouped any other way');
@@ -342,7 +342,7 @@ assert.deepEqual(await page.locator('.group span:first-child').allTextContents()
   const lines = () => p.locator('#list-wrap .note.lots').allTextContents();
   assert.deepEqual(await lines(), [], 'grouped by room, no lines');
   await p.selectOption('#group', 'box');
-  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.children[0].textContent + ' ' + h.children[1].textContent));
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => { const s = h.querySelectorAll('span'); return s[0].textContent + ' ' + s[1].textContent; }));
   assert.deepEqual(await heads(), ['Box 3 1', 'Box 14 1', 'Box 20 ', 'Not packed 1'], 'a box of only loose pieces has a group in its place');
   assert.deepEqual(await lines(), ['Also in Box 14: Blue tub, 42 loose pieces', 'In Box 20: Red bag, 10 loose pieces'], 'each box’s loose pieces under its group');
   assert.equal(await p.locator('.group:has-text("Box 14") + .list + .note.lots').count(), 1, 'the line is under its box’s sets');
@@ -471,6 +471,106 @@ await page.click('.chip[data-f="all"]');
   await p.click('#e-save');
   const l = await p.evaluate(() => window.brickyard.doc().sets.l);
   assert.deepEqual([l.check, l.notes, l.num], [undefined, 'on loan', '42115-1'], 'Save after It’s right keeps the check cleared');
+  await c.close();
+}
+
+// A moving box has a sheet of its own: a tap on its heading in Group by Moving box opens it (a heading did nothing),
+// with the box's sets and loose pieces, and Add sets to this box, Copy this list and Rename this box. A search for
+// the box has a button that opens the same sheet.
+{
+  const { c, p } = await withSets({
+    sets: { a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', pieces: 906, state: 'built', box: 'Box 03', room: 'Hall' }, b: { id: 'b', t: 1, num: '10311-1', name: 'Orchid', pieces: 608, state: 'built', box: '3' },
+      d: { id: 'd', t: 1, num: '21327-1', name: 'Typewriter', state: 'apart', box: '12' }, e: { id: 'e', t: 1, num: '10281-1', name: 'Bonsai Tree', state: 'built', room: 'Hall' },
+      f: { id: 'f', t: 1, num: '10280-1', name: 'Flower Bouquet', state: 'sealed' }, g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: '#3', parts: [['3001', 4, 40], ['3020', 15, 2]] }, bag: { id: 'bag', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] } } },
+  { permissions: ['clipboard-read', 'clipboard-write'] });
+  const says = () => p.textContent('.toast > span'), title = () => p.textContent('#sheetTitle');
+  const boxOf = id => p.evaluate(i => { const d = window.brickyard.doc(), x = d.sets[i] || d.loose[i]; return x.box || ''; }, id);
+  const heads = () => p.locator('#list-wrap .group').evaluateAll(hs => hs.map(h => h.textContent));
+  await p.goto(base + '#catalog');
+  await p.selectOption('#group', 'box');
+  assert.deepEqual([await heads(), await p.locator('#list-wrap .box-head').count()], [['Box 32', 'Box 121', 'Box 20', 'Not packed3'], 3], 'each box’s heading is a button, and Not packed’s is not');
+  assert.equal(await p.getAttribute('.box-head[data-box="3"]', 'aria-label'), 'Box 3, 2 sets');
+  assert.ok((await p.locator('.box-head').first().boundingBox()).height >= 44, 'tall enough for a finger');
+  await p.click('.box-head[data-box="3"]');
+  assert.deepEqual([await title(), await p.textContent('.sheet .lede'), await p.locator('#bx-sets .item .t').allTextContents(), await p.textContent('.sheet .note.lots'), await p.locator('#bx-acts button').evaluateAll(bs => bs.map(b => b.firstChild.firstChild.textContent))],
+    ['Box 3', '2 sets · 1,514 pieces · 42 loose pieces', ['Orchid', 'Retro Radio'], 'Also in this box: Blue tub, 42 loose pieces', ['Add sets to this box', 'Copy this list', 'Rename this box']], 'the box’s sheet');
+  // A set in it opens its own sheet.
+  await p.click('#bx-sets .item[data-id="b"]');
+  assert.deepEqual([await title(), await p.inputValue('#e-box')], ['Orchid', '3']);
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  // Copy this list.
+  await p.click('.box-head[data-box="3"]');
+  await p.click('#bx-copy');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual([await says(), await p.evaluate(() => navigator.clipboard.readText())], ['Copied Box 3’s list', 'Box 3 · 2 sets · 42 loose pieces\n10311 Orchid · Built\n10334 Retro Radio · Built\nBlue tub · 42 loose pieces']);
+  // Add sets to this box: the sets that aren't packed, none ticked, with a search; Undo takes them out again.
+  await p.click('.box-head[data-box="3"]');
+  await p.click('#bx-add');
+  const rows = () => p.$$eval('#ab li', ls => ls.filter(l => !l.hidden).map(l => l.querySelector('.t').textContent + (l.querySelector('input').checked ? ' ✓' : '')));
+  assert.deepEqual([await title(), await rows(), await p.textContent('#ab-go'), await p.isDisabled('#ab-go')], ['Add sets to Box 3', ['Bonsai Tree', 'Flower Bouquet', 'Galaxy Explorer'], 'Add', true]);
+  await p.click('#ab li:has-text("Galaxy Explorer")');
+  await p.fill('#ab-q', 'flowers');
+  assert.deepEqual(await rows(), ['Flower Bouquet', 'Galaxy Explorer ✓'], 'the search narrows the list, and a ticked set stays');
+  await p.click('#ab li:has-text("Flower Bouquet") input');
+  await p.fill('#ab-q', 'zzz');
+  assert.deepEqual([await rows(), await p.isVisible('#ab-none')], [['Flower Bouquet ✓', 'Galaxy Explorer ✓'], false]);
+  assert.deepEqual([await p.textContent('#ab-n'), await p.textContent('#ab-go')], ['2 ticked', 'Add 2 sets']);
+  // With sets ticked, Close asks before it throws them away.
+  await p.click('[data-close]');
+  assert.equal(await p.textContent('[data-close]'), 'Discard changes?');
+  await p.click('#ab-go');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual([await says(), await boxOf('f'), await boxOf('g'), await boxOf('e'), await heads()], ['Box 3 holds 4 sets now.', '3', '3', '', ['Box 34', 'Box 121', 'Box 20', 'Not packed1']]);
+  await p.click('.toast button');
+  assert.deepEqual([await says(), await boxOf('f'), await boxOf('g'), await heads()], ['Took those 2 out of Box 3 again', '', '', ['Box 32', 'Box 121', 'Box 20', 'Not packed3']]);
+  // Rename this box: every set and lot in it, whatever each called the box. Nothing typed is turned down.
+  await p.click('.box-head[data-box="3"]');
+  await p.click('#bx-rename');
+  assert.deepEqual([await title(), await p.inputValue('#rn-box'), await p.evaluate(() => document.activeElement.id)], ['Rename Box 3', '3', 'rn-box']);
+  await p.fill('#rn-box', ' ');
+  await p.click('#rn-go');
+  assert.equal(await p.textContent('#rn-box-err'), 'Give the box a label.');
+  await p.fill('#rn-box', 'Kitchen 1');
+  await p.press('#rn-box', 'Enter');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual([await says(), await boxOf('a'), await boxOf('b'), await boxOf('tub'), await boxOf('d'), await heads()], ['Box 3 is now Box Kitchen 1', 'Kitchen 1', 'Kitchen 1', 'Kitchen 1', '12', ['Box 121', 'Box 20', 'Box Kitchen 12', 'Not packed3']]);
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.box), 'Kitchen 1', 'the keyboard is on the box under its new name');
+  await p.click('.toast button');
+  assert.deepEqual([await says(), await boxOf('a'), await boxOf('b'), await boxOf('tub')], ['It’s Box 3 again', 'Box 03', '3', '#3'], 'Undo gives each its own label back');
+  // A label another box has takes a second tap, and makes the two one box.
+  await p.click('.box-head[data-box="12"]');
+  await p.click('#bx-rename');
+  await p.fill('#rn-box', '3');
+  await p.click('#rn-go');
+  assert.deepEqual([await p.textContent('#rn-go'), await p.textContent('#rn-hint'), await boxOf('d')], ['Put them together', 'Box 3 already holds 2 sets. Tap again to make the two one box.', '12']);
+  await p.waitForTimeout(650);
+  await p.click('#rn-go');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  assert.deepEqual([await says(), await boxOf('d'), await heads()], ['Box 12 is now part of Box 3', '3', ['Box 33', 'Box 20', 'Not packed3']]);
+  // A box of only loose pieces has a sheet too.
+  await p.click('.box-head[data-box="20"]');
+  assert.deepEqual([await title(), await p.textContent('.sheet .lede'), await p.locator('#bx-sets').count(), await p.textContent('.sheet .note.lots')], ['Box 20', '10 loose pieces', 0, 'In this box: Red bag, 10 loose pieces']);
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  // A search for a box, grouped any other way, has a button that opens the box's sheet.
+  await p.selectOption('#group', 'room');
+  await p.fill('#q', 'box 3');
+  assert.equal(await p.textContent('.boxline button'), 'Box 3: add sets, copy its list, rename');
+  await p.click('.boxline button');
+  assert.deepEqual([await title(), await p.locator('#bx-sets .item').count()], ['Box 3', 3]);
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !document.querySelector('.sheet'));
+  await p.fill('#q', 'box 20');
+  await p.click('.boxline button');
+  assert.equal(await title(), 'Box 20', 'and for a box of only loose pieces');
+  await p.click('[data-close]');
+  await p.fill('#q', 'box 3 radio');
+  assert.equal(await p.locator('.boxline').count(), 0, 'not when the search is for something in the box');
+  await p.selectOption('#group', 'box');
+  await p.fill('#q', 'box 3');
+  assert.deepEqual([await p.locator('.boxline').count(), await p.locator('.box-head').count()], [0, 1], 'grouped by box, the heading is the button');
   await c.close();
 }
 

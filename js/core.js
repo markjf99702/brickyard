@@ -340,10 +340,14 @@
 
   // Two labels for one moving box: "3", "03", "Box 3" and "#3" are the same box, the way boxes are grouped.
   function sameBox(a, b) { return !!a && !!b && natural(boxName(a), boxName(b)) === 0; }
-  // What a moving box holds: its sets and its lots of loose pieces.
+  // What a moving box holds: its sets, by name, and its lots of loose pieces. The box is called what the first of
+  // them calls it, as its heading in My sets is: a set that had it as "03" came out of Box 3.
+  function byName(a, b) { return natural(a.name || '', b.name || '') || natural(a.num || '', b.num || ''); }
   function boxHolds(doc, box) {
     var inIt = function (x) { return sameBox(x.box, box); };
-    return { sets: live(doc).filter(inIt), lots: liveLots(doc).filter(inIt) };
+    var h = { sets: live(doc).filter(inIt).sort(byName), lots: liveLots(doc).filter(inIt) };
+    h.name = 'Box ' + boxName((h.sets[0] || h.lots[0] || { box: box }).box);
+    return h;
   }
   // How the packing stands: how many sets are in a moving box (`packed`) and how many aren't (`toPack`), how many
   // boxes hold sets (`boxes`), and how many hold anything, loose pieces too (`all`).
@@ -364,16 +368,25 @@
   function boxNews(doc, was, now) {
     was = s(was, 40); now = s(now, 40);
     if ((!was && !now) || sameBox(was, now)) return '';
-    // A box is called what the first thing in it calls it: a set that had it as "03" came out of Box 3.
-    var out = [], called = function (h, box) { return 'Box ' + boxName((h.sets[0] || h.lots[0] || { box: box }).box); };
-    if (now) { var into = boxHolds(doc, now); out.push(called(into, now) + ' holds ' + count(into.sets.length, 'set') + ' now.'); }
+    var out = [];
+    if (now) { var into = boxHolds(doc, now); out.push(into.name + ' holds ' + count(into.sets.length, 'set') + ' now.'); }
     if (was) {
       var left = boxHolds(doc, was);
-      out.push(left.sets.length ? count(left.sets.length, 'set') + ' still in ' + called(left, was) + '.'
-        : left.lots.length ? 'Only loose pieces are left in ' + called(left, was) + '.'
-        : !packing(doc).all ? 'That was the last moving box.' : called(left, was) + ' is empty now.');
+      out.push(left.sets.length ? count(left.sets.length, 'set') + ' still in ' + left.name + '.'
+        : left.lots.length ? 'Only loose pieces are left in ' + left.name + '.'
+        : !packing(doc).all ? 'That was the last moving box.' : left.name + ' is empty now.');
     }
     return out.join(' ');
+  }
+
+  // A moving box's list as plain text, for a label on the box or a message: the box and what it holds, then each
+  // set's number, name and state on a line of its own, by name, then its loose pieces.
+  function boxList(doc, box) {
+    var h = boxHolds(doc, box), name = h.name, sets = h.sets;
+    var loose = h.lots.reduce(function (n, l) { return n + lotTotals(l).pieces; }, 0);
+    return [name + ' · ' + [sets.length ? count(sets.length, 'set') : '', loose ? count(loose, 'loose piece') : ''].filter(Boolean).join(' · ')].concat(
+      sets.map(function (x) { return [[shortNum(x.num), x.name].filter(Boolean).join(' '), STATE_NAMES[x.state] || ''].filter(Boolean).join(' · '); }),
+      h.lots.map(function (l) { return l.name + ' · ' + count(lotTotals(l).pieces, 'loose piece'); })).join('\n');
   }
 
   function where(x) {
@@ -577,7 +590,7 @@
     linkText: linkText, parseIncoming: parseIncoming, newerLink: newerLink,
     STATES: STATES, STATE_NAMES: STATE_NAMES, s: s, setNum: setNum, shortNum: shortNum, state: state, cleanSet: cleanSet, stamp: stamp,
     emptyDoc: emptyDoc, cleanCase: cleanCase, cleanLot: cleanLot, lotTotals: lotTotals, liveLots: liveLots, yourPieces: yourPieces, measure: measure, readLength: readLength, cleanDoc: cleanDoc, mergeDocs: mergeDocs, sameDoc: sameDoc, live: live, findDup: findDup, repeats: repeats, cleanBatch: cleanBatch,
-    hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
+    hash: hash, boxName: boxName, sameBox: sameBox, boxHolds: boxHolds, packing: packing, boxNews: boxNews, boxList: boxList, where: where, totals: totals, boxSearch: boxSearch, inBox: inBox, matches: matches, fold: fold, natural: natural, csvCell: csvCell, toCsv: toCsv,
   };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.BrickCore = api;
 })(this);

@@ -310,15 +310,18 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
 // Moving boxes: how the packing stands, and what a set going into or out of a box did to the boxes.
 {
   const doc = C.cleanDoc({ sets: {
-    a: { id: 'a', t: 1, num: '10334', name: 'Retro Radio', box: '3' }, b: { id: 'b', t: 1, num: '10311', name: 'Orchid', box: 'Box 03' },
+    a: { id: 'a', t: 1, num: '10334', name: 'Retro Radio', box: 'Box 03' }, b: { id: 'b', t: 1, num: '10311', name: 'Orchid', box: '3' },
     c: { id: 'c', t: 1, num: '21327', name: 'Typewriter', box: '12' }, d: { id: 'd', t: 1, num: '10281', name: 'Bonsai Tree' },
     e: { id: 'e', t: 2, del: 1 } },
   loose: { l: { id: 'l', t: 1, name: 'Red bag', box: '20', parts: [['3001', 4, 10]] }, m: { id: 'm', t: 1, name: 'Blue tub', box: '#3', parts: [['3001', 1, 5]] } } });
   eq(C.packing(doc), { packed: 3, toPack: 1, boxes: 2, all: 3 }, 'three sets packed in two boxes, one to pack, and a third box of loose pieces');
   eq(C.packing(C.emptyDoc()), { packed: 0, toPack: 0, boxes: 0, all: 0 }, 'nothing packed in an empty catalog');
   eq([C.sameBox('3', 'box 03'), C.sameBox('3', '#3'), C.sameBox('3', '13'), C.sameBox('', '')], [true, true, false, false], 'one box under several spellings');
-  eq([C.boxHolds(doc, 'box 3').sets.map(x => x.id), C.boxHolds(doc, '3').lots.map(x => x.id)], [['a', 'b'], ['m']], 'what a box holds');
+  eq([C.boxHolds(doc, 'box 3').sets.map(x => x.id), C.boxHolds(doc, '3').lots.map(x => x.id), C.boxHolds(doc, '03').name, C.boxHolds(doc, '#20').name, C.boxHolds(doc, 'box 9').name], [['b', 'a'], ['m'], 'Box 3', 'Box 20', 'Box 9'], 'what a box holds, by name, and what it is called: as the first set in it has it');
   eq([C.boxNews(doc, '', ''), C.boxNews(doc, '3', 'Box 03'), C.boxNews(doc, 'Hall', 'hall')], ['', '', ''], 'no news when the set stayed where it was');
+  eq(C.boxList(doc, 'Box 3'), 'Box 3 · 2 sets · 5 loose pieces\n10311 Orchid\n10334 Retro Radio\nBlue tub · 5 loose pieces', 'a box’s list as text, by name');
+  eq(C.boxList(C.cleanDoc({ sets: { a: { id: 'a', t: 1, name: 'Castle', state: 'apart', box: 'Attic' }, b: { id: 'b', t: 1, num: '21318', state: 'built', box: 'attic' } } }), 'attic'), 'Box attic · 2 sets\n21318 · Built\nCastle · Taken apart', 'with each set’s state, and a set with only a name or only a number');
+  eq(C.boxList(doc, '20'), 'Box 20 · 10 loose pieces\nRed bag · 10 loose pieces', 'a box of only loose pieces');
   eq(C.boxNews(doc, '', '3'), 'Box 3 holds 2 sets now.', 'into a box');
   eq(C.boxNews(doc, '', '12'), 'Box 12 holds 1 set now.', 'the first set in a box');
   eq(C.boxNews(doc, '3', ''), '2 sets still in Box 3.', 'out of a box with sets left in it');

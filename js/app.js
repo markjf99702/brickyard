@@ -365,10 +365,13 @@
   function allRows() { return [].slice.call(document.querySelectorAll('#list-wrap .item[data-id]')); }
   function spot(el) {
     if (!el || !el.dataset || !($('list-wrap').contains(el) || $('chips').contains(el))) return null;
-    return { id: el.dataset.id, f: el.dataset.f, at: allRows().indexOf(el) };
+    return { id: el.dataset.id, f: el.dataset.f, box: el.dataset.box, at: allRows().indexOf(el) };
   }
+  // A moving box's heading in Group by Moving box (or the button a search for the box shows): what opens its sheet.
+  function boxHead(box) { return [].filter.call(document.querySelectorAll('#list-wrap [data-box]'), function (el) { return C.sameBox(el.dataset.box, box); })[0] || null; }
   function found(s) {
     if (s.f) return document.querySelector('#chips .chip[data-f="' + s.f + '"]') || document.querySelector('#chips .chip');
+    if (s.box) return boxHead(s.box) || document.querySelector('#catalog h1'); // a box that's been emptied has no heading
     var rows = allRows();
     return (s.id && rowOf(s.id)) || rows[Math.min(Math.max(s.at, 0), rows.length - 1)] || document.querySelector('#catalog h1');
   }
@@ -422,6 +425,10 @@
     var bs = C.boxSearch(q, labels), inBox = function (x) { return C.inBox(x, bs.label); };
     var hunt = bs && bs.label && !bs.rest.trim() && show === 'all' ? lots.filter(inBox) : [];
     var huntLine = hunt.length ? lotsLine(hunt, C.boxName((shown[0] || hunt[0]).box), shown.length > 0) : '';
+    // A search for a box gets a button that opens the box's sheet (boxSheet). Grouped by moving box, the heading
+    // over what was found is that button already.
+    var searched = bs && bs.label && !bs.rest.trim() ? shown.filter(inBox)[0] || hunt[0] : null, held = searched && C.boxHolds(DOC, searched.box);
+    var boxLine = held && !(prefs.group === 'box' && shown.length) ? '<p class="boxline"><button class="btn sm quiet" type="button" data-box="' + esc((held.sets[0] || held.lots[0]).box) + '">' + esc(held.name) + ': add sets, copy its list, rename</button></p>' : '';
     $('sum').textContent = (shown.length === all.length ? plural(all.length, 'set') : shown.length + ' of ' + all.length + ' sets') +
       (t.pieces ? ' · ' + C.totals(shown).pieces.toLocaleString() + ' pieces' : '');
     // The line at the top of a printed list (it shows only on paper): what's listed, the day, and how many.
@@ -434,7 +441,7 @@
       // them. ("Nothing matches" under To check, with two Millennium Falcons owned, read as not having one.)
       var under = show === 'all' ? 0 : all.filter(function (x) { return C.matches(x, q, labels); }).length;
       var name = (FILTERS.filter(function (f) { return f[0] === show; })[0] || [])[1];
-      $('list-wrap').innerHTML = huntLine || '<div class="empty"><p>' + (!under ? 'Nothing matches. Try another word or filter.'
+      $('list-wrap').innerHTML = (huntLine && boxLine + huntLine) || '<div class="empty"><p>' + (!under ? 'Nothing matches. Try another word or filter.'
         : 'Nothing under ' + esc(name) + '. ' + (q ? plural(under, 'set') + (under === 1 ? ' matches' : ' match') + ' in all your sets.' : '') +
           '</p><div class="acts"><button class="btn quiet" type="button" data-act="all">' + (q ? (under === 1 ? 'Show it' : 'Show them') : 'Show all your sets') + '</button></div>') + '</div>';
       return;
@@ -473,9 +480,14 @@
     // "box 7" with no box labelled 7 is searched as words (C.matches); what it found says so, since a set in box 17
     // with a 7 in its number is among them.
     var noBox = bs && !bs.label ? '<p class="note" id="no-box">No moving box is labelled ' + esc(noLabel(q)) + '. These match the words.</p>' : '';
-    $('list-wrap').innerHTML = noBox + groups.map(function (g) {
+    $('list-wrap').innerHTML = noBox + boxLine + groups.map(function (g) {
       // A heading straight under the screen's, read out as "Office, 5 sets" (it was a bare "Office 5").
-      return (g.name ? '<h2 class="group"' + (g.sets.length ? ' aria-label="' + esc(g.name) + ', ' + plural(g.sets.length, 'set') + '"' : '') + '><span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span></h2>' : '') +
+      // A moving box's heading is a button that opens the box's sheet (boxSheet): its sets, and what can be done
+      // with the box as a whole. `raw` is the box's label as its first set has it; Not packed has none.
+      var raw = prefs.group === 'box' ? (g.sets[0] || (g.lots || [])[0] || {}).box || '' : '', said = esc(g.name) + ', ' + plural(g.sets.length, 'set');
+      var inner = '<span>' + esc(g.name) + '</span><span>' + (g.sets.length || '') + '</span>';
+      return (!g.name ? '' : raw ? '<h2 class="group tap"><button type="button" class="box-head" data-box="' + esc(raw) + '"' + (g.sets.length ? ' aria-label="' + said + '"' : '') + '>' + inner + '</button></h2>'
+        : '<h2 class="group"' + (g.sets.length ? ' aria-label="' + said + '"' : '') + '>' + inner + '</h2>') +
         (g.sets.length ? '<ul class="list">' + g.sets.map(function (x) { return setItem(x, q, labels); }).join('') + '</ul>' : '') +
         (g.lots ? lotsLine(g.lots, g.name.replace(/^Box /, ''), g.sets.length > 0) : '');
     }).join('') + huntLine;
@@ -549,6 +561,7 @@
   });
   $('list-wrap').addEventListener('click', function (e) {
     var b = e.target.closest('[data-id]'); if (b) return editSheet(DOC.sets[b.dataset.id]);
+    var bx = e.target.closest('[data-box]'); if (bx) return boxSheet(bx.dataset.box);
     var a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'add') editSheet(null);
     else if (a.dataset.act === 'all') { show = 'all'; renderCatalog(); }
@@ -1004,6 +1017,158 @@
       showNew([id], 0, true);
       if (row) row.focus({ preventScroll: true });
     });
+  }
+
+  // ---------- moving boxes ----------
+  // A moving box has a sheet of its own, opened from its heading in Group by Moving box or from a search for it:
+  // what's in it, and what can be done with the box as a whole. A heading used to do nothing, so packing five sets
+  // into one box was five sheets, and renaming a box meant editing every set in it. `box` is the box's label as one
+  // of the things in it has it; "3", "03" and "Box 3" are one box (C.sameBox).
+  function boxes(n) { return n.toLocaleString() + (n === 1 ? ' box' : ' boxes'); }
+  function byName(a, b) { return C.natural(a.name || '', b.name || '') || C.natural(a.num || '', b.num || ''); }
+  // Changes some parts of a set as it's kept now, and gives back what they held ({ id, part: what it was }), for
+  // Undo; null when the set is gone or comes out the same. alterLot is the same for a lot of loose pieces.
+  function alter(id, parts) {
+    var x = DOC.sets[id]; if (!x || x.del) return null;
+    var y = JSON.parse(JSON.stringify(x)), was = { id: id };
+    Object.keys(parts).forEach(function (k) { was[k] = x[k] || ''; y[k] = parts[k]; });
+    y = C.cleanSet(y); if (!y) return null;
+    y.id = id;
+    if (sameSet(y, x)) return null;
+    putSet(y);
+    return was;
+  }
+  function alterLot(id, parts) {
+    var x = DOC.loose[id]; if (!x || x.del) return null;
+    var was = { id: id };
+    Object.keys(parts).forEach(function (k) { was[k] = x[k] || ''; });
+    var y = C.cleanLot(Object.assign({}, x, parts), id, Date.now());
+    if (!y || (y.name === x.name && (y.box || '') === (x.box || ''))) return null;
+    DOC.loose[id] = y;
+    return was;
+  }
+  // Undo for a change to a box: each set and lot gets back what alter and alterLot said it held, and nothing else
+  // about it is touched.
+  function asWas(sets, lots) {
+    var back = function (fn) { return function (w) { var parts = Object.assign({}, w); delete parts.id; fn(w.id, parts); }; };
+    sets.forEach(back(alter)); lots.forEach(back(alterLot));
+    save(); refresh();
+  }
+  function boxSheet(box) {
+    var h = C.boxHolds(DOC, box), name = h.name;
+    if (!h.sets.length && !h.lots.length) return;
+    var sets = h.sets, pieces = C.totals(sets).pieces;
+    var loose = h.lots.reduce(function (n, l) { return n + C.lotTotals(l).pieces; }, 0);
+    var act = function (id, label, small) { return '<li><button type="button" id="' + id + '"><span>' + label + '<small>' + small + '</small></span></button></li>'; };
+    openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      '<p class="lede">' + [sets.length ? plural(sets.length, 'set') : '', pieces ? plural(pieces, 'piece') : '', loose ? plural(loose, 'loose piece') : ''].filter(Boolean).join(' · ') + '</p>' +
+      (sets.length ? '<ul class="list" id="bx-sets">' + sets.map(function (x) {
+        var place = [x.room, x.spot].filter(Boolean).join(' › ');
+        return '<li><button class="item" type="button" data-id="' + esc(x.id) + '">' + picHtml(x) + '<div class="main"><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div>' +
+          '<div class="m meta">' + metaBits(x).map(function (b) { return '<span>' + esc(b) + '</span>'; }).join(' · ') + '</div>' + (place ? '<div class="m">' + esc(place) + '</div>' : '') + '</div>' +
+          (x.state ? '<span class="badge ' + x.state + '">' + esc(C.STATE_NAMES[x.state]) + '</span>' : '<span></span>') + '</button></li>';
+      }).join('') + '</ul>' : '') +
+      (h.lots.length ? '<p class="note lots">' + (sets.length ? 'Also in this box: ' : 'In this box: ') + h.lots.map(function (l) { return esc(l.name) + ', ' + plural(C.lotTotals(l).pieces, 'loose piece'); }).join('; ') + '</p>' : '') +
+      '<ul class="menu" id="bx-acts">' +
+      act('bx-add', 'Add sets to this box', 'Tick the sets you’re packing into it') +
+      act('bx-copy', 'Copy this list', 'The box and what’s in it as text, for a label or a message') +
+      act('bx-rename', 'Rename this box', 'Changes the box on everything in it') + '</ul></div>');
+    if ($('bx-sets')) $('bx-sets').onclick = function (e) { var b = e.target.closest('[data-id]'); if (b) editSheet(DOC.sets[b.dataset.id]); };
+    $('bx-add').onclick = function () { packSheet(box); };
+    $('bx-copy').onclick = function () { copyBox(box); };
+    $('bx-rename').onclick = function () { renameSheet(box); };
+  }
+  // Add sets to this box: the sets that aren't packed, to tick, with a search over them.
+  function packSheet(box) {
+    var name = C.boxHolds(DOC, box).name, rows = C.live(DOC).filter(function (x) { return !x.box; }).sort(byName).map(function (x) { return { x: x, on: false }; });
+    openSheet('<div class="hd"><h2 id="sheetTitle">Add sets to ' + esc(name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd">' +
+      (!rows.length ? '<p class="note">Every set is in a moving box already.</p>' :
+        '<label class="search in-sheet"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' +
+        '<input id="ab-q" type="search" placeholder="Search the sets that aren’t packed" aria-label="Search the sets that aren’t packed" autocomplete="off"></label>' +
+        '<ul class="rv" id="ab">' + rows.map(function (r, i) {
+          var x = r.x, meta = [metaLine(x), C.STATE_NAMES[x.state], C.where(x)].filter(Boolean).join(' · ');
+          return '<li data-i="' + i + '" class="off"><input type="checkbox" aria-label="Add ' + esc(x.name || 'this set') + '" aria-describedby="ab-d' + i + '">' + picHtml(x) +
+            '<div><div class="t">' + esc(x.name || 'Set ' + C.shortNum(x.num)) + '</div><div class="m" id="ab-d' + i + '">' + esc(meta) + '</div></div></li>';
+        }).join('') + '</ul><p class="note" id="ab-none" hidden>None of the sets that aren’t packed match.</p>') + '</div>' +
+      '<div class="ft"><span class="note" id="ab-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="ab-go" disabled>Add</button></div>',
+      function () { return rows.some(function (r) { return r.on; }); });
+    function count() {
+      var n = rows.filter(function (r) { return r.on; }).length;
+      $('ab-n').textContent = rows.length ? n + ' ticked' : '';
+      $('ab-go').textContent = n ? 'Add ' + plural(n, 'set') : 'Add';
+      $('ab-go').disabled = !n;
+    }
+    count();
+    if (!rows.length) return;
+    $('ab').onchange = function (e) {
+      var li = e.target.closest('li'); if (!li) return;
+      rows[+li.dataset.i].on = e.target.checked; li.classList.toggle('off', !e.target.checked); count();
+    };
+    $('ab').onclick = tickRow;
+    // The search hides the rows that don't match; a row that's ticked stays ticked, and stays in view.
+    $('ab-q').addEventListener('input', function () {
+      var q = this.value.trim(), any = false;
+      [].forEach.call($('ab').children, function (li) {
+        var r = rows[+li.dataset.i]; li.hidden = !(r.on || C.matches(r.x, q, []));
+        if (!li.hidden) any = true;
+      });
+      $('ab-none').hidden = any;
+    });
+    $('ab-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+    $('ab-go').onclick = function () {
+      var was = rows.filter(function (r) { return r.on; }).map(function (r) { return alter(r.x.id, { box: box }); }).filter(Boolean);
+      if (!was.length) { closeSheet(); return; }
+      save(); closeSheet(); renderCatalog();
+      toast(name + ' holds ' + plural(C.boxHolds(DOC, box).sets.length, 'set') + ' now.', false, { label: 'Undo', run: function () {
+        asWas(was, []); toast(was.length === 1 ? 'Took it out of ' + name + ' again' : 'Took those ' + was.length.toLocaleString() + ' out of ' + name + ' again');
+      } });
+    };
+  }
+  // Copy this list: the box's list as text (C.boxList). Where the browser won't copy, it's shown to copy by hand.
+  function copyBox(box) {
+    var text = C.boxList(DOC, box), name = C.boxHolds(DOC, box).name;
+    var show = function () {
+      openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(name) + '’s list</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+        '<div class="bd"><p class="note">Copy this for a label or a message.</p><textarea class="paste" id="bx-text" readonly style="min-height:160px">' + esc(text) + '</textarea></div>');
+      $('bx-text').select();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { closeSheet(); toast('Copied ' + name + '’s list'); }, show);
+    else show();
+  }
+  // Rename this box: the new label goes on every set and lot in it. A label another box has takes a second tap,
+  // since the two become one box.
+  function renameSheet(box) {
+    var name = C.boxHolds(DOC, box).name;
+    openSheet('<div class="hd"><h2 id="sheetTitle">Rename ' + esc(name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+      '<form class="bd" id="rn-form" novalidate>' + field('Moving box', input('rn-box', box, ' maxlength="40" enterkeyhint="done" autofocus')) +
+      '<p class="note hint" id="rn-hint" hidden></p></form>' +
+      '<div class="ft"><span></span><button class="btn" type="submit" form="rn-form" id="rn-go">Rename</button></div>',
+      function () { return $('rn-box').value.trim() !== box; });
+    $('rn-box').select();
+    $('rn-box').addEventListener('input', function () {
+      var b = $('rn-go');
+      if (b.dataset.again) { delete b.dataset.again; b.textContent = 'Rename'; }
+      $('rn-hint').hidden = true;
+    });
+    $('rn-form').onsubmit = function (e) {
+      e.preventDefault();
+      var to = C.s($('rn-box').value, 40), btn = $('rn-go'), line = $('rn-hint');
+      if (!to) { wrong($('rn-box'), 'Give the box a label.'); return; }
+      var h = C.boxHolds(DOC, box), other = C.sameBox(to, box) ? { sets: [], lots: [] } : C.boxHolds(DOC, to), joins = other.sets.length + other.lots.length > 0;
+      var holds = 'Box ' + C.boxName(to) + ' already holds ' + (other.sets.length ? plural(other.sets.length, 'set') : 'loose pieces') + '.';
+      if (joins && !secondTap(btn, 'again', function () { if (!line.hidden) line.textContent = holds; })) {
+        btn.textContent = 'Put them together';
+        line.textContent = holds + ' Tap again to make the two one box.'; line.hidden = false;
+        toast(line.textContent);
+        return;
+      }
+      var sets = h.sets.map(function (x) { return alter(x.id, { box: to }); }).filter(Boolean);
+      var lots = h.lots.map(function (l) { return alterLot(l.id, { box: to }); }).filter(Boolean);
+      if (!sets.length && !lots.length) { closeSheet(); return; }
+      save(); closeSheet(); renderCatalog();
+      var head = boxHead(to); if (head) head.focus({ preventScroll: true });
+      toast(name + (joins ? ' is now part of Box ' : ' is now Box ') + C.boxName(to), false, { label: 'Undo', run: function () { asWas(sets, lots); toast('It’s ' + name + ' again'); } });
+    };
   }
 
   // ---------- adding from Claude ----------

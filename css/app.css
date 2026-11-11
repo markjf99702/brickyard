@@ -153,6 +153,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .sumline select { border: 0; background: none; font-weight: 600; font-size: 16px; min-height: 44px; color: var(--ink); padding: 4px 0; cursor: pointer; field-sizing: content; }
 .sumline label { flex: none; white-space: nowrap; }
 .group { margin: 16px 0 6px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); display: flex; justify-content: space-between; }
+/* A moving box's heading opens the box's sheet: the whole line is the button, tall enough for a finger, with an
+   arrow after its count. */
+.group.tap { margin: 6px 0 0; display: block; }
+.box-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 0 6px; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.box-head span:last-child::after { content: "›"; margin-left: 8px; font-size: 17px; line-height: 1; }
+.box-head:active { background: var(--soft); }
+.boxline { margin: 4px 0 10px; }
+.sheet .list + .menu, .sheet .note.lots + .menu, .sheet .lede + .menu { margin-top: 12px; border-top: 1px solid var(--line); }
+.sheet .note.lots { margin-bottom: 0; }
+.search.in-sheet { display: block; margin-bottom: 10px; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .item {
   display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; width: 100%; text-align: left;
@@ -469,7 +479,9 @@ svg.shelf { display: block; width: min(100%, var(--w), calc(72vh * var(--ar))); 
    is as tall as the list (as tall as the screen at least, it ended on a blank sheet). */
 .print-head { display: none; }
 @media print {
-  .jd-foot, .bar, .fab-row, .tools, .chips, .sumline, .toast, .scrim { display: none !important; }
+  .jd-foot, .bar, .fab-row, .tools, .chips, .sumline, .toast, .scrim, .boxline { display: none !important; }
+  .box-head { min-height: 0; padding: 0; }
+  .box-head span:last-child::after { content: none; }
   body { min-height: 0; background: #fff; }
   .print-head { display: block; margin: 0 0 8px; font-weight: 600; }
   .group { break-after: avoid; margin-top: 10px; }
