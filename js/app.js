@@ -2001,15 +2001,18 @@
 
   // The whole catalog as one link, to open on another device or at Brickyard's own address (the claude.ai copy
   // can't download files). Opening it merges, like a backup.
-  function copyAll() {
-    var text = JSON.stringify({ brickyard: 1, catalog: DOC }), bytes = new TextEncoder().encode(text);
+  // A Brickyard link to `what`, of kind 'b' (a catalog or a batch) or 'd' (a model): the checked, deflated form
+  // (#b2z…, #d2z…), or uncompressed (#b2j…) in a browser that can't deflate. js/build.js makes a model's link here too.
+  function linkOf(kind, what) {
+    var bytes = new TextEncoder().encode(JSON.stringify(what));
     // The checked form of the link (C.linkCheck): a character lost or changed on the way is caught when it's opened.
-    var checked = function (kind, data) { return '#' + kind + data + C.linkCheck(kind + data); };
+    var checked = function (k, data) { return SITE + '#' + k + data + C.linkCheck(k + data); };
     var b64 = function (u8) { var bin = ''; for (var i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
-    var made = typeof CompressionStream === 'undefined' ? Promise.resolve(checked('b2j', b64(bytes)))
-      : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return checked('b2z', b64(new Uint8Array(b))); });
-    made.then(function (h) {
-      var link = SITE + h;
+    return typeof CompressionStream === 'undefined' ? Promise.resolve(checked(kind + '2j', b64(bytes)))
+      : new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer().then(function (b) { return checked(kind + '2z', b64(new Uint8Array(b))); });
+  }
+  function copyAll() {
+    linkOf('b', { brickyard: 1, catalog: DOC }).then(function (link) {
       // Chat apps, notes and some browsers cut a very long link off, and what's left won't open. The preview copy
       // can't download a backup, so there the link is all there is.
       var lengthy = link.length > 8000 && !FRAMED;
@@ -2086,7 +2089,7 @@
     // For the other screens' paste boxes and links: anything of Brickyard's goes to its own review (takeIncoming),
     // and what can't be read says why (unread).
     takeIncoming: takeIncoming, takePasted: takePasted, unread: unread, openFile: function () { $('file').click(); },
-    toast: toast, toastAfter: toastAfter, lostBuilder: lostBuilder, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
+    toast: toast, toastAfter: toastAfter, lostBuilder: lostBuilder, lengths: lengths, wrong: wrong, heading: heading, openSheet: openSheet, closeSheet: closeSheet, fieldsOf: fieldsOf, linkOf: linkOf, secondTap: secondTap, tickRow: tickRow, esc: esc, plural: plural, FRAMED: FRAMED,
   };
   document.dispatchEvent(new CustomEvent('brickyard:ready'));
 })();

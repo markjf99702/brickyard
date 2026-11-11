@@ -543,9 +543,12 @@ $('model-menu').onclick = () => {
   const ex = current.id.startsWith('x-');
   app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(current.model.name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
     '<li><button type="button" id="mm-parts"><span>All the pieces<small>Everything this model needs, and what you have</small></span></button></li>' +
+    // The example is the same on every device, and isn't yours to send.
+    (ex ? '' : '<li><button type="button" id="mm-link"><span>Copy a link to this model<small>Open it on your other device, or send it to someone</small></span></button></li>') +
     (ex ? '' : '<li><button type="button" id="mm-del"><span>Remove from my models<small>Tap twice. Claude’s link still opens it again.</small></span></button></li>') +
     '</ul></div>');
   $('mm-parts').onclick = partsSheet;
+  if ($('mm-link')) $('mm-link').onclick = copyLink;
   if ($('mm-del')) $('mm-del').onclick = function () {
     if (!app.secondTap(this)) { this.querySelector('span').firstChild.textContent = 'Tap again to remove'; return; }
     const id = current.id, name = current.model.name, all = saved(), kept = all[id];
@@ -559,6 +562,26 @@ $('model-menu').onclick = () => {
     });
   };
 };
+
+// A model as a link, the kind check_model.py makes (#d2z…): models stay on each device, so one opened on the laptop
+// could only reach the phone by finding Claude's message again. Copied, or shown to copy where the browser won't.
+async function copyLink() {
+  const link = await app.linkOf('d', { brickyard: 1, model: current.model });
+  // Chat apps, notes and some browsers cut a very long link off, and what's left won't open (as Copy everything as
+  // a link says, at the same length). A backup carries the models; the preview copy can't download one.
+  const lengthy = link.length > 8000 && !app.FRAMED, long = ' It’s a long link; if it won’t open, Download a backup in My sets’ menu holds your models too.';
+  const show = () => {
+    app.openSheet('<div class="hd"><h2 id="sheetTitle">This model as a link</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+      '<div class="bd"><p class="note">Copy this and open it on the other device, or send it to someone. It opens the model in Brickyard there.' + (lengthy ? long : '') +
+      '</p><textarea class="paste" id="model-link" readonly style="min-height:160px">' + esc(link) + '</textarea></div>');
+    $('model-link').select();
+  };
+  if (!navigator.clipboard || !navigator.clipboard.writeText) return show();
+  navigator.clipboard.writeText(link).then(() => {
+    app.closeSheet();
+    if (lengthy) toast('Copied.' + long, 'long'); else toast('Copied. Open the link on your other device, or send it to someone.');
+  }, show);
+}
 
 function partsSheet() {
   const { res, pool } = current;

@@ -3266,6 +3266,52 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await no.c.close();
 }
 
+// A model's menu copies it as a link, the checked kind Claude's script makes, which opens the same model on another
+// device (models stay on each device). A very long one says so; where the browser won't copy, the link is shown to
+// copy by hand. The example has no such row.
+{
+  const wall = n => ({ name: 'Wall of ' + n, about: 'A test wall.', parts: Array.from({ length: n }, (_, i) => ['3001', (i * 37) % 500, (i * 7919) % 400 - 200, n > 4 ? (i * 31) % 600 : i * 3, (i * 104729) % 400 - 200, 0, i + 1]) });
+  const link = m => base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: m })).toString('base64url');
+  for (const [n, says] of [[4, 'Copied. Open the link on your other device, or send it to someone.'], [1500, 'Copied. It’s a long link; if it won’t open, Download a backup in My sets’ menu holds your models too.']]) {
+    const { c, p } = await withSets({ sets: {} }, { permissions: ['clipboard-read', 'clipboard-write'] });
+    await p.goto(link(wall(n)));
+    await p.waitForFunction(n => document.getElementById('build-title').textContent === 'Wall of ' + n, n);
+    await p.click('#model-menu');
+    assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.querySelector('span').firstChild.textContent)), ['All the pieces', 'Copy a link to this model', 'Remove from my models'], 'a model’s menu');
+    await p.click('#mm-link');
+    await p.waitForFunction(() => document.querySelector('.toast') && !document.querySelector('.toast').hidden);
+    const copied = await p.evaluate(() => navigator.clipboard.readText());
+    assert.deepEqual([await p.textContent('.toast'), copied.length > 8000, await p.locator('.sheet').count()], [says, n > 4, 0], 'what Copy a link to this model says for a link of ' + copied.length + ' characters');
+    assert.match(copied, /^https:\/\/brickyard\.junkdrawer\.works\/#d2z[A-Za-z0-9_-]+$/, 'it is a checked model link');
+    assert.equal(copied.slice(copied.indexOf('#')), checked('d2z', copied.slice(copied.indexOf('#') + 4, -7)), 'with the check on its end');
+    if (n === 4) {
+      const mine = await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem('brickyard.models')))[0].model);
+      const other = await withSets({ sets: {} });
+      await other.p.goto(base + copied.slice(copied.indexOf('#')));
+      await other.p.waitForFunction(() => document.getElementById('build-title').textContent === 'Wall of 4');
+      assert.deepEqual(await other.p.evaluate(() => Object.values(JSON.parse(localStorage.getItem('brickyard.models')))[0].model), mine, 'and it opens the same model on another device');
+      await other.c.close();
+    }
+    await c.close();
+  }
+  // No clipboard (a browser that won't let the page copy): the link is shown, selected, to copy by hand.
+  const { c, p } = await withSets({ sets: {} });
+  await p.addInitScript(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('no')) } }); });
+  await p.goto(link(wall(4)));
+  await p.reload();
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Wall of 4');
+  await p.click('#model-menu'); await p.click('#mm-link');
+  await p.waitForSelector('#model-link');
+  assert.deepEqual([await p.textContent('#sheetTitle'), /#d2z/.test(await p.inputValue('#model-link')), await p.evaluate(() => { const t = document.getElementById('model-link'); return t.selectionEnd - t.selectionStart === t.value.length; })],
+    ['This model as a link', true, true], 'where it can’t be copied, the link is shown to copy');
+  await p.click('[data-close]');
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'Cottage');
+  await p.click('#model-menu');
+  assert.deepEqual(await p.$$eval('.sheet .menu button', bs => bs.map(b => b.id)), ['mm-parts'], 'the example has only All the pieces');
+  await c.close();
+}
+
 // The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
 // is one step (it jumped to the end), a tap or a swipe that starts on the track leaves the step alone, and
 // dragging the knob still works. A screen reader hears the step, not a bare number one behind.
