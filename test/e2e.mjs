@@ -3092,6 +3092,52 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   await c.close();
 }
 
+// What a step adds stands out in the picture: its pieces have the crisp outline and everything built before is
+// faded a little; the finished model is at full colour. (Step 5's four yellow slopes looked like the yellow walls.)
+// Finishing with Next turns the model round once; a touch stops it, a change of step puts it back, the slider to
+// the end doesn't start it, and with less motion asked for it doesn't happen. The card says what was built.
+{
+  const { c, p } = await withSets({ sets: {} });
+  const view = () => p.evaluate(() => { const v = window.BrickyardBuild.inView(); return [v.shown, v.now, v.faded, v.spin]; });
+  const box = () => p.evaluate(() => window.BrickyardBuild.inView().box.map(n => n.toFixed(3)).join());
+  const slide = to => p.evaluate(to => { const r = document.getElementById('step-range'); r.value = String(+r.max + to); r.dispatchEvent(new Event('input')); }, to);
+  await p.goto(base + '#model-x-cottage');
+  await p.waitForFunction(() => window.BrickyardBuild.inView());
+  assert.deepEqual(await view(), [40, 0, 0, false], 'the finished picture a model opens on is at full colour');
+  const home = await box();
+  for (let i = 0; i < 5; i++) await p.click('#step-next');
+  assert.deepEqual([await p.textContent('.stepnum'), await view()], ['Step 5 of 7', [27, 4, 23, false]], 'step 5: its four slopes stand out, the 23 pieces under them are faded');
+  await slide(0);
+  assert.deepEqual([await p.textContent('#step-parts'), await view()], ['That’s the Cottage: 40 pieces in 7 steps.', [40, 0, 0, false]], 'the slider to the end: full colour, and no turn');
+  await slide(-1);
+  assert.deepEqual([await p.textContent('#step-next'), (await view()).slice(1)], ['Finish', [9, 31, false]]);
+  await p.click('#step-next');
+  assert.deepEqual([await p.textContent('.stepnum'), await view()], ['Done · 40 pieces', [40, 0, 0, true]], 'Finish turns the finished model');
+  await p.waitForFunction(was => window.BrickyardBuild.inView().box.map(n => n.toFixed(3)).join() !== was, home);
+  await p.tap('#stage');
+  assert.deepEqual([(await view())[3], await p.isVisible('#stage-reset')], [false, true], 'a touch on the picture stops the turn where it is');
+  await p.click('#stage-reset');
+  assert.equal(await box(), home);
+  await slide(-1); await p.click('#step-next');
+  assert.equal((await view())[3], true);
+  await p.waitForFunction(was => window.BrickyardBuild.inView().box.map(n => n.toFixed(3)).join() !== was, home);
+  await p.click('#step-next'); // From the start
+  assert.deepEqual([await p.textContent('.stepnum'), (await view())[3], await box()], ['Step 1 of 7', false, home], 'a change of step stops the turn and puts the picture back');
+  // A name that brings its own first word keeps it.
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: { name: 'My first wall', parts: [['3001', 4, 0, 0, 0, 0, 1], ['3001', 4, 0, 3, 0, 0, 2]] } })).toString('base64url'));
+  await p.waitForFunction(() => document.getElementById('build-title').textContent === 'My first wall');
+  await p.evaluate(() => { const r = document.getElementById('step-range'); r.value = r.max; r.dispatchEvent(new Event('input')); });
+  assert.equal(await p.textContent('#step-parts'), 'That’s My first wall: 2 pieces in 2 steps.');
+  await c.close();
+  const calm = await withSets({ sets: {} }, { reducedMotion: 'reduce' });
+  await calm.p.goto(base + '#model-x-cottage');
+  await calm.p.waitForFunction(() => window.BrickyardBuild.inView());
+  await calm.p.evaluate(() => { const r = document.getElementById('step-range'); r.value = String(+r.max - 1); r.dispatchEvent(new Event('input')); });
+  await calm.p.click('#step-next');
+  assert.deepEqual([await calm.p.textContent('.stepnum'), await calm.p.evaluate(() => window.BrickyardBuild.inView().spin)], ['Done · 40 pieces', false], 'with less motion asked for, the finished model stays still');
+  await calm.c.close();
+}
+
 // The step slider sits clear of the buttons, and a finger moves it only by its knob: a tap that lands low on Next
 // is one step (it jumped to the end), a tap or a swipe that starts on the track leaves the step alone, and
 // dragging the knob still works. A screen reader hears the step, not a bare number one behind.

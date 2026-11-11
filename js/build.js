@@ -448,6 +448,7 @@ function showCover() {
   $('step-next').textContent = 'Start building';
   $('step-next').classList.remove('quiet');
   $('step-range').value = '0';
+  stopSpin(true);
   $('step-parts').innerHTML = '<p class="note" style="margin:0"><b>' + esc(model.name) + '</b>: ' + plural(res.pieces, 'piece') + ' in ' + plural(steps.length, 'step') +
     '. This is how it looks when it’s built. Drag it around to look it over.</p>';
   showUpTo(Infinity, false);
@@ -455,7 +456,8 @@ function showCover() {
 
 // Step k of the list (0-based); one past the last step shows the finished model.
 function showStep(k, animate = true) {
-  const n = current.steps.length;
+  const n = current.steps.length, was = current.at;
+  stopSpin(true);
   current.cover = false;
   $('model-view').classList.remove('cover');
   current.at = Math.max(0, Math.min(n, k));
@@ -480,14 +482,18 @@ function showStep(k, animate = true) {
   const note = current.res.notes.find(x => x.kind === 'under' && x.step === step), under = {};
   if (note) note.parts.forEach(i => { const k2 = current.model.parts[i][0] + '/' + current.model.parts[i][1]; under[k2] = (under[k2] || 0) + 1; });
   $('step-parts').innerHTML = done
-    ? '<p class="note" style="margin:0">That’s the whole model. Drag it around to look it over.</p>'
+    ? '<p class="note" style="margin:0">' + esc(thatsThe(current.model.name)) + ': ' + plural(current.res.pieces, 'piece') + ' in ' + plural(n, 'step') + '.</p>'
     : '<div class="lbl">Find these</div><ul class="need">' + Object.keys(groups).map(k2 => {
       const [p, c] = k2.split('/'), col = colorOf(c);
       return '<li' + (shortKeys.has(k2) ? ' class="short"' : '') + '><i style="background:' + col.hex + (col.alpha ? ';opacity:.6' : '') + '"></i><span><b>' + groups[k2] + '×</b> ' +
         esc(partName(p)) + '<small>' + esc(col.name) + (under[k2] && note.parts.length < here.length ? ' · ' + (under[k2] < groups[k2] ? under[k2] + ' ' : '') + 'from underneath' : '') + '</small></span></li>';
     }).join('') + '</ul>' + (note ? '<p class="note under">' + (here.length === 1 ? 'This one goes on from underneath.' : note.parts.length === here.length ? 'These go on from underneath.' : note.parts.length + ' of these ' + (note.parts.length === 1 ? 'goes' : 'go') + ' on from underneath.') + '</p>' : '');
   showUpTo(step, animate && !done);
+  // Finishing (Next from the last step, not the slider) turns the model round once.
+  if (animate && done && was === n - 1) startSpin();
 }
+// "That’s the Cottage", and a name that brings its own first word is left with it: "That’s My first castle".
+function thatsThe(name) { return 'That’s ' + (/^(the|a|an|my|your|our|his|her|their) /i.test(name) ? '' : 'the ') + name; }
 
 $('step-prev').onclick = () => { if (current.at > 0) showStep(current.at - 1); };
 // (On the finished picture a model opens on, `at` is -1: Start building, in Next's place, goes to step 1.)
@@ -566,9 +572,25 @@ let renderer = null, scene, camera, controls, meshes = [], running = false, anim
 let raf = 0, dirty = false;
 function redraw() { dirty = true; wake(); }
 function wake() { if (running && !raf) raf = requestAnimationFrame(loop); }
+// The turn a finished model takes: once round, slowly, from where the camera was (`off`, from the point it looks
+// at) and back to it. Any touch, key or wheel on the picture stops it where it is; a change of step puts it back.
+const SPIN = 7000; // ms
+let spin = null; // { t0, off }
+const still = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function startSpin() {
+  if (!renderer || !running || still()) return;
+  spin = { t0: performance.now(), off: camera.position.clone().sub(controls.target) };
+  wake();
+}
+function stopSpin(back) {
+  if (!spin) return;
+  if (back) { camera.position.copy(controls.target).add(spin.off); controls.update(); }
+  spin = null;
+  redraw();
+}
 let view = null; // { box, centre, radius: the model's bounds, moved: the person has turned or zoomed the picture }
 // Seen from the front right and a little above, like a set's instructions.
-const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize();
+const LOOK = new THREE.Vector3(0.62, 0.55, 0.85).normalize(), UP = new THREE.Vector3(0, 1, 0);
 // Frames with no glass in them: the fence (bars) and the door frame (an empty opening). The rest are windows.
 const FENCE = '15332', OPEN = [FENCE, '60596'];
 const mats = {}, geos = {}, lines = {}, studs = {}, panes = {}; // made once for each colour or part, and kept
@@ -594,6 +616,7 @@ function startStage() {
     $('stage-reset').onclick = () => {
       // With damping off for one update, whatever was left of a flick is spent before the camera is put back.
       controls.enableDamping = false; controls.update(); controls.enableDamping = true;
+      spin = null;
       view.moved = false; $('stage-reset').hidden = true;
       frame();
     };
@@ -629,6 +652,7 @@ function hideHint(now) {
 // The person has turned or zoomed the picture: the hint has done its job, and Reset view shows.
 function movedIt() {
   hideHint(true);
+  spin = null;
   if (view) { view.moved = true; $('stage-reset').hidden = false; }
 }
 // With the picture focused, the arrow keys turn it and + and - zoom, so a keyboard can look round a model too.
@@ -649,7 +673,7 @@ function turnKeys(e) {
   redraw();
 }
 function stopStage() {
-  running = false; anims = [];
+  running = false; anims = []; spin = null;
   if (raf) cancelAnimationFrame(raf);
   raf = 0;
 }
@@ -673,9 +697,15 @@ function loop(t) {
   });
   // While a turn or a zoom is still easing out, this moves the camera and says so ('change'), which asks for the
   // next frame; once it has settled nothing does, and the loop sleeps until something changes.
+  const turning = !!spin;
+  if (spin) {
+    const k = Math.max(0, Math.min(1, (t - spin.t0) / SPIN));
+    camera.position.copy(controls.target).add(spin.off.clone().applyAxisAngle(UP, Math.PI * 2 * k * k * (3 - 2 * k))); // eased at both ends
+    if (k === 1) spin = null;
+  }
   controls.update();
-  if (dirty || moving) { dirty = false; renderer.render(scene, camera); }
-  if (anims.length) wake();
+  if (dirty || moving || turning) { dirty = false; renderer.render(scene, camera); }
+  if (anims.length || spin) wake();
 }
 
 function material(c) {
@@ -684,6 +714,23 @@ function material(c) {
   return (mats[c] = new THREE.MeshStandardMaterial({ color: col.hex, roughness: 0.38, metalness: 0, transparent: !!col.alpha, opacity: col.alpha || 1 }));
 }
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x1c1712, transparent: true, opacity: 0.32 });
+// While a step is showing, its pieces have a crisper outline and the ones built before are faded a little toward
+// the picture's background, so what the step adds can be told from the rest at a glance (four yellow slopes on a
+// yellow wall couldn't, except by reading "Find these"). The finished model is at full colour.
+const edgeNow = new THREE.LineBasicMaterial({ color: 0x1c1712, transparent: true, opacity: 0.9 });
+const edgeOld = new THREE.LineBasicMaterial({ color: 0x1c1712, transparent: true, opacity: 0.16 });
+const FADE = 0.4, fadedMats = {};
+function backdrop() { return getComputedStyle($('stage').parentNode).getPropertyValue('--card').trim() || '#ffffff'; }
+function faded(c, bg) {
+  const k = c + '|' + bg;
+  if (fadedMats[k]) return fadedMats[k];
+  const col = colorOf(c);
+  // Mixed as the colours are written (not as light adds up), so a dark blue goes as far toward a pale background
+  // as a yellow does, and still reads as blue.
+  const from = new THREE.Color(col.hex).getHexString(), to = new THREE.Color(bg).getHexString();
+  const mix = [0, 2, 4].map(i => Math.round(parseInt(from.substr(i, 2), 16) * (1 - FADE) + parseInt(to.substr(i, 2), 16) * FADE).toString(16).padStart(2, '0')).join('');
+  return (fadedMats[k] = new THREE.MeshStandardMaterial({ color: '#' + mix, roughness: 0.6, metalness: 0, transparent: !!col.alpha, opacity: col.alpha || 1 }));
+}
 const glassMat = new THREE.MeshStandardMaterial({ color: 0xcfe6f5, roughness: 0.1, transparent: true, opacity: 0.35 });
 const studGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 20);
 const eyeGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.02, 16);
@@ -761,13 +808,14 @@ function studsOf(p) {
 function partObject(q) {
   const [p, c, x, y, z, r] = q, sh = shapes[p];
   const inner = new THREE.Group();
-  const mat = material(c);
+  const mat = material(c), solids = [], outlines = []; // the things whose look changes with the step (showUpTo)
   bodies(p).forEach((g, i) => {
-    inner.add(new THREE.Mesh(g, mat));
-    inner.add(new THREE.LineSegments(edgesOf(p)[i], edgeMat));
+    solids.push(new THREE.Mesh(g, mat));
+    outlines.push(new THREE.LineSegments(edgesOf(p)[i], edgeMat));
+    inner.add(solids[i], outlines[i]);
   });
   if (sh.k === 'frame' && !OPEN.includes(p)) inner.add(new THREE.Mesh(paneOf(p), glassMat));
-  if (studsOf(p)) inner.add(new THREE.Mesh(studsOf(p), mat));
+  if (studsOf(p)) { solids.push(new THREE.Mesh(studsOf(p), mat)); inner.add(solids[solids.length - 1]); }
   if (p === '98138p07' || p === '98138p0c') {
     const eye = new THREE.Mesh(eyeGeo, eyeMat); eye.position.set(0.5, sh.h * PLATE, 0.5);
     if (p === '98138p0c') eye.scale.set(1, 1, 0.25);
@@ -779,6 +827,7 @@ function partObject(q) {
   outer.add(inner);
   outer.rotation.y = -r * Math.PI / 180;
   outer.position.set(x + size.w / 2, y * PLATE, z + size.d / 2);
+  outer.userData = { solids, outlines };
   return outer;
 }
 function cellsOf(sh) { const a = []; for (let i = 0; i < sh.w; i++) for (let j = 0; j < sh.d; j++) a.push([i, j]); return a; }
@@ -836,18 +885,27 @@ function inView() {
   });
   let panes = 0;
   scene.traverse(o => { if (o.material === glassMat) panes++; });
-  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes, shown: meshes.filter(m => m.obj.visible).length };
+  return { box: r, polar: controls.getPolarAngle() / Math.PI, moved: view.moved, panes, shown: meshes.filter(m => m.obj.visible).length,
+    now: meshes.filter(m => m.obj.visible && m.look === 'now').length, faded: meshes.filter(m => m.obj.visible && /^old/.test(m.look)).length, spin: !!spin };
 }
 
+// `step` is the model's own number for the step showing; Infinity is the finished model.
 function showUpTo(step, animate) {
   if (!renderer) return;
-  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const calm = still(), bg = backdrop();
   anims = [];
   meshes.forEach(m => {
     const s = m.q[6];
     m.obj.visible = s <= step;
     m.obj.position.y = m.y;
-    if (animate && !still && s === step) anims.push({ obj: m.obj, y: m.y, t0: performance.now() });
+    if (animate && !calm && s === step) anims.push({ obj: m.obj, y: m.y, t0: performance.now() });
+    // This step's pieces, the ones built before it, or (the finished model) every piece as it is.
+    const look = step === Infinity ? 'whole' : s === step ? 'now' : 'old|' + bg;
+    if (m.look === look) return;
+    m.look = look;
+    const mat = look === 'whole' || look === 'now' ? material(m.q[1]) : faded(m.q[1], bg), edge = look === 'whole' ? edgeMat : look === 'now' ? edgeNow : edgeOld;
+    m.obj.userData.solids.forEach(o => { o.material = mat; });
+    m.obj.userData.outlines.forEach(o => { o.material = edge; });
   });
   redraw();
 }
