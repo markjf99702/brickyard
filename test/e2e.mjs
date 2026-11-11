@@ -4341,6 +4341,16 @@ await page.click('[data-close]');
   await p.waitForSelector('#e-num');
   await p.waitForTimeout(350);
   assert.deepEqual([await p.isVisible('.sheet .head-pic'), await top() < before - 150], [false, true], 'opened again, the sheet starts without the tile');
+  // Not for the rest of the visit: a row's picture can fail on a weak signal and come the next time the list is
+  // drawn. Once a picture of the set has arrived, its sheet asks for the big one again.
+  await p.click('[data-close]');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  await p.evaluate(() => { window.tileLoads = 0; document.addEventListener('load', e => { if (e.target.tagName === 'IMG') window.tileLoads++; }, true); });
+  await p.fill('#q', 'tree'); // the list is drawn again, and its picture loads
+  await p.waitForFunction(() => window.tileLoads > 0);
+  await p.click('.item:has-text("Tree House")');
+  await p.waitForSelector('#e-num');
+  assert.equal(await p.isVisible('.sheet .head-pic'), true, 'after a picture of the set has arrived, the sheet has its tile again');
   await c.close();
 }
 // With less motion asked for, nothing fades.

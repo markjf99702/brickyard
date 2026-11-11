@@ -181,7 +181,8 @@
   // tile is marked `in`, and the stylesheet fades the picture in over its white ground and the brick out.
   // For this visit: `gotPic` is the pictures that have arrived, by address, which are drawn in at once the next
   // time (the list is drawn again at every search letter, and would blink); `noPic` is the set numbers whose
-  // picture didn't, so the set's sheet opens without a tile for it. Back online, those are asked for again.
+  // picture didn't, so the set's sheet opens without a tile for it. Back online, or once a picture of the set does
+  // arrive, it's asked for again.
   var BRICK = '<svg width="34" height="26" viewBox="0 0 34 26" aria-hidden="true"><rect x="1" y="7" width="32" height="18" rx="2" fill="var(--line)"/><rect x="5" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/><rect x="21" y="2" width="8" height="6" rx="1.5" fill="var(--line)"/></svg>';
   var gotPic = {}, noPic = {}, settling = 0;
   window.addEventListener('online', function () { noPic = {}; });
@@ -195,7 +196,9 @@
       // address of the page asking either, which a browser adds unless it's told not to (no-referrer).
       '<img alt="" loading="lazy" referrerpolicy="no-referrer" src="' + esc(src) + '" data-fallback="1" data-num="' + esc(x.num) + '"></div>';
   }
-  function arrived(img) { gotPic[img.getAttribute('src')] = 1; if (img.parentNode) img.parentNode.classList.add('in'); }
+  // A picture of a set that has arrived takes its number off `noPic`: one that failed on a weak signal (a set's row
+  // in a garage) kept the set's sheet without its picture for the rest of the visit, after the row had it again.
+  function arrived(img) { gotPic[img.getAttribute('src')] = 1; delete noPic[img.dataset.num]; if (img.parentNode) img.parentNode.classList.add('in'); }
   document.addEventListener('load', function (e) {
     if (e.target && e.target.tagName === 'IMG' && e.target.dataset.fallback) arrived(e.target);
   }, true);
