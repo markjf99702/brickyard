@@ -1743,6 +1743,146 @@ assert.equal(await page.evaluate(() => document.getElementById('catalog').inert)
   await c.close();
 }
 
+// Actions that closed their sheet without a word now say what they did. A download names its file and says where
+// it went. A new bookcase is named, with Undo. A set saved in the planner says what became of it (its new shelf,
+// the turn, the move along the shelf, off the shelves; "Saved" when it only kept a size), with what was read as
+// inches after it. Add sizes counts its ticks the way Add sets from Claude does, and waits for one: with none
+// ticked it was a live "Add sizes" beside "0 sets", and pressing it answered "Nothing added".
+{
+  const set = (id, name, w, more) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 }, ...more });
+  const sets = { th: set('th', 'Tree House', 25, { num: '21318-1' }), a: set('a', 'Set A', 20), b: set('b', 'Set B', 20), o: { id: 'o', t: 1, num: '10311-1', name: 'Orchid', state: 'built' },
+    g: { id: 'g', t: 1, num: '10497-1', name: 'Galaxy Explorer', state: 'built' }, c: set('c', 'Lion Knights’ Castle', 40, { num: '10305-1' }) };
+  const cases = { k: { id: 'k', t: 1, name: 'Office Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }, { id: 'th' }, { id: 'b' }] }, { h: 32, sets: [] }] } };
+  const { c, p } = await withSets({ sets, cases });
+  // The message's words (a file's name is kept in one piece by joiners after its dashes, taken out here) and its button.
+  const says = () => p.evaluate(() => { const t = document.querySelector('.toast'); return t.hidden ? [] : [t.querySelector('span').textContent.replace(/⁠/g, ''), t.querySelector('button') ? t.querySelector('button').textContent : '']; });
+  const closed = () => p.waitForFunction(() => !document.querySelector('.scrim') && !(history.state && history.state.sheet));
+  const on = () => p.evaluate(() => { const d = window.brickyard.doc().cases; return Object.values(d).filter(k => !k.del).sort((x, y) => x.name.localeCompare(y.name)).map(k => k.name + ': ' + k.levels.map(l => l.sets.map(s => s.id + (s.turn ? '(side-on)' : '')).join('+')).join(' / ')).join('; '); });
+  await p.goto(base + '#catalog');
+  for (const [id, what, name] of [['m-backup', 'Backup', /^Brickyard \d{4}-\d\d-\d\d\.json$/], ['m-csv', 'Spreadsheet', /^Brickyard sets \d{4}-\d\d-\d\d\.csv$/]]) {
+    await p.click('#menu-btn');
+    const [file] = await Promise.all([p.waitForEvent('download'), p.click('#' + id)]);
+    await closed();
+    assert.match(file.suggestedFilename(), name);
+    assert.deepEqual(await says(), [what + ' made: ' + file.suggestedFilename() + '. It’s in your downloads.', ''], 'a download says what was made and where it went');
+    assert.ok(await p.$eval('.toast', t => t.getBoundingClientRect().height) < 80, 'in two lines on a phone');
+  }
+  // A new bookcase, and Undo.
+  await p.goto(base + '#shelves');
+  await p.click('[data-act="add-case"]');
+  await p.fill('#k-name', 'Hall Kallax');
+  await p.click('#k-save');
+  await closed();
+  assert.deepEqual([await says(), await on()], [['Added Hall Kallax', 'Undo'], 'Hall Kallax:  /  /  /  /  / ; Office Billy: a+th+b / '], 'a new bookcase is named, with Undo');
+  await p.click('.toast button');
+  assert.deepEqual([await says(), await on(), await p.locator('.case').count()], [['Took Hall Kallax out again', ''], 'Office Billy: a+th+b / ', 1], 'Undo takes it out again');
+  // A bookcase saved with nothing else to say.
+  await p.click('[data-case="k"]');
+  await p.fill('#k-room', 'Office');
+  await p.click('#k-save');
+  await closed();
+  assert.deepEqual(await says(), ['Saved', '']);
+  // A set's sheet in the planner.
+  const open = async () => { await p.locator('.sv-set[data-set="th"]').click(); await p.waitForSelector('#z-save'); };
+  const save = async (act, button) => { await open(); if (act) await act(); await p.click(button || '#z-save'); await closed(); return [(await says()).join('|'), await on()]; };
+  assert.deepEqual(await save(), ['Saved|', 'Office Billy: a+th+b / '], 'nothing changed');
+  assert.deepEqual(await save(null, '#z-right'), ['Moved right|', 'Office Billy: a+b+th / ']);
+  assert.deepEqual(await save(null, '#z-left'), ['Moved left|', 'Office Billy: a+th+b / ']);
+  assert.deepEqual(await save(() => p.check('#z-turn')), ['Turned side-on|', 'Office Billy: a+th(side-on)+b / ']);
+  assert.deepEqual(await save(() => p.uncheck('#z-turn')), ['Turned to face out|', 'Office Billy: a+th+b / ']);
+  assert.deepEqual(await save(() => p.selectOption('#z-where', 'k:1')), ['Tree House is on Office Billy, shelf 2|', 'Office Billy: a+b / th'], 'a new shelf is named');
+  assert.deepEqual(await save(() => p.fill('#z-w', '11"')), ['Saved. Read as inches: 27.9 cm|', 'Office Billy: a+b / th'], 'what was read as inches comes after');
+  assert.deepEqual(await save(() => p.selectOption('#z-where', '')), ['Off the shelves|', 'Office Billy: a+b / ']);
+  // A set that only fits a shelf side-on says so when it's put there. (30 cm from front to back, in a bookcase 26 deep.)
+  await p.evaluate(() => { const d = JSON.parse(JSON.stringify(window.brickyard.doc())); d.sets.th.size = { w: 24, d: 30, h: 20 }; d.sets.th.t = Date.now(); window.brickyard.takeDoc(d); });
+  await p.click('.item[data-set="th"]');
+  await p.waitForSelector('#z-save');
+  await p.selectOption('#z-where', 'k:0');
+  await p.click('#z-save');
+  await closed();
+  assert.deepEqual([(await says()).join('|'), await on()], ['Tree House is on Office Billy, shelf 1, side-on|', 'Office Billy: a+b+th(side-on) / ']);
+  // Add sizes.
+  await p.goto('about:blank');
+  await p.goto(base + '#z1z' + deflateRawSync(JSON.stringify({ brickyard: 1, sizes: [{ num: '10311', w: 24, d: 18, h: 39 }, { num: '10497', w: 52, d: 32, h: 13 }, { num: '10305', w: 44, d: 33, h: 38 }] })).toString('base64url'));
+  await p.waitForSelector('#zr-go');
+  const foot = () => p.evaluate(() => [document.getElementById('zr-n').textContent, document.getElementById('zr-go').textContent, document.getElementById('zr-go').disabled]);
+  assert.deepEqual(await foot(), ['2 of 3 ticked', 'Add 2 sizes', false], 'the two sets with no size are ticked, and counted on the button');
+  await p.click('#zr li:has-text("Orchid")');
+  assert.deepEqual(await foot(), ['1 of 3 ticked', 'Add 1 size', false]);
+  await p.click('#zr li:has-text("Galaxy Explorer")');
+  assert.deepEqual(await foot(), ['0 of 3 ticked', 'Add sizes', true], 'with none ticked the button waits');
+  await p.click('#zr li:has-text("Lion Knights")');
+  await p.click('#zr-go');
+  await closed();
+  assert.deepEqual([await says(), await p.evaluate(() => window.brickyard.doc().sets.c.size)], [['1 size added', ''], { w: 44, d: 33, h: 38 }]);
+  await c.close();
+}
+
+// A button that asks for a second tap doesn't stay a question. "Tap again to remove" used to stay until the sheet
+// closed: a tap on it minutes later, after other things in the sheet, removed the set. After five seconds, or when
+// the focus leaves it, the button has its own words back and the next tap is a first tap again. For every button
+// that asks: a set's Remove, a bookcase's Remove and Take every set off, a model's Remove, Close with changes
+// typed, and Add set for a set that's already here.
+{
+  const set = (id, name, w) => ({ id, t: 1, name, state: 'built', size: { w, d: 20, h: 20 } });
+  const { c, p } = await withSets({ sets: { t: { id: 't', t: 1, num: '21318-1', name: 'Tree House', state: 'built' }, a: set('a', 'Set A', 20) }, cases: { k: { id: 'k', t: 1, name: 'Billy', w: 76, d: 26, levels: [{ h: 32, sets: [{ id: 'a' }] }] } } });
+  const words = sel => p.$eval(sel, b => (b.querySelector('span') ? b.querySelector('span').firstChild : b).textContent);
+  const kept = () => p.evaluate(() => { const d = window.brickyard.doc(); return [Object.values(d.sets).filter(x => !x.del).length, Object.values(d.cases).filter(x => !x.del).length, d.cases.k.levels[0].sets.length, Object.keys(JSON.parse(localStorage.getItem('brickyard.models') || '{}')).length].join(); });
+  // One tap, then the focus goes to `away`: the button's own words are back, and a tap is a first tap again.
+  const calms = async (sel, own, asks, away) => {
+    await p.click(sel);
+    assert.equal(await words(sel), asks, own + ' asks on its first tap');
+    await p.waitForTimeout(650);
+    await p.focus(away);
+    assert.equal(await words(sel), own, own + ': its own words are back when the focus leaves it');
+    await p.click(sel);
+    assert.equal(await words(sel), asks, own + ': and the next tap asks again');
+  };
+  await p.goto(base + '#catalog');
+  await p.click('.item:has-text("Tree House")');
+  await calms('#e-del', 'Remove', 'Tap again to remove', '#e-name');
+  // Left alone with the focus still on it, it goes back after five seconds.
+  await p.waitForTimeout(3000);
+  assert.equal(await words('#e-del'), 'Tap again to remove', 'still asking after 3 seconds');
+  await p.waitForTimeout(2500);
+  assert.deepEqual([await words('#e-del'), await p.evaluate(() => document.activeElement.id)], ['Remove', 'e-del'], 'and back to Remove after 5');
+  await p.click('#e-del');
+  assert.deepEqual([await words('#e-del'), await kept()], ['Tap again to remove', '2,1,1,0'], 'a tap after that is a first tap: the set is still here');
+  // Close with something typed.
+  await p.fill('#e-notes', 'a note');
+  await calms('.sheet [data-close]', 'Close', 'Discard changes?', '#e-notes');
+  await p.waitForTimeout(650);
+  await p.click('.sheet [data-close]');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  // Add set, for a set that's already here.
+  await p.click('#add-btn');
+  await p.fill('#e-num', '21318');
+  await calms('#e-save', 'Add set', 'Add another copy', '#e-year');
+  assert.equal(await p.inputValue('#e-name'), 'Tree House', 'the first copy’s name is still in its box');
+  await p.waitForTimeout(650);
+  await p.click('#e-save');
+  await p.waitForFunction(() => !document.querySelector('.scrim'));
+  assert.equal(await kept(), '3,1,1,0', 'a second tap straight after adds the copy');
+  // A bookcase: Take every set off, and Remove.
+  await p.goto(base + '#shelves');
+  await p.click('[data-case="k"]');
+  await calms('#k-clear', 'Take every set off', 'Tap again to take it off', '#k-name');
+  await calms('#k-del', 'Remove', 'Tap again to remove', '#k-name');
+  assert.equal(await kept(), '3,1,1,0', 'nothing has gone');
+  await p.click('.sheet [data-close]');
+  // A model.
+  await p.goto(base + '#d1z' + deflateRawSync(JSON.stringify({ brickyard: 1, model: { name: 'Wall', parts: Array.from({ length: 4 }, (_, i) => ['3001', 4, 0, i * 3, 0, 0, i + 1]) } })).toString('base64url'));
+  await p.waitForFunction(() => location.hash.startsWith('#model-m') && !document.getElementById('model-view').hidden);
+  await p.click('#model-menu');
+  await calms('#mm-del', 'Remove from my models', 'Tap again to remove', '#mm-parts');
+  assert.deepEqual([await p.textContent('#mm-del small'), await kept()], ['Tap twice. Claude’s link still opens it again.', '3,1,1,1'], 'the line under it is whole again, and the model is still here');
+  await p.waitForTimeout(650);
+  await p.click('#mm-del');
+  await p.waitForSelector('#build-list:not([hidden]) .list');
+  assert.equal(await kept(), '3,1,1,0', 'the second tap still removes');
+  await c.close();
+}
+
 // "You already have …" is said under the Set number box as well as in a message, and stays there until the number
 // changes. On a phone with the number box in use, the keyboard covers the bottom half of the screen: the message
 // showed at y 697 and the button that had turned into "Add another copy" at y 788, both under it, so pressing Done
@@ -2903,7 +3043,7 @@ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= i
   const sizes = await said('#zr');
   assert.deepEqual([sizes[0], sizes[1].slice(0, 2), /^10305 · 44 × 33 × 3 cm \/ Check: /.test(sizes[1][2]), await p.getAttribute('#zr-n', 'aria-live')], [['Add size for Bonsai Tree', true, '10281 · 21 × 20 × 18 cm'], ['Add size for Lion Knights’ Castle', false], true, 'polite']);
   await p.click('#zr li:last-child .t');
-  assert.deepEqual([await p.textContent('#zr-n'), await p.$eval('#zr li:last-child', l => l.className)], ['2 sets', '']);
+  assert.deepEqual([await p.textContent('#zr-n'), await p.$eval('#zr li:last-child', l => l.className)], ['2 of 2 ticked', '']);
   await c.close();
 }
 
@@ -3181,7 +3321,7 @@ await page.click('[data-close]');
   await p.click('.sv-set[data-set="a"]');
   await p.fill('#z-h', '7 in');
   await p.click('#z-save');
-  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.a.size.h), await toastSays()], [17.8, ['Read as inches: 17.8 cm', '']]);
+  assert.deepEqual([await p.evaluate(() => window.brickyard.doc().sets.a.size.h), await toastSays()], [17.8, ['Saved. Read as inches: 17.8 cm', '']]);
   await p.click('.sv-set[data-set="a"]');
   await p.fill('#z-w', '20 x 15');
   await p.click('#z-save');
@@ -3376,7 +3516,7 @@ await page.click('[data-close]');
   assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('#zr li')].map(li => [li.querySelector('input').checked ? 'ticked' : 'unticked', li.querySelector('.m').textContent, (li.querySelector('.w') || {}).textContent || ''].join(' | '))), [
     'ticked | 10497 · 52 × 32 × 13 cm | ', 'unticked | 10305 · 44 × 33 × 3 cm | Check: 3 cm tall for 4,514 pieces?', 'unticked | 31120 · 12.6 × 10.2 × 8.7 cm | Check: 8.7 cm tall for 1,426 pieces?',
     'unticked | 10258 · 68 × 18 × 36 cm · replaces 34 × 9 × 18 cm | Check: Very different from the size it has now.'], 'sizes that look wrong are unticked and say why');
-  assert.deepEqual([await p.textContent('.sheet .note'), await p.textContent('#zr-n')], ['Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it. 3 sizes look wrong and are unticked too: check them before you tick. One size in the list couldn’t be read.', '1 set']);
+  assert.deepEqual([await p.textContent('.sheet .note'), await p.textContent('#zr-n')], ['Sizes Claude found for your sets. Sets that already have a size are unticked; tick one to replace it. 3 sizes look wrong and are unticked too: check them before you tick. One size in the list couldn’t be read.', '1 of 4 ticked']);
   await p.click('#zr-go');
   assert.deepEqual(await p.evaluate(() => Object.values(window.brickyard.doc().sets).filter(x => x.size).map(x => x.id).sort()), ['ge', 'lb'], 'only the ticked size is added');
   await c.close();

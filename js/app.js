@@ -148,11 +148,24 @@
   });
   // Removing and doubling up take a second tap, so nothing goes on one slip. It has to come a moment after the
   // first, so a double tap is still one tap. True when this tap is the one that confirms.
+  // The question doesn't stay for good: after 5 seconds, or when the focus leaves the button, it has its own words
+  // back and the next tap is a first tap again. ("Tap again to remove" used to stay until the sheet closed, so a tap
+  // minutes later, after other things in the sheet, removed the set.) The caller changes the words after the first
+  // tap; what the button held before is kept here to put back.
+  var CALM = 5000; // ms
   function secondTap(btn, key) {
     key = key || 'sure';
     var first = Number(btn.dataset[key] || 0);
     if (!first) {
-      btn.dataset[key] = String(Date.now());
+      var words = btn.innerHTML, at = String(Date.now());
+      btn.dataset[key] = at;
+      var calm = function () {
+        clearTimeout(timer); btn.removeEventListener('blur', calm);
+        if (btn.dataset[key] !== at) return; // put back already, or asked again since
+        delete btn.dataset[key]; btn.innerHTML = words;
+      };
+      var timer = setTimeout(calm, CALM);
+      btn.addEventListener('blur', calm);
       // The button's new words ("Tap again to remove") are read out: a screen reader doesn't read again a button
       // it's already on. Not when the first press said more in a message of its own.
       var n = toastN;
@@ -221,12 +234,16 @@
   }, true);
   function metaBits(x) { return [C.shortNum(x.num), x.year, x.pieces ? plural(x.pieces, 'piece') : ''].filter(Boolean); }
   function metaLine(x) { return metaBits(x).join(' · '); }
-  function download(name, type, text) {
+  // `what` is the file in a word ("Backup"), for the message that says it was made and where it went: the menu
+  // used to close on a download without a word.
+  function download(name, type, text, what) {
     if (FRAMED) { toast('Downloads don’t work in this preview. Open Brickyard at its own address.'); return; }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: type }));
     a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    // The name stays in one piece: a joiner after each dash, where the line broke it as "2026-" / "11-10.json".
+    toast(what + ' made: ' + name.replace(/-/g, '-\u2060') + '. It’s in your downloads.');
   }
 
   // ---------- screens ----------
@@ -1253,11 +1270,11 @@
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
     $('m-link').onclick = copyAll;
     if ($('m-sync')) $('m-sync').onclick = function () { window.BrickyardSync.sheet(); };
-    if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1)); };
+    if ($('m-backup')) $('m-backup').onclick = function () { closeSheet(); download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify({ brickyard: 1, catalog: DOC }, null, 1), 'Backup'); };
     if ($('m-csv')) $('m-csv').onclick = function () {
       closeSheet();
       var sets = C.live(DOC).sort(function (a, b) { return C.natural(a.name || '', b.name || ''); });
-      download('Brickyard sets ' + today() + '.csv', 'text/csv', '﻿' + C.toCsv(sets));
+      download('Brickyard sets ' + today() + '.csv', 'text/csv', '﻿' + C.toCsv(sets), 'Spreadsheet');
     };
     // Once the sheet is off the screen and its place in history is gone: printing holds the page still meanwhile.
     if ($('m-print')) $('m-print').onclick = function () { closeSheet(function () { setTimeout(function () { window.print(); }, 50); }); };

@@ -529,7 +529,18 @@
       else if (JSON.stringify(y.size || null) !== JSON.stringify(live.size || null)) app.putSet(y);
       next.forEach(function (k, n) { if (JSON.stringify(k.levels) !== JSON.stringify(list[n].levels)) put(k); });
       app.closeSheet(); render();
-      if (back) toast(nameOf(y) + ' is back' + (z.note ? '. ' + z.note : '')); else if (z.note) toast(z.note);
+      // What became of it, in a message: the sheet used to close without a word unless a size was read as inches,
+      // and a set turned side-on differs in the drawing only by a dashed edge. A new shelf first (and side-on,
+      // when that's the only way it fits there), or off the shelves; else the turn; else the move along the shelf.
+      var to = S.placements(next)[id] || null, c2 = to && next.filter(function (k) { return k.id === to.c; })[0];
+      var nth = to ? c2.levels[to.l].sets.findIndex(function (q) { return q.id === id; }) : -1;
+      var said = back ? nameOf(y) + ' is back'
+        : to && (!cur || cur.c !== to.c || cur.l !== to.l) ? nameOf(y) + ' is on ' + shelfName(c2, to.l) + (to.turn ? ', side-on' : '')
+        : cur && !to ? 'Off the shelves'
+        : to && !to.turn !== !cur.turn ? (to.turn ? 'Turned side-on' : 'Turned to face out')
+        : to && nth !== spot ? (nth < spot ? 'Moved left' : 'Moved right')
+        : 'Saved';
+      toast(said + (z.note ? '. ' + z.note : ''));
     }
     if ($('z-left')) { $('z-left').onclick = function () { save(-1); }; $('z-right').onclick = function () { save(1); }; }
     $('z-save').onclick = function () { save(0); };
@@ -679,9 +690,12 @@
       var off = live ? Object.keys(S.placements([live])).filter(function (id) { return all[id] && !still[id]; }).length : 0;
       if (gone) { tidy(y.id); app.putBack('cases', y); } else put(y);
       app.closeSheet(); render();
-      var said = [gone ? y.name + ' is back' : '', off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ');
-      if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([before]); toast(before.name + ' is as it was'); } });
-      else if (said) toast(said);
+      // A new bookcase is named in a message, with Undo: the sheet used to close without a word. So does a Save
+      // that had nothing else to say.
+      var said = [isNew ? 'Added ' + y.name : gone ? y.name + ' is back' : '', off ? (off === 1 ? '1 set is' : off.toLocaleString() + ' sets are') + ' back in Not on a shelf yet' : '', z.note].filter(Boolean).join('. ') || 'Saved';
+      if (isNew) toast(said, false, { label: 'Undo', run: function () { tidy(y.id); app.removeCase(y.id); render(); toast('Took ' + y.name + ' out again'); } });
+      else if (off) toast(said, false, { label: 'Undo', run: function () { putCasesBack([before]); toast(before.name + ' is as it was'); } });
+      else toast(said);
     };
   }
 
@@ -739,7 +753,14 @@
           (r.doubt ? '<div class="w">Check: ' + esc(r.doubt) + '</div>' : '') + '</div></div></li>';
       }).join('') + '</ul></div>' +
       '<div class="ft"><span class="note" id="zr-n" aria-live="polite" style="margin:0"></span><button class="btn" type="button" id="zr-go">Add sizes</button></div>');
-    function count() { $('zr-n').textContent = plural(rows.filter(function (r) { return r.on; }).length, 'set'); }
+    // Counted the way Add sets from Claude counts: how many are ticked, on the button too, which waits for a tick.
+    // (With none ticked it was a live "Add sizes" beside "0 sets", and pressing it answered "Nothing added".)
+    function count() {
+      var n = rows.filter(function (r) { return r.on; }).length;
+      $('zr-n').textContent = n + ' of ' + rows.length + ' ticked';
+      $('zr-go').textContent = n ? 'Add ' + plural(n, 'size') : 'Add sizes';
+      $('zr-go').disabled = !n;
+    }
     count();
     $('zr').onchange = function (e) { var r = rows[+e.target.dataset.i]; r.on = e.target.checked; e.target.closest('li').classList.toggle('off', !r.on); count(); };
     $('zr').onclick = app.tickRow;
@@ -749,7 +770,7 @@
         if (!r.on) return;
         var y = JSON.parse(JSON.stringify(r.x)); y.size = { w: r.z.w, d: r.z.d, h: r.z.h }; app.putSet(y); n++;
       });
-      app.closeSheet(); render(); toast(n ? plural(n, 'size') + ' added' : 'Nothing added');
+      app.closeSheet(); render(); toast(plural(n, 'size') + ' added');
     };
   }
 
