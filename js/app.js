@@ -31,6 +31,7 @@
         : 'This browser wouldn’t save. Download a backup from the menu.', true);
     }
     document.dispatchEvent(new CustomEvent('brickyard:saved')); // Drive sync (js/sync.js) picks it up
+    keepStorage();
   }
   function savePrefs() { write(PREFS, prefs); }
 
@@ -344,6 +345,7 @@
     var pk = C.packing(DOC);
     $('home-pack').hidden = !pk.packed;
     $('home-pack').textContent = pk.packed ? pk.packed.toLocaleString() + ' packed in ' + plural(pk.boxes, 'box').replace(/boxs$/, 'boxes') + ' · ' + (pk.toPack ? pk.toPack.toLocaleString() + ' to pack' : 'none left to pack') : '';
+    nudge();
     if (listed) buildStat(listed);
     else if (!asking) {
       asking = true;
@@ -1759,6 +1761,48 @@
     var o = { brickyard: 1, saved: new Date().toISOString(), catalog: DOC };
     if (Object.keys(kept).length) o.models = kept;
     download('Brickyard ' + today() + '.json', 'application/json', JSON.stringify(o, null, 1), 'Backup');
+    if (FRAMED) return;
+    write(BACKUP, { t: Date.now() });
+    nudge(); keepStorage(true);
+  }
+  // When the last backup was downloaded in this browser is remembered (brickyard.backup), for the menu ("Last backup
+  // 12 days ago") and for one quiet line on the home screen when a backup is due. Unless Drive sync is on, the
+  // catalog is in this browser's storage and nowhere else. The line shows only with sync off, and only once
+  // there's something to lose: something has changed since the last backup, and either that was 30 days ago or
+  // more, or 20 things have changed. With no backup yet, the 30 days run from the oldest change. A tap on it
+  // downloads one. `changes` counts the sets, bookcases and lots changed (or removed) since.
+  var BACKUP = 'brickyard.backup', DUE_DAYS = 30, DUE_CHANGES = 20;
+  function lastBackup() { var b = read(BACKUP); return b && typeof b.t === 'number' && isFinite(b.t) && b.t > 0 ? b.t : 0; }
+  function syncOn() { var d = read('brickyard.drive'); return !!(d && d.on); }
+  function backupDue() {
+    var last = lastBackup(), n = 0, first = Infinity;
+    ['sets', 'cases', 'loose'].forEach(function (kind) {
+      Object.keys(DOC[kind]).forEach(function (id) {
+        var x = DOC[kind][id];
+        if (x.t > last && (last || !x.del)) { n++; first = Math.min(first, x.t); }
+      });
+    });
+    var since = last || first, due = !FRAMED && !syncOn() && n > 0 && (n >= DUE_CHANGES || Date.now() - since >= DUE_DAYS * DAY);
+    return { due: due, last: last, changes: n };
+  }
+  function nudge() {
+    var el = $('backup-nudge'), b = backupDue();
+    el.hidden = !b.due;
+    if (b.due) el.textContent = (b.last ? plural(b.changes, 'change') + ' since your last backup, ' + daysAgo(b.last) + '.' : 'No backup of your catalog yet.') + ' Download one';
+  }
+  $('backup-nudge').addEventListener('click', backup);
+  // Asks the browser to keep Brickyard's storage: a browser may clear a site's storage by itself (Safari does after
+  // seven days of use without a visit to the site, except for a copy on the Home Screen), and a browser that has
+  // agreed doesn't. Chrome and Safari answer by their own rules of thumb, without asking the person. Firefox asks
+  // with a prompt, so there it's only asked on a tap of Download a backup (`tapped`), never as the page opens.
+  // Asked once there's a set to keep. `storageKept` is the answer, for the menu.
+  var storageKept = false, storageAsked = false;
+  function keepStorage(tapped) {
+    var st = navigator.storage;
+    if (FRAMED || storageAsked || !st || !st.persist || !st.persisted || !C.live(DOC).length) return;
+    if (!tapped && /Firefox\//.test(navigator.userAgent)) return;
+    storageAsked = true;
+    st.persisted().then(function (yes) { return yes || st.persist(); }).then(function (yes) { storageKept = !!yes; }, function () { /* the browser's to refuse */ });
   }
 
   // ---------- menu ----------
@@ -1766,7 +1810,7 @@
     var gone = recent().length;
     openSheet('<div class="hd"><h2 id="sheetTitle">Brickyard</h2><button class="btn sm quiet" type="button" data-close>Close</button></div><div class="bd"><ul class="menu">' +
       '<li><button type="button" id="m-claude"><span>Add from photos<small>Send Claude pictures of your sets and open its link</small></span></button></li>' +
-      (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog and your models as one file. Open it on another device to merge.</small></span></button></li>') +
+      (FRAMED ? '' : '<li><button type="button" id="m-backup"><span>Download a backup<small>Your whole catalog and your models as one file. ' + (lastBackup() ? 'Last backup ' + daysAgo(lastBackup()) + '.' : 'No backup yet.') + '</small></span></button></li>') +
       (window.BrickyardSync && window.BrickyardSync.here ? '<li><button type="button" id="m-sync"><span>Sync with Google Drive<small>The same catalog on every device</small></span></button></li>' : '') +
       '<li><button type="button" id="m-link"><span>Copy everything as a link<small>Open it on another device, or at brickyard.junkdrawer.works, to bring your sets across</small></span></button></li>' +
       '<li><button type="button" id="m-open"><span>Open a file<small>A backup, or sets, sizes or a model from Claude</small></span></button></li>' +
@@ -1776,7 +1820,7 @@
       (FRAMED || !C.live(DOC).length ? '' : '<li><button type="button" id="m-print"><span>Print this list<small>What My sets is showing now: search for a box first to print its packing list</small></span></button></li>') +
       (FRAMED ? '' : '<li><label><input type="checkbox" id="m-pics"' + (prefs.pics ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--red)"><span>Show set pictures<small>Loaded from Rebrickable by set number. Nothing else is sent.</small></span></label></li>') +
       '</ul><p class="note">' + (FRAMED ? 'This preview keeps your catalog in this browser only. To keep it on every device, copy everything as a link and open it at brickyard.junkdrawer.works, then turn on Google Drive sync there.'
-        : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.') + '</p></div>');
+        : 'Your catalog is kept in this browser' + (window.BrickyardSync && window.BrickyardSync.here ? ', and in your Google Drive if you turn on sync.' : ' only.') + ' Download a backup now and then, and before you clear your browser’s data.' + (storageKept ? ' This browser has agreed not to clear Brickyard’s storage by itself.' : '')) + '</p></div>');
     $('m-claude').onclick = claudeSheet;
     $('m-open').onclick = function () { closeSheet(); $('file').click(); };
     $('m-link').onclick = copyAll;
@@ -1858,6 +1902,7 @@
 
   if ('serviceWorker' in navigator && window.isSecureContext && !FRAMED) navigator.serviceWorker.register('sw.js').catch(function () {});
   offEntry();
+  keepStorage();
   if (!checkLink()) {
     route();
     // The preview copy has no sets of its own, so it opens on Claude's example batch.
@@ -1879,7 +1924,7 @@
     fillLists: function () { fillLists(C.live(DOC)); },
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
-    newId: newId, takeDoc: takeDoc, showSet: showSet, folded: folded, foldedText: foldedText,
+    newId: newId, takeDoc: takeDoc, showSet: showSet, nudge: nudge, folded: folded, foldedText: foldedText,
     // What gets the focus back when the open sheet closes: the planner redraws its screen behind a sheet, and
     // gives this the new copy of the thing that opened it.
     lastFocus: function (el) { if (el !== undefined) lastFocus = el; return lastFocus; },

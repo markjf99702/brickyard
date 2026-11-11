@@ -222,6 +222,7 @@
     // the button (it was only in the button's tooltip). It waits for any message that's showing.
     if (s === 'tap' && seen && !toldTap) { toldTap = true; app.toastAfter('Google signs Brickyard out after an hour. Tap Sync to sync again.'); }
     if ($('sync-offer')) $('sync-offer').hidden = !here || D.on;
+    app.nudge(); // the line about a backup shows only while sync is off
     if ($('drive-sheet')) sheetBody();
   }
   function ago(t) {

@@ -92,6 +92,9 @@ a { color: var(--blue); }
 .sync-btn[data-s="busy"] i { background: var(--yellow); }
 .sync-btn[data-s="tap"] i, .sync-btn[data-s="err"] i { background: var(--red); }
 .link-btn { border: 0; background: none; padding: 12px 0; margin: -24px 0 4px; color: var(--blue); font-weight: 600; font-size: 14.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+/* The line that says a backup is due: quieter than the offer above it, and on a line of its own under it. */
+.link-btn.quiet { display: block; width: fit-content; max-width: 100%; margin-top: -10px; text-align: left; color: var(--muted); font-weight: 400; }
+.link-btn.quiet[hidden] { display: none; }
 
 /* ---------- buttons ---------- */
 .btn {

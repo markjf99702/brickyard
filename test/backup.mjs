@@ -118,7 +118,7 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await p.evaluate(k => { const all = JSON.parse(localStorage.getItem('brickyard.models')); all[k].added = 1700000000000; localStorage.setItem('brickyard.models', JSON.stringify(all)); }, id);
   await p.goto(base + '#catalog');
   await p.click('#menu-btn');
-  assert.equal(await p.textContent('#m-backup small'), 'Your whole catalog and your models as one file. Open it on another device to merge.');
+  assert.match(await p.textContent('#m-backup small'), /^Your whole catalog and your models as one file\. /);
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#m-backup')]);
   const text = await readFile(await dl.path(), 'utf8'), file = JSON.parse(text);
   assert.deepEqual([Object.keys(file), Object.keys(file.models), file.models[id].added, Math.abs(Date.parse(file.saved) - Date.now()) < 60000, Object.keys(file.catalog.sets)],
@@ -149,6 +149,54 @@ const bonsai = (id, more) => ({ id, t: 5, num: '10281-1', name: 'Bonsai Tree', s
   await q.click('#cs-go');
   assert.deepEqual(await names(q), ['Bonsai Tree', 'Orchid', 'Typewriter']);
   await other.c.close();
+}
+
+// ---------- A backup you are reminded of ----------
+// The menu says when the last backup was downloaded here. With Drive sync off, the home screen has one quiet line
+// once a backup is due: something changed since the last one, and it was 30 days ago or more, or 20 things changed.
+{
+  const now = Date.now();
+  const sets = (n, t) => Object.fromEntries(Array.from({ length: n }, (_, i) => ['s' + i, { id: 's' + i, t, name: 'Set ' + i }]));
+  const line = async p => await p.isVisible('#backup-nudge') ? p.textContent('#backup-nudge') : '';
+  const menuSays = async p => { await p.goto(base + '#catalog'); await p.click('#menu-btn'); const s = await p.textContent('#m-backup small'); await p.click('[data-close]'); await p.goto(base); return s; };
+  for (const [what, catalog, more, want, menu] of [
+    ['no backup yet, and the oldest change 40 days old', { sets: sets(3, now - 40 * DAY) }, {}, 'No backup of your catalog yet. Download one', 'No backup yet.'],
+    ['no backup yet, and everything new', { sets: sets(3, now - 2 * DAY) }, {}, '', 'No backup yet.'],
+    ['no backup yet, and 20 new sets', { sets: sets(20, now - 2 * DAY) }, {}, 'No backup of your catalog yet. Download one', 'No backup yet.'],
+    ['a backup 12 days ago and 2 changes since', { sets: { ...sets(5, now - 20 * DAY), ...Object.fromEntries(Object.entries(sets(2, now - DAY)).map(([k, v]) => ['n' + k, { ...v, id: 'n' + k }])) } }, { 'brickyard.backup': { t: now - 12 * DAY } }, '', 'Last backup 12 days ago.'],
+    ['a backup 31 days ago and 1 change since', { sets: { ...sets(5, now - 40 * DAY), z: { id: 'z', t: now - DAY, del: 1 } } }, { 'brickyard.backup': { t: now - 31 * DAY } }, '1 change since your last backup, 31 days ago. Download one', 'Last backup 31 days ago.'],
+    ['a backup 31 days ago and nothing changed since', { sets: sets(5, now - 40 * DAY) }, { 'brickyard.backup': { t: now - 31 * DAY } }, '', 'Last backup 31 days ago.'],
+    ['a backup 2 days ago and 20 changes since', { sets: sets(19, now - DAY), cases: { k: { id: 'k', t: now - DAY, name: 'Billy', w: 76, d: 26, levels: [{ h: 30, sets: [] }] } } }, { 'brickyard.backup': { t: now - 2 * DAY } }, '20 changes since your last backup, 2 days ago. Download one', 'Last backup 2 days ago.'],
+    ['Drive sync on', { sets: sets(30, now - 40 * DAY) }, { 'brickyard.drive': { on: true } }, '', 'No backup yet.'],
+  ]) {
+    const { c, p } = await withSets(catalog, more);
+    assert.equal(await line(p), want, 'the line on the home screen with ' + what);
+    assert.equal(await menuSays(p), 'Your whole catalog and your models as one file. ' + menu, 'the menu with ' + what);
+    await c.close();
+  }
+  // A tap on the line downloads a backup; the line goes, and the menu says today.
+  const { c, p } = await withSets({ sets: sets(3, now - 40 * DAY) });
+  assert.deepEqual(await p.evaluate(() => { const b = document.getElementById('backup-nudge'), s = getComputedStyle(b); return [b.tagName, b.getBoundingClientRect().height >= 44, s.fontWeight]; }), ['BUTTON', true, '400'], 'a quiet line, with room for a finger');
+  const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#backup-nudge')]);
+  assert.match(dl.suggestedFilename(), /^Brickyard \d{4}-\d\d-\d\d\.json$/);
+  assert.deepEqual([await line(p), await menuSays(p)], ['', 'Your whole catalog and your models as one file. Last backup today.']);
+  await c.close();
+}
+
+// The browser is asked to keep Brickyard's storage, once there is a set to keep, and the menu says when it agreed.
+{
+  const stub = () => { Object.defineProperty(navigator, 'storage', { configurable: true, value: { persisted: async () => false, persist: async () => { window.__asked = (window.__asked || 0) + 1; return true; } } }); };
+  const some = await withSets({ sets: { o: { id: 'o', t: Date.now(), name: 'Orchid' } } }, {}, stub);
+  await some.p.goto(base + '#catalog');
+  assert.equal(await some.p.evaluate(() => window.__asked), 1, 'asked as the page opens, once');
+  await some.p.click('#menu-btn');
+  assert.match(await some.p.textContent('.sheet .note'), /This browser has agreed not to clear Brickyard’s storage by itself\.$/);
+  await some.c.close();
+  const none = await withSets({ sets: {} }, {}, stub);
+  assert.equal(await none.p.evaluate(() => window.__asked), undefined, 'with no sets there is nothing to ask for');
+  await none.p.evaluate(() => window.brickyard.addSet({ name: 'Orchid' }));
+  await none.p.waitForFunction(() => window.__asked === 1);
+  await none.c.close();
 }
 
 assert.deepEqual(problems, [], 'problems while using it');
