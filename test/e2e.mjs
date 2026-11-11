@@ -646,6 +646,68 @@ await page.click('.chip[data-f="all"]');
   await c.close();
 }
 
+// A lot of loose pieces can be renamed and moved out of its moving box after it has arrived: a tap on its name
+// under Your pieces opens a sheet with Call it and Moving box. (They could only be typed when the lot first arrived,
+// so an unpacked lot went on saying Box 9, there and in My sets.) Its tick still ticks, and Remove still removes.
+{
+  const { c, p } = await withSets({
+    sets: { a: { id: 'a', t: 1, num: '10334-1', name: 'Retro Radio', state: 'built', box: '3' } },
+    loose: { tub: { id: 'tub', t: 1, name: 'Blue tub', box: '9', note: 'from the garage', parts: [['3001', 4, 40], ['3020', 15, 2]] }, bag: { id: 'bag', t: 1, name: 'Red bag', parts: [['3001', 4, 10]] } } });
+  const lot = id => p.evaluate(i => window.brickyard.doc().loose[i], id), says = () => p.textContent('.toast > span');
+  const rows = () => p.$$eval('li.lot', ls => ls.map(l => l.querySelector('.lot-name').textContent));
+  const gone = () => p.waitForFunction(() => !document.querySelector('.sheet'));
+  await p.goto(base + '#build');
+  await p.waitForSelector('li.lot');
+  assert.deepEqual(await rows(), ['Blue tubLoose · 42 pieces · Box 9', 'Red bagLoose · 10 pieces']);
+  assert.deepEqual(await p.$$eval('li.lot', ls => ls.map(l => [...l.children].map(e => e.tagName + ':' + Math.round(e.getBoundingClientRect().height >= 40)).join())), Array(2).fill('LABEL:1,BUTTON:1,BUTTON:1'), 'a tick, the name and Remove, each tall enough for a finger');
+  assert.equal(await p.getAttribute('[data-pool="tub"]', 'aria-label'), 'Build from Blue tub');
+  await p.click('[data-edit="tub"]');
+  assert.deepEqual([await p.textContent('#sheetTitle'), await p.textContent('.sheet .lede'), await p.inputValue('#lt-name'), await p.inputValue('#lt-box'), await p.$$eval('#dl-box option', os => os.map(o => o.value))],
+    ['Blue tub', '42 loose pieces of 2 kinds', 'Blue tub', '9', ['3', '9']], 'the lot’s sheet, with the boxes in use to choose from');
+  // No name is turned down; a change that's closed asks first.
+  await p.fill('#lt-name', '  ');
+  await p.click('#lt-save');
+  assert.equal(await p.textContent('#lt-name-err'), 'Give them a name.');
+  await p.fill('#lt-name', 'Blue tub (kitchen)');
+  await p.click('[data-close]');
+  assert.equal(await p.textContent('[data-close]'), 'Discard changes?');
+  // Unpacked: the box is cleared, and the message says the box is empty. Everything else about the lot is kept.
+  const t0 = (await lot('tub')).t;
+  await p.fill('#lt-box', '');
+  await p.press('#lt-box', 'Enter');
+  await gone();
+  await p.waitForFunction(() => /kitchen/.test(document.querySelector('li.lot').textContent));
+  const kept = await lot('tub');
+  assert.deepEqual([await says(), kept.name, kept.box, kept.note, kept.parts, kept.t > t0, await rows()],
+    ['Saved. Box 9 is empty now.', 'Blue tub (kitchen)', undefined, 'from the garage', [['3001', 4, 40], ['3020', 15, 2]], true, ['Blue tub (kitchen)Loose · 42 pieces', 'Red bagLoose · 10 pieces']]);
+  assert.equal(await p.evaluate(() => document.activeElement.dataset.edit), 'tub', 'the keyboard is back on the lot’s name');
+  assert.equal(JSON.parse(await p.evaluate(() => localStorage.getItem('brickyard.v1'))).catalog.loose.tub.name, 'Blue tub (kitchen)', 'saved in the catalog, which is what syncs');
+  // Into a box: My sets lists it under that box.
+  await p.click('[data-edit="bag"]');
+  await p.fill('#lt-box', '3');
+  await p.click('#lt-save');
+  await gone();
+  assert.deepEqual([await says(), (await lot('bag')).box], ['Saved', '3']);
+  await p.waitForFunction(() => /Box 3/.test(document.querySelectorAll('li.lot')[1].textContent));
+  // Nothing changed is nothing written.
+  const t1 = (await lot('bag')).t;
+  await p.click('[data-edit="bag"]');
+  await p.click('#lt-save');
+  await gone();
+  assert.equal((await lot('bag')).t, t1, 'a Save with nothing changed leaves the lot’s time of change alone');
+  // The tick still turns the lot off, and Remove still asks.
+  await p.click('[data-pool="bag"]');
+  await p.waitForFunction(() => !document.querySelector('[data-pool="bag"]').checked);
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('brickyard.pool')).bag), false);
+  await p.click('[data-lot="bag"]');
+  assert.equal(await p.textContent('#sheetTitle'), 'Remove these loose pieces?');
+  await p.click('[data-close]');
+  await p.goto(base + '#catalog');
+  await p.selectOption('#group', 'box');
+  assert.deepEqual(await p.locator('#list-wrap .note.lots').allTextContents(), ['Also in Box 3: Red bag, 10 loose pieces'], 'My sets has the lot under its new box, and no Box 9');
+  await c.close();
+}
+
 // While any set is in a moving box, My sets has a Not packed chip after All, with the number still to pack, and
 // the home screen's card says how many are packed, in how many boxes, and how many are left. Both go when no set
 // has a box.

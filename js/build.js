@@ -188,9 +188,11 @@ const renderList = orSay(async () => {
   } else {
     html += '<ul class="menu pool">' + sets.map(s => '<li><label><input type="checkbox" data-pool="' + esc(s.id) + '"' + (s.on ? ' checked' : '') + '>' +
       '<span>' + esc(s.name) + '<small>' + esc(s.num.replace(/-1$/, '')) + ' · ' + plural(s.pieces, 'piece') + (!s.on && OFF[s.state] ? ' · ' + OFF[s.state] : '') + '</small></span></label></li>').join('') +
-      lots.map(l => '<li class="lot"><label><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + '>' +
-        '<span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · Box ' + esc(window.BrickCore.boxName(l.box)) : '') +
-        (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></label>' +
+      // A lot's tick is on its own, and its name is a button that opens the lot's sheet (lotSheet): what it's called
+      // and which moving box it's in could only be typed when the lot first arrived.
+      lots.map(l => '<li class="lot"><label class="tick"><input type="checkbox" data-pool="' + esc(l.id) + '"' + (l.on ? ' checked' : '') + ' aria-label="Build from ' + esc(l.name) + '"></label>' +
+        '<button type="button" class="lot-name" data-edit="' + esc(l.id) + '"><span>' + esc(l.name) + '<small>Loose · ' + plural(l.pieces, 'piece') + (l.box ? ' · Box ' + esc(window.BrickCore.boxName(l.box)) : '') +
+        (l.usable < l.pieces ? ' · the builder can use ' + l.usable.toLocaleString() : '') + '</small></span></button>' +
         '<button class="btn sm quiet" type="button" data-lot="' + esc(l.id) + '" aria-label="Remove ' + esc(l.name) + '">Remove</button></li>').join('') + '</ul>';
     if (!any) html += '<p class="flag"><span>' + (!lots.length ? 'Tick a set to build from its pieces.' : sets.length ? 'Tick a set or some loose pieces to build from them.' : 'Tick your loose pieces to build from them.') + '</span></p>';
   }
@@ -227,12 +229,44 @@ const renderList = orSay(async () => {
     renderList().then(() => focusIn('[data-pool="' + CSS.escape(cb.dataset.pool) + '"]')); // the list is redrawn: the tick keeps the focus
   });
   $('build-list').querySelectorAll('[data-lot]').forEach(b => b.onclick = () => dropLot(lots.find(l => l.id === b.dataset.lot)));
+  $('build-list').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => lotSheet(lots.find(l => l.id === b.dataset.edit)));
   $('copy-pool').onclick = copyPool;
   $('open-model').onclick = openSheet;
 });
 function focusIn(sel) { const el = $('build-list').querySelector(sel); if (el) el.focus({ preventScroll: true }); return !!el; }
 // (With "Couldn't load" showing, the address may still be a model's: route() reads it again.)
 document.addEventListener('brickyard:changed', () => { if (!$('build').hidden && !$('build-list').hidden) ($('build-retry') ? route : renderList)(); });
+
+// A lot's sheet, from a tap on its name: what it's called and which moving box it's in. Both could only be typed
+// when the lot first arrived, so after box 9 was unpacked the lot still said Box 9, here and under Box 9 in My sets,
+// until its link was found and opened again. Saved in the catalog, so sync carries it.
+function lotSheet(l) {
+  const kept = l && app.doc().loose[l.id];
+  if (!kept || kept.del) return;
+  const C = window.BrickCore, boxes = ['lt-name', 'lt-box'];
+  const field = (label, inner) => '<label class="field"><span>' + label + '</span>' + inner + '</label>';
+  app.fillLists(); // the boxes in use, for Moving box's suggestions
+  app.openSheet('<div class="hd"><h2 id="sheetTitle">' + esc(l.name) + '</h2><button class="btn sm quiet" type="button" data-close>Close</button></div>' +
+    '<form class="bd" id="lt-form" novalidate><p class="lede">' + plural(l.pieces, 'loose piece') + ' of ' + plural(l.kinds, 'kind') + '</p>' +
+    field('Call it', '<input id="lt-name" value="' + esc(kept.name) + '" maxlength="80" autocomplete="off" enterkeyhint="done">') +
+    field('Moving box', '<input id="lt-box" value="' + esc(kept.box || '') + '" list="dl-box" maxlength="40" autocomplete="off" enterkeyhint="done" placeholder="Leave blank if it’s not packed">') + '</form>' +
+    '<div class="ft"><span></span><button class="btn" type="submit" form="lt-form" id="lt-save">Save</button></div>',
+    () => app.fieldsOf(boxes) !== was);
+  const was = app.fieldsOf(boxes);
+  $('lt-form').onsubmit = e => {
+    e.preventDefault();
+    if (!$('lt-name').value.trim()) { app.wrong($('lt-name'), 'Give them a name.'); return; }
+    const now = app.doc().loose[l.id], back = () => renderList().then(() => focusIn('[data-edit="' + CSS.escape(l.id) + '"]') || focusIn('.pieces h2'));
+    // Removed while the sheet was open (on another device, or in another tab): it stays removed.
+    if (!now || now.del) { app.closeSheet(); back(); toast(l.name + ' was removed while this was open. Nothing was saved.'); return; }
+    if (app.fieldsOf(boxes) === was) { app.closeSheet(); toast('Saved'); return; }
+    const y = app.putLot(Object.assign({}, now, { name: $('lt-name').value, box: $('lt-box').value }));
+    app.closeSheet(); back();
+    // Out of a moving box, the message says how the box stands, as it does for a set.
+    const news = y ? C.boxNews(app.doc(), now.box, y.box, true) : '';
+    toast('Saved' + (news ? '. ' + news : ''));
+  };
+}
 
 function dropLot(l) {
   if (!l) return;

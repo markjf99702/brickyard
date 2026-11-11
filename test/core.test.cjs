@@ -327,6 +327,7 @@ eq(C.repeats([]), [], 'an empty list has no repeats');
   eq(C.boxNews(doc, '3', ''), '2 sets still in Box 3.', 'out of a box with sets left in it');
   eq(C.boxNews(doc, '7', ''), 'Box 7 is empty now.', 'the last set out of a box');
   eq(C.boxNews(doc, '20', ''), 'Only loose pieces are left in Box 20.', 'a box left with loose pieces is not called empty');
+  eq([C.boxNews(doc, '', '12', true), C.boxNews(doc, '7', '12', true), C.boxNews(doc, '3', '', true), C.boxNews(doc, '20', '', true)], ['', 'Box 7 is empty now.', '2 sets still in Box 3.', 'Only loose pieces are left in Box 20.'], 'loose pieces moved: no box is said to hold another set');
   eq(C.boxNews(doc, 'Box 7', '#12'), 'Box 12 holds 1 set now. Box 7 is empty now.', 'from one box to another');
   eq(C.boxNews(C.cleanDoc({ sets: { d: { id: 'd', t: 1, name: 'Bonsai Tree' } } }), '7', ''), 'That was the last moving box.', 'nothing packed anywhere any more');
   eq(C.boxNews(C.cleanDoc({ sets: { d: { id: 'd', t: 1, name: 'Bonsai Tree' } }, loose: { l: { id: 'l', t: 1, box: '20', parts: [['3001', 4, 10]] } } }), '7', ''), 'Box 7 is empty now.', 'a box of loose pieces is still a box packed');

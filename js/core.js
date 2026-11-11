@@ -364,12 +364,13 @@
   // What happened to the moving boxes when a set went from box `was` to box `now` (either may be empty), for the
   // message that says it's saved; `doc` is the catalog after the change. "Box 4 holds 3 sets now." for the box it
   // went into; for the one it left, "2 sets still in Box 3.", "Box 12 is empty now.", or, when nothing is packed
-  // anywhere any more, "That was the last moving box." Nothing when the set stayed where it was.
-  function boxNews(doc, was, now) {
+  // anywhere any more, "That was the last moving box." Nothing when the set stayed where it was. With `loose`, it
+  // was a lot of loose pieces that moved: a box isn't said to hold one more set for it.
+  function boxNews(doc, was, now, loose) {
     was = s(was, 40); now = s(now, 40);
     if ((!was && !now) || sameBox(was, now)) return '';
     var out = [];
-    if (now) { var into = boxHolds(doc, now); out.push(into.name + ' holds ' + count(into.sets.length, 'set') + ' now.'); }
+    if (now && !loose) { var into = boxHolds(doc, now); out.push(into.name + ' holds ' + count(into.sets.length, 'set') + ' now.'); }
     if (was) {
       var left = boxHolds(doc, was);
       out.push(left.sets.length ? count(left.sets.length, 'set') + ' still in ' + left.name + '.'

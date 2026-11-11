@@ -543,6 +543,7 @@
     [['dl-room', 'room'], ['dl-spot', 'spot'], ['dl-box', 'box'], ['dl-theme', 'theme']].forEach(function (p) {
       var seen = {};
       all.forEach(function (x) { if (x[p[1]]) seen[x[p[1]]] = 1; });
+      if (p[1] === 'box') C.liveLots(DOC).forEach(function (l) { if (l.box) seen[l.box] = 1; }); // loose pieces are packed in boxes too
       $(p[0]).innerHTML = Object.keys(seen).sort(C.natural).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
     });
   }
@@ -1619,6 +1620,9 @@
     putCase: function (c) { c.t = Date.now(); DOC.cases[c.id] = c; save(); },
     removeCase: function (id) { DOC.cases[id] = { id: id, t: Date.now(), del: 1 }; save(); },
     removeLot: function (id) { DOC.loose[id] = { id: id, t: Date.now(), del: 1 }; save(); },
+    // A lot's name or moving box changed (js/build.js, lotSheet): kept in the catalog, so sync carries it.
+    putLot: function (l) { var y = C.cleanLot(l, l.id, Date.now()); if (!y || y.del) return null; DOC.loose[y.id] = y; save(); return y; },
+    fillLists: function () { fillLists(C.live(DOC)); },
     // Undo for a bookcase or a lot just removed; refresh for a change kept outside the catalog (a model).
     putBack: function (kind, x) { putBack(kind, x); save(); refresh(); }, refresh: refresh,
     newId: newId, takeDoc: takeDoc, showSet: showSet,
